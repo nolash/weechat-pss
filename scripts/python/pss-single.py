@@ -1,7 +1,12 @@
 import weechat
 import xmpp
 import json
+import sys
+import time
 import thread
+import os
+import fcntl
+from websocket import create_connection
 
 PSS_EOK = 0
 PSS_ESOCK = 1
@@ -10,6 +15,33 @@ PSS_ELOCALINVAL = 3
 
 pss = {}
 topic = "0xdeadbee2"
+
+weechat.register("pss", "lash", "0.0.1", "MIT", "single-node pss chat over XMPP", "pss_stop", "")
+
+def looop(pssName, countLeft):
+
+	msg = ""
+
+	if pss[pssName].pip == -1:	
+		return weechat.WEECHAT_RC_ERROR
+
+	try:	
+		msg = os.read(pss[pssName].pip, 1024)
+	except OSError as e:
+		weechat.prnt("", "(no read)")
+		return weechat.WEECHAT_RC_OK
+
+	weechat.prnt(pss[pssName].buf, "[" + pss[pssName].name + "]" + " got msg: " + msg)
+	pss[pssName].msgs.append(msg)
+
+	return weechat.WEECHAT_RC_OK
+
+def recvHandle(pssName, cmd, rc, out, err):
+	if rc != 0:
+		print "ohno: " + err
+		return weechat.WEECHAT_RC_ERROR
+
+	return weechat.WEECHAT_RC_OK
 
 class PssContact:
 	nick = ""
@@ -38,12 +70,14 @@ class Pss:
 	ws = None
 	name = ""
 	run = False
+	buf = None
+	pip = -1
+	msgs = []
 
 	def __init__(self, name):
-		self.name = name
+		self.name = name	
 
 	def connect(self):
-		from websocket import create_connection
 		try:
 			self.ws = create_connection("ws://" + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port"))
 		except Exception as e:
@@ -51,7 +85,6 @@ class Pss:
 			self.errstr = "could not connect to pss " + self.name + " on " + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port")
 			return False
 
-		#self.ws.send(json.dumps({'json-rpc':'2.0','id':0,'method':'pss_baseAddr','params':[]}))
 		self.ws.send(pss_new_call(self.seq, "baseAddr", []))
 		self.seq += 1
 		resp = json.loads(self.ws.recv())
@@ -75,26 +108,21 @@ class Pss:
 		key = resp['result']
 
 		self.ws.send(pss_new_call(self.seq, "subscribe", ["receive", topic, False, False]))
+		self.ws.recv()
 		self.seq += 1
 
-		resp = self.ws.recv()
-		weechat.prnt("", "result of subscribe: " + resp)
 		self.run = True
 		self.key = key
 		self.base = base	
 		
-		thread.start_new_thread(self._recv, () )
-
 		weechat.prnt("", "pss addr: " + self.base)
 		weechat.prnt("", "pss key: " + self.key)
-	
+
+		self.buf = weechat.buffer_new("pss_" + self.name, "buf_in", self.name, "buf_close", self.name)
+		weechat.buffer_set(self.buf, "title", "pss - " + self.name + " (" + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port"))
 		self.connected = True
 		return True
 
-	def _recv(self):
-		while (self.run):
-			msg = self.ws.recv()
-			weechat.prnt("", "[" + self.name + "]" + "got msg: " + msg)
 
 	def add(self, nick, pubkey, address):
 		contact = None
@@ -107,6 +135,7 @@ class Pss:
 	
 		# \todo check success	
 		self.ws.send(pss_new_call(self.seq, "setPeerPublicKey", [pubkey, topic, address]))
+		self.ws.recv()
 		self.seq += 1
 
 		self.contacts[nick] = contact	
@@ -143,6 +172,15 @@ class Pss:
 	def close(self):
 		self.Run = False
 		self.ws.close()
+		os.close(self.pip)
+
+def buf_in(pssName, buf, inputdata):
+	weechat.prnt("", "got in buf " + pssName + ": " + inputdata)
+	return weechat.WEECHAT_RC_OK
+
+def buf_close(pssName, buf):
+	weechat.prnt("", "close buf " + pssName)
+	return weechat.WEECHAT_RC_OK
 
 # \todo use better func
 def pss_strToHex(str):
@@ -198,6 +236,12 @@ def pss_handle(data, buf, args):
 		if not pss[argslist[0]].connect():
 			weechat.prnt("", "connect failed: " + pss[argslist[0]].error()['description'])
 			return weechat.WEECHAT_RC_ERROR
+		# \todo find option to get the correct path	
+		weechat.hook_process("python2 /home/lash/.weechat/python/pss-fetch.py " + weechat.config_get_plugin(pss[argslist[0]].name + "_url") + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_port") + " " + topic, 0, "recvHandle", argslist[0])
+		time.sleep(1)
+		pss[argslist[0]].pip = os.open("/tmp/pss_gets.fifo", os.O_RDONLY | os.O_NONBLOCK)
+		weechat.hook_timer(500, 0, 0, "looop", argslist[0])
+		print "timers ok"
 
 	elif argslist[1] == "add":
 		if len(argslist) != 5:
@@ -222,6 +266,7 @@ def pss_handle(data, buf, args):
 
 	return weechat.WEECHAT_RC_OK	
 
+	
 def pss_stop():
 	for name in pss:
 		pss[name].close()
@@ -241,7 +286,6 @@ def pss_new_call(callid, method, args):
 	})
 	
 
-weechat.register("pss", "lash", "0.0.1", "MIT", "single-node pss chat over XMPP", "pss_stop", "")
 
 cmd_main = weechat.hook_command(
 	"pss",
