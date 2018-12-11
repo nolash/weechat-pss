@@ -28,6 +28,7 @@ Please put any bugs and suggestions in github issues on this repo, prefixed with
 
 ### Installation
 
+* Install [weechat](https://weechat.org) if you don't have it already.
 * Copy the two files `pss-single.py` and `pss-fetch.py` to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
 * Start weechat
 * Load the script with `/script load pss-single.py` (do _not_ load `pss-fetch.py`)
