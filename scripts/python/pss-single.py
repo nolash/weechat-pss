@@ -28,11 +28,12 @@ def looop(pssName, countLeft):
 	try:	
 		msg = os.read(pss[pssName].pip, 1024)
 	except OSError as e:
-		weechat.prnt("", "(no read)")
+		#weechat.prnt("", "(no read)")
 		return weechat.WEECHAT_RC_OK
 
-	weechat.prnt(pss[pssName].buf, "[" + pss[pssName].name + "]" + " got msg: " + msg)
-	pss[pssName].msgs.append(msg)
+	r = json.loads(msg)
+	msgSrc = r['params']['result']['Msg'][2:].decode("hex")
+	weechat.prnt(pss[pssName].buf, msgSrc)
 
 	return weechat.WEECHAT_RC_OK
 
@@ -72,10 +73,16 @@ class Pss:
 	run = False
 	buf = None
 	pip = -1
-	msgs = []
+	pipName = ""
 
 	def __init__(self, name):
-		self.name = name	
+		""" set the pss instance name and create the fifo for catching msgs from subprocess
+		"""
+		self.name = name
+		self.pipName = "/tmp/pss_weechat_" + self.name + ".fifo"
+		if os.path.exists(self.pipName):
+			os.unlink(self.pipName)
+		self.pip = os.mkfifo(self.pipName)
 
 	def connect(self):
 		try:
@@ -173,6 +180,7 @@ class Pss:
 		self.Run = False
 		self.ws.close()
 		os.close(self.pip)
+		os.unlink(self.pipName)
 
 def buf_in(pssName, buf, inputdata):
 	weechat.prnt("", "got in buf " + pssName + ": " + inputdata)
@@ -237,9 +245,9 @@ def pss_handle(data, buf, args):
 			weechat.prnt("", "connect failed: " + pss[argslist[0]].error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 		# \todo find option to get the correct path	
-		weechat.hook_process("python2 /home/lash/.weechat/python/pss-fetch.py " + weechat.config_get_plugin(pss[argslist[0]].name + "_url") + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_port") + " " + topic, 0, "recvHandle", argslist[0])
+		weechat.hook_process("python2 /home/lash/.weechat/python/pss-fetch.py " + argslist[0] + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_url") + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_port") + " " + topic, 0, "recvHandle", argslist[0])
 		time.sleep(1)
-		pss[argslist[0]].pip = os.open("/tmp/pss_gets.fifo", os.O_RDONLY | os.O_NONBLOCK)
+		pss[argslist[0]].pip = os.open("/tmp/pss_weechat_" + argslist[0] + ".fifo", os.O_RDONLY | os.O_NONBLOCK)
 		weechat.hook_timer(500, 0, 0, "looop", argslist[0])
 		print "timers ok"
 
