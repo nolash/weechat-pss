@@ -38,7 +38,7 @@ def looop(pssName, countLeft):
 
 	r = json.loads(msg)
 
-	# parse the nick
+	# resolve the nick if it exists
 	fromKey = r['params']['result']['Key']
 	if fromKey in nicks:
 		displayFrom = nicks[fromKey]

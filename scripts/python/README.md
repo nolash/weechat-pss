@@ -107,8 +107,8 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 /pss bar address
 [bar.address] 0xdeadbeef....feca1666
 /pss bar connect
-/pss bar add hsal ${plugins.var.python.pss.bar_host} ${plugins.var.python.pss.bar_port}
-/pss bar send hsal mais plus ça change, plus c'est la même chose
+/pss foo add hsal <bar.key> <bar.address>
+/pss foo send hsal mais plus ça change, plus c'est la même chose
 
 # Unloading the script will kill sub-processes and disconnect from nodes
 # Currently it will also erase all settings and nicks you've added
