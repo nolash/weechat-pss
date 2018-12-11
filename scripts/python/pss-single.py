@@ -45,6 +45,7 @@ def msgPipeRead(pssName, countLeft):
 	msg = ""
 	displayFrom = ""
 	fromKey = ""
+	r = ""
 
 	if pss[pssName].pip == -1:	
 		return weechat.WEECHAT_RC_ERROR
@@ -55,7 +56,11 @@ def msgPipeRead(pssName, countLeft):
 		#weechat.prnt("", "(no read)")
 		return weechat.WEECHAT_RC_OK
 
-	r = json.loads(msg)
+	try:
+		r = json.loads(msg)
+	except Exception as e:
+		weechat.prnt("", "skipping invalid receive: " + r)
+		return weechat.WEECHAT_RC_OK
 
 	# resolve the nick if it exists
 	fromKey = r['params']['result']['Key']
