@@ -10,7 +10,7 @@ Ultimately, the idea is to create a proper shared object plugin which handles en
 
 However there is **lots** to be explored before that. And for this exploration we will use this simple prototype where you remote control a _single_ swarm node, using its public key and address.
 
-----
+### Development
 
 If you want to help debugging this project I would greatly appreciate it. Please let me know that you will be doing so:
 
@@ -24,7 +24,27 @@ My PSS node is:
 * publickey: 0x04578fcba26eb70ff2cef4a1ee6de5bbcac169adc6a067be6dab2e1781234d8ba9e97782ee2e460589e2925762c602d97d463549d4314e104a1d67d283e103c427
 * addr: 0xacae369e3fcef13ec171298c5d9a4ea3631cb4f082d9a72f8f95f27d54b4f145
 
-Please put any bugs and suggestions in github issues on this repo, prefixed with "PSS:"
+#### Feedback
+
+Let's use issues on this repo to inform us about trials and errors.
+
+Please add an issue **both** if you successfully run the plugin and/or if something goes wrong.
+
+The issue should contain the following:
+
+* **PSS BUG** prefix to the title
+* Your version of the dependencies below (this will help identify minimum requirements).
+* Consise description of what you've observed, and what you expected to observe.
+
+### Dependencies
+
+* [linux v4.19.8](http://kernel.org)
+* [weechat v2.3](http://weechat.org) 
+* [python v2.7.15]
+* [python-websocket-client v0.54.0](https://pypi.org/project/websocket-client)
+* [xmpppy v1.4.0 (not used yet)](http://xmpppy.sf.net)
+
+(Dependencies describe development environment, not minimal requirements)
 
 ### Installation
 
@@ -34,6 +54,7 @@ Please put any bugs and suggestions in github issues on this repo, prefixed with
 * Load the script with `/script load pss-single.py` (do _not_ load `pss-fetch.py`)
 
 This adds a command `/pss` to your weechat instance. You can confirm load with calling the help text with `/help pss`
+
 
 ### Current features
 

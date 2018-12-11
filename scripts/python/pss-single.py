@@ -3,7 +3,6 @@ import xmpp
 import json
 import sys
 import time
-import thread
 import os
 import fcntl
 import tempfile
