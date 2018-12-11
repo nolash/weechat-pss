@@ -34,7 +34,9 @@ Please add an issue **both** if you successfully run the plugin and/or if someth
 
 The issue should contain the following:
 
-* **PSS BUG** prefix to the title
+* One of two title prefixes:
+    - **PSS BUG** if it's a bug
+    - **PSS USE** if it's a usage report
 * Your version of the dependencies below (this will help identify minimum requirements).
 * Consise description of what you've observed, and what you expected to observe.
 
