@@ -2,13 +2,15 @@
 
 ## pss-single.py
 
-* version: 0.1.0 alpha
+* version: 0.1.1 alpha
 
 This script lets you send and receive messages through a `swarm` node using `pss`. If none of these terms mean anything to you, you have some research to do before reading on. See the references at the end of this README.
 
 Ultimately, the idea is to create a proper shared object plugin which handles encryption internally and uses swarm nodes as multiplexers. 
 
 However there is **lots** to be explored before that. And for this exploration we will use this simple prototype where you remote control a _single_ swarm node, using its public key and address.
+
+----
 
 If you want to help debugging this project I would greatly appreciate it. Please let me know that you will be doing so:
 
@@ -32,7 +34,7 @@ Please put any bugs and suggestions in github issues on this repo, prefixed with
 
 This adds a command `/pss` to your weechat instance. You can confirm load with calling the help text with `/help pss`
 
-### Features
+### Current features
 
 * Connect to node
 * Add recipients to node's address book

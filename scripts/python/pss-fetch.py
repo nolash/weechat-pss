@@ -1,3 +1,7 @@
+#!/usr/bin/python2
+
+# this script is NOT a plugin script. Don't load it into weechat
+
 import websocket
 from websocket._exceptions import WebSocketConnectionClosedException
 import sys

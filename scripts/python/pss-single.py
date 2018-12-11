@@ -20,7 +20,7 @@ nicks = {}
 topic = "0xdeadbee2"
 scriptpath = ""
 
-weechat.register("pss", "lash", "0.1.0", "MIT", "single-node pss chat", "pss_stop", "")
+weechat.register("pss", "lash", "0.1.1", "GPLv3", "single-node pss chat", "pss_stop", "")
 
 def looop(pssName, countLeft):
 
