@@ -51,6 +51,7 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 
 # Connect to the node
 # by default host 127.0.0.1 port 8546
+# when connected a message buffer for that node is created
 /pss foo connect
 
 # Print public key of node
@@ -85,17 +86,24 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 
 # Unloading the script will kill sub-processes and disconnect from nodes
 # Currently it will also erase all settings and nicks you've added
+# It also removes the buffer and all messages in it are lost. Any logging of message is purely by accident.
 /script unload pss
 
 ```
 
 ### Advanced
 
-Upon connecting to a node, a subprocess loop will be started that receives incoming messages and passes it to the main process through a FIFO node.
+Upon connecting to a node, a subprocess loop will be started that receives incoming messages and passes it to the main process through a FIFO.
+
+The subprocess catches disconnect exceptions from the websocket and retries forever.
+
+If the FIFO can't be written to, the sub-process will quit after a number of retries. Whatever happens if the sub-process quits prematurely is currently undefined.
 
 ### Security
 
 Although `pss` uses safe components for encryption, it is still not weather-tested in any way. Furthermore, this script adds code and traffic beyond the pss node, and at this point in time there's no guaranteeing that that won't break some security premise `pss` may already provide.
+
+Most likely something in weechat are even logging the messages you're getting in cleartext, for example.
 
 One thing to keep in mind is that anyone with access to your websocket port can connect to decrypt and see messages you receive.
 
