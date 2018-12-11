@@ -8,20 +8,39 @@ import fcntl
 import tempfile
 from websocket import create_connection
 
+# error values
 PSS_EOK = 0
 PSS_ESTATE = 1
 PSS_ESOCK = 2
 PSS_EREMOTEINVAL = 3
 PSS_ELOCALINVAL = 4
 
+# pss node connections
 pss = {}
+
+# nick to PssContact mappings in memory
 nicks = {}
+
+# topic we will be using for this messenger service
 topic = "0xdeadbee2"
-scriptpath = ""
 
-weechat.register("pss", "lash", "0.1.1", "GPLv3", "single-node pss chat", "pss_stop", "")
+# path to scripts
+scriptPath = ""
 
-def looop(pssName, countLeft):
+# signal hook to catch path to scripts
+loadSigHook = None
+
+# file that stores all nick/key/addr
+# is it append
+# \todo replace with ENCRYPTED key/value store
+storeFile = None
+
+# all weechat scripts must run this as first function
+weechat.register("pss", "lash", "0.1.3", "GPLv3", "single-node pss chat", "pss_stop", "")
+
+# perform a single read from pipe
+# \todo byte chunked reads, when messages arrive faster than one per loop need to reassemble individual msgs
+def msgPipeRead(pssName, countLeft):
 
 	msg = ""
 	displayFrom = ""
@@ -41,7 +60,7 @@ def looop(pssName, countLeft):
 	# resolve the nick if it exists
 	fromKey = r['params']['result']['Key']
 	if fromKey in nicks:
-		displayFrom = nicks[fromKey]
+		displayFrom = nicks[fromKey].nick
 	else:
 		displayFrom = str(fromKey[2:10])
 
@@ -50,6 +69,8 @@ def looop(pssName, countLeft):
 
 	return weechat.WEECHAT_RC_OK
 
+# Executed after subprocess returns.
+# \todo shut down node connection on subprocess return
 def recvHandle(pssName, cmd, rc, out, err):
 	if rc != 0:
 		print "ohno: " + err
@@ -57,12 +78,15 @@ def recvHandle(pssName, cmd, rc, out, err):
 
 	return weechat.WEECHAT_RC_OK
 
+# object representing a single recipient
+# \todo move to separate package
 class PssContact:
 	nick = ""
 	key = ""
 	address = ""
+	src = ""
 
-	def __init__(self, nick, key, addr):
+	def __init__(self, nick, key, addr, src):
 		if not pss_is_pubkey(key):
 			raise Exception("invalid key " + key)
 
@@ -72,7 +96,10 @@ class PssContact:
 		self.nick = nick
 		self.key = key
 		self.addr = addr
+		self.src = src
 
+# object encapsulating pss node connection
+# \todo move to separate package
 class Pss:
 	connected = False
 	base = ""
@@ -133,11 +160,17 @@ class Pss:
 
 		self.run = True
 		self.key = key
-		self.base = base	
-		
+		self.base = base
+
 		self.buf = weechat.buffer_new("pss_" + self.name, "buf_in", self.name, "buf_close", self.name)
 		weechat.buffer_set(self.buf, "title", "PSS '" + self.name + "' | node: " + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port") + " | key  " + self.key[2:10] + " | address " + self.base[2:10])
 
+		for c in nicks:
+			if nicks[c].src == self.key:
+				# \todo 
+				weechat.prnt(self.buf, "+++\tadded '" + nicks[c].nick + "' to node (key: 0x" + self.key[2:10] + ", addr: " + self.base + ")")
+				self.add(nicks[c].nick, key, self.base)
+			
 		self.connected = True
 		return True
 
@@ -151,7 +184,7 @@ class Pss:
 			return False
 	
 		try:
-			contact = PssContact(nick, pubkey, address)
+			contact = PssContact(nick, pubkey, address, self.name)
 		except Exception as e:
 			self.err = PSS_ELOCALINVAL
 			self.errstr = "invalid input for add: " + repr(e)
@@ -215,7 +248,7 @@ def pss_strToHex(str):
 		res += "{:02x}".format(ord(s))
 
 	return "0x" + res
-	
+
 # \todo
 def pss_is_address(addr):
 	return True		
@@ -266,18 +299,27 @@ def pss_handle(data, buf, args):
 		weechat.hook_process("python2 /home/lash/.weechat/python/pss-fetch.py " + argslist[0] + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_url") + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_port") + " " + topic, 0, "recvHandle", argslist[0])
 		time.sleep(1)
 		pss[argslist[0]].pip = os.open("/tmp/pss_weechat_" + argslist[0] + ".fifo", os.O_RDONLY | os.O_NONBLOCK)
-		weechat.hook_timer(500, 0, 0, "looop", argslist[0])
+		weechat.hook_timer(500, 0, 0, "msgPipeRead", argslist[0])
 
 	elif argslist[1] == "add":
+		nick = ""
+		key = ""
+		addr = ""
+
 		if len(argslist) != 5:
 			weechat.prnt("", "not enough arguments for add")
 			return weechat.WEECHAT_RC_ERROR
 
-		if not pss[argslist[0]].add(argslist[2], argslist[3], argslist[4]):
-			weechat.prnt("", "error: " + pss[argslist[0]].error()['description'])
+		nick = argslist[2]
+		key = argslist[3]
+		addr = argslist[4]
+			
+		if not pss[argslist[0]].add(nick, key, addr):
+			weechat.prnt("", "add contact error: " + pss[argslist[0]].error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 
-		nicks[argslist[3]] = argslist[2]
+		nicks[key] = PssContact(nick, key, addr, argslist[0])
+		storeFile.write(nick + "\t" + key + "\t" + addr + "\t" + pss[argslist[0]].key + "\n")
 
 	elif argslist[1] == "send":
 		if len(argslist) < 4:
@@ -321,8 +363,12 @@ def pss_new_call(callid, method, args):
 		'params': args,
 	})
 
+# signal handlers
 def pss_sighandler_load(data, sig, sigdata):
-	global scriptPath
+	global scriptPath, storeFile, nicks
+
+	if not os.path.basename(sigdata) == "pss-single.py":
+		return weechat.WEECHAT_RC_OK	
 
 	scriptPath = os.path.dirname(sigdata)
 	if not os.path.exists(scriptPath + "/pss-fetch.py"):
@@ -330,12 +376,51 @@ def pss_sighandler_load(data, sig, sigdata):
 		weechat.unhook_all()
 		return weechat.WEECHAT_RC_ERROR
 
+	# load all existing contacts to nicks mapping
+	try:
+		f = open(scriptPath + "/.pss-contacts", "r", 0600)
+		while 1:
+			record = f.readline()
+			if len(record) == 0:
+				break	
+			(nick, key, addr, src) = record.split("\t")
+			# chop newline
+			if ord(src[len(src)-1]) == 0x0a:
+				src = src[:len(src)-1]
+			nicks[key] = PssContact(nick, key, addr, src)
+			weechat.prnt("", "contact added '" + nick + "' (0x" + key[2:10] + ")")
+
+		f.close()
+	except OSError as e:
+		weechat.prnt("", "could not open contact store " + scriptPath + "/.pss-contacts: " + repr(e))
+		pass
+		
+	storeFile = open(scriptPath + "/.pss-contacts", "a", 0600)
+
+	# debug output confirming receive signal
 	weechat.prnt("", "(" + repr(sig) + ") using scriptpath " + scriptPath)
+	weechat.unhook(loadSigHook)
 	return weechat.WEECHAT_RC_OK_EAT
-	
-weechat.hook_signal(
+
+# unload cleanly
+def pss_sighandler_unload(data, sig, sigdata):
+	global storeFile
+
+	if not os.path.basename(sigdata) == "pss-single.py":
+		return weechat.WEECHAT_RC_OK	
+
+	storeFd.close()
+	return weechat.WEECHAT_RC_OK_EAT
+
+loadSigHook = weechat.hook_signal(
 	"python_script_loaded",
 	"pss_sighandler_load",
+	""
+)
+
+weechat.hook_signal(
+	"python_script_unloaded",
+	"pss_sighandler_unload",
 	""
 )
 

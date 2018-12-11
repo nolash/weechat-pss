@@ -2,7 +2,7 @@
 
 ## pss-single.py
 
-* version: 0.1.1 alpha
+* version: 0.1.3 alpha
 
 This script lets you send and receive messages through a `swarm` node using `pss`. If none of these terms mean anything to you, you have some research to do before reading on. See the references at the end of this README.
 
@@ -66,6 +66,7 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 * Add recipients to node's address book
 * Send message to recipient
 * Receive messages received by node while connected to it
+* Added recipients persist across sessions
 
 (if you send a message and there is noone listening on the other node, they won't get the message later on. This is regardless of whether the node even is up or not.)
 
@@ -146,3 +147,7 @@ GPLv3
 ### References
 
 * swarm - http://swarm-guide.readthedocs.com
+
+### Changelog
+
+- v0.1.3: Added persistent receipient store, temporary solution with single append file
