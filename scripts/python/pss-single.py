@@ -8,6 +8,9 @@ import fcntl
 import tempfile
 from websocket import create_connection
 
+# consts
+PSS_FIFO_POLL_DELAY = 500
+
 # error values
 PSS_EOK = 0
 PSS_ESTATE = 1
@@ -70,7 +73,7 @@ def msgPipeRead(pssName, countLeft):
 		displayFrom = str(fromKey[2:10])
 
 	msgSrc = r['params']['result']['Msg'][2:].decode("hex")
-	weechat.prnt(pss[pssName].buf, displayFrom + "\t" + msgSrc)
+	weechat.prnt(pss[pssName].buf, displayFrom + " <-\t" + msgSrc)
 
 	return weechat.WEECHAT_RC_OK
 
@@ -170,13 +173,13 @@ class Pss:
 		self.buf = weechat.buffer_new("pss_" + self.name, "buf_in", self.name, "buf_close", self.name)
 		weechat.buffer_set(self.buf, "title", "PSS '" + self.name + "' | node: " + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port") + " | key  " + self.key[2:10] + " | address " + self.base[2:10])
 
+		self.connected = True
 		for c in nicks:
 			if nicks[c].src == self.key:
 				# \todo 
 				weechat.prnt(self.buf, "+++\tadded '" + nicks[c].nick + "' to node (key: 0x" + self.key[2:10] + ", addr: " + self.base + ")")
 				self.add(nicks[c].nick, key, self.base)
 			
-		self.connected = True
 		return True
 
 
@@ -189,7 +192,7 @@ class Pss:
 			return False
 	
 		try:
-			contact = PssContact(nick, pubkey, address, self.name)
+			contact = PssContact(nick, pubkey, address, self.key)
 		except Exception as e:
 			self.err = PSS_ELOCALINVAL
 			self.errstr = "invalid input for add: " + repr(e)
@@ -200,12 +203,12 @@ class Pss:
 		self.ws.recv()
 		self.seq += 1
 
-		self.contacts[nick] = contact	
+		self.contacts[nick] = contact
 		weechat.prnt("", "added contact " + nick + ": " + pubkey + " => " + address)
 		return True
 
 	def send(self, nick, msg):
-		if self.contacts[nick] == None:
+		if not nick in self.contacts:
 			self.err = PSS_ELOCALINVAL
 			self.errstr = "no such nick " + nick
 			return False
@@ -218,6 +221,7 @@ class Pss:
 		self.ws.send(pss_new_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, pss_strToHex(msg)]))
 		self.seq += 1
 
+		weechat.prnt(self.buf, nick + " ->\t" + msg)
 		#resp = self.ws.recv()
 		#weechat.prnt("", "result from send: " + resp)
 		return True
@@ -304,7 +308,7 @@ def pss_handle(data, buf, args):
 		weechat.hook_process("python2 " + scriptPath + "/pss-fetch.py " + argslist[0] + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_url") + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_port") + " " + topic, 0, "recvHandle", argslist[0])
 		time.sleep(1)
 		pss[argslist[0]].pip = os.open("/tmp/pss_weechat_" + argslist[0] + ".fifo", os.O_RDONLY | os.O_NONBLOCK)
-		weechat.hook_timer(500, 0, 0, "msgPipeRead", argslist[0])
+		weechat.hook_timer(PSS_FIFO_POLL_DELAY, 0, 0, "msgPipeRead", argslist[0])
 
 	elif argslist[1] == "add":
 		nick = ""
