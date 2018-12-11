@@ -44,7 +44,7 @@ The issue should contain the following:
 
 * [linux v4.19.8](http://kernel.org)
 * [weechat v2.3](http://weechat.org) 
-* [python v2.7.15]
+* [python v2.7.15](https://python.org)
 * [python-websocket-client v0.54.0](https://pypi.org/project/websocket-client)
 * [xmpppy v1.4.0 (not used yet)](http://xmpppy.sf.net)
 
