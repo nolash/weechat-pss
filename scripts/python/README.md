@@ -28,7 +28,7 @@ My PSS node is:
 
 #### Feedback
 
-Let's use issues on this repo to inform us about trials and errors.
+Let's use [issues on this repo](https://github.com/nolash/weechat-tools/issues) to inform us about trials and errors.
 
 Please add an issue **both** if you successfully run the plugin and/or if something goes wrong.
 
