@@ -6,6 +6,7 @@ import time
 import thread
 import os
 import fcntl
+import tempfile
 from websocket import create_connection
 
 PSS_EOK = 0
@@ -17,8 +18,9 @@ PSS_ELOCALINVAL = 4
 pss = {}
 nicks = {}
 topic = "0xdeadbee2"
+scriptpath = ""
 
-weechat.register("pss", "lash", "0.1.0", "MIT", "single-node pss chat over XMPP", "pss_stop", "")
+weechat.register("pss", "lash", "0.1.0", "MIT", "single-node pss chat", "pss_stop", "")
 
 def looop(pssName, countLeft):
 
@@ -91,7 +93,7 @@ class Pss:
 		""" set the pss instance name and create the fifo for catching msgs from subprocess
 		"""
 		self.name = name
-		self.pipName = "/tmp/pss_weechat_" + self.name + ".fifo"
+		self.pipName = tempfile.gettempdir() + "/pss_weechat_" + self.name + ".fifo"
 		if os.path.exists(self.pipName):
 			os.unlink(self.pipName)
 		self.pip = os.mkfifo(self.pipName)
@@ -134,11 +136,9 @@ class Pss:
 		self.key = key
 		self.base = base	
 		
-		weechat.prnt("", "pss addr: " + self.base)
-		weechat.prnt("", "pss key: " + self.key)
-
 		self.buf = weechat.buffer_new("pss_" + self.name, "buf_in", self.name, "buf_close", self.name)
-		weechat.buffer_set(self.buf, "title", "pss - " + self.name + " (" + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port"))
+		weechat.buffer_set(self.buf, "title", "PSS '" + self.name + "' | node: " + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port") + " | key  " + self.key[2:10] + " | address " + self.base[2:10])
+
 		self.connected = True
 		return True
 
@@ -268,7 +268,6 @@ def pss_handle(data, buf, args):
 		time.sleep(1)
 		pss[argslist[0]].pip = os.open("/tmp/pss_weechat_" + argslist[0] + ".fifo", os.O_RDONLY | os.O_NONBLOCK)
 		weechat.hook_timer(500, 0, 0, "looop", argslist[0])
-		print "timers ok"
 
 	elif argslist[1] == "add":
 		if len(argslist) != 5:
@@ -322,8 +321,24 @@ def pss_new_call(callid, method, args):
 		'method': 'pss_' + method,
 		'params': args,
 	})
-	
 
+def pss_sighandler_load(data, sig, sigdata):
+	global scriptPath
+
+	scriptPath = os.path.dirname(sigdata)
+	if not os.path.exists(scriptPath + "/pss-fetch.py"):
+		weechat.prnt("", "retrieval daemon script not found. plugin will NOT work. please reload")
+		weechat.unhook_all()
+		return weechat.WEECHAT_RC_ERROR
+
+	weechat.prnt("", "(" + repr(sig) + ") using scriptpath " + scriptPath)
+	return weechat.WEECHAT_RC_OK_EAT
+	
+weechat.hook_signal(
+	"python_script_loaded",
+	"pss_sighandler_load",
+	""
+)
 
 cmd_main = weechat.hook_command(
 	"pss",

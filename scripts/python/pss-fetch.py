@@ -6,6 +6,7 @@ import os
 import socket 
 import errno
 import time
+import tempfile
 
 # our constants
 retryDelay = [1, 2, 4, 8, 16, 32]
@@ -84,7 +85,7 @@ if __name__ == "__main__":
 
 	# if fifo does not exist, then die
 	try:
-		fd = os.open("/tmp/pss_weechat_" + name + ".fifo", os.O_WRONLY)
+		fd = os.open(tempfile.gettempdir() + "/pss_weechat_" + name + ".fifo", os.O_WRONLY)
 	except OSError as e:
 		sys.stderr.write("fifo not available for " + name + "\n")
 		sys.exit(1)
