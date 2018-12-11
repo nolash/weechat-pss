@@ -391,7 +391,7 @@ def pss_sighandler_load(data, sig, sigdata):
 			weechat.prnt("", "contact added '" + nick + "' (0x" + key[2:10] + ")")
 
 		f.close()
-	except OSError as e:
+	except IOError as e:
 		weechat.prnt("", "could not open contact store " + scriptPath + "/.pss-contacts: " + repr(e))
 		pass
 		
