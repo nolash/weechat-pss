@@ -4,11 +4,11 @@
 
 * version: 0.1.0 alpha
 
-This script lets you send and receive messages through a swarm node using pss (see below for references)
+This script lets you send and receive messages through a `swarm` node using `pss`. If none of these terms mean anything to you, you have some research to do before reading on. See the references at the end of this README.
 
-The idea is to create a proper shared object plugin which handles encryption internally and uses swarm nodes as multiplexers. 
+Ultimately, the idea is to create a proper shared object plugin which handles encryption internally and uses swarm nodes as multiplexers. 
 
-However there is lots to be explored before than. And for this exploration we will use this simple prototype where you remote control a _single_ swarm node, using its public key and address.
+However there is **lots** to be explored before that. And for this exploration we will use this simple prototype where you remote control a _single_ swarm node, using its public key and address.
 
 If you want to help debugging this project I would greatly appreciate it. Please let me know that you will be doing so:
 
@@ -31,6 +31,15 @@ Please put any bugs and suggestions in github issues on this repo, prefixed with
 * Load the script with `/script load pss-single.py` (do _not_ load `pss-fetch.py`)
 
 This adds a command `/pss` to your weechat instance. You can confirm load with calling the help text with `/help pss`
+
+### Features
+
+* Connect to node
+* Add recipients to node's address book
+* Send message to node
+* Receive messages received by node while connected to it
+
+(if you send a message and there is noone listening on the other node, they won't get the message later on. This is regardless of whether the node even is up or not.)
 
 ### Usage
 
@@ -71,17 +80,28 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 /pss bar connect
 /pss bar add hsal ${plugins.var.python.pss.bar_host} ${plugins.var.python.pss.bar_port}
 /pss bar send hsal mais plus ça change, plus c'est la même chose
+
+# Unloading the script will kill sub-processes and disconnect from nodes
+# Currently it will also erase all settings and nicks you've added
+/script unload pss
+
 ```
 
 ### Advanced
 
 Upon connecting to a node, a subprocess loop will be started that receives incoming messages and passes it to the main process through a FIFO node.
 
-### Warranties
+### Security
 
-Absolutely none whatsoever at this time.
+Although `pss` uses safe components for encryption, it is still not weather-tested in any way. Furthermore, this script adds code and traffic beyond the pss node, and at this point in time there's no guaranteeing that that won't break some security premise `pss` may already provide.
 
-You should even keep in mind that anyone with access to your websocket port can decrypt and see messages you receive. You've been warned.
+One thing to keep in mind is that anyone with access to your websocket port can connect to decrypt and see messages you receive.
+
+If you're connecting to a node that's not on your local host but still want to keep the websocket port only available locally on the remote host, you can tunnel to the remote host and connect via localhost there:
+
+`ssh -L 8546:localhost:8546 remote.ssh.host`
+
+You can now reach that remote socket securely through your localhost 8546
 
 ### License
 
