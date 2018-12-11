@@ -9,18 +9,22 @@ import fcntl
 from websocket import create_connection
 
 PSS_EOK = 0
-PSS_ESOCK = 1
-PSS_EREMOTEINVAL = 2
-PSS_ELOCALINVAL = 3
+PSS_ESTATE = 1
+PSS_ESOCK = 2
+PSS_EREMOTEINVAL = 3
+PSS_ELOCALINVAL = 4
 
 pss = {}
+nicks = {}
 topic = "0xdeadbee2"
 
-weechat.register("pss", "lash", "0.0.1", "MIT", "single-node pss chat over XMPP", "pss_stop", "")
+weechat.register("pss", "lash", "0.1.0", "MIT", "single-node pss chat over XMPP", "pss_stop", "")
 
 def looop(pssName, countLeft):
 
 	msg = ""
+	displayFrom = ""
+	fromKey = ""
 
 	if pss[pssName].pip == -1:	
 		return weechat.WEECHAT_RC_ERROR
@@ -32,8 +36,16 @@ def looop(pssName, countLeft):
 		return weechat.WEECHAT_RC_OK
 
 	r = json.loads(msg)
+
+	# parse the nick
+	fromKey = r['params']['result']['Key']
+	if fromKey in nicks:
+		displayFrom = nicks[fromKey]
+	else:
+		displayFrom = str(fromKey[2:10])
+
 	msgSrc = r['params']['result']['Msg'][2:].decode("hex")
-	weechat.prnt(pss[pssName].buf, msgSrc)
+	weechat.prnt(pss[pssName].buf, displayFrom + "\t" + msgSrc)
 
 	return weechat.WEECHAT_RC_OK
 
@@ -133,6 +145,12 @@ class Pss:
 
 	def add(self, nick, pubkey, address):
 		contact = None
+
+		if self.ws == None or not self.connected:
+			self.err = PSS_ESTATE
+			self.errstr = "pss " + self.name + " not connected"
+			return False
+	
 		try:
 			contact = PssContact(nick, pubkey, address)
 		except Exception as e:
@@ -177,7 +195,8 @@ class Pss:
 		return errobj
 
 	def close(self):
-		self.Run = False
+		self.connected = False
+		self.run = False
 		self.ws.close()
 		os.close(self.pip)
 		os.unlink(self.pipName)
@@ -211,7 +230,7 @@ def pss_handle(data, buf, args):
 
 	argslist = args.split(" ")
 
-	if (argslist[0] == "add"):
+	if (argslist[0] == "new"):
 		try:	
 			_ = pss[argslist[1]]	
 		except:
@@ -224,8 +243,8 @@ def pss_handle(data, buf, args):
 		weechat.prnt("", "pss " + argslist[1] + " already exists")
 		return weechat.WEECHAT_RC_ERROR
 
-	elif pss[argslist[0]] == None:
-		weechat.prnt("", "pss " + argslist[1] + " does not exist")
+	elif not argslist[0] in pss:
+		#weechat.prnt("", "pss " + argslist[1] + " does not exist")
 		return weechat.WEECHAT_RC_ERROR
 	
 	
@@ -257,8 +276,10 @@ def pss_handle(data, buf, args):
 			return weechat.WEECHAT_RC_ERROR
 
 		if not pss[argslist[0]].add(argslist[2], argslist[3], argslist[4]):
-			weechat.prnt("", "error: " + pss.error()['description'])
+			weechat.prnt("", "error: " + pss[argslist[0]].error()['description'])
 			return weechat.WEECHAT_RC_ERROR
+
+		nicks[argslist[3]] = argslist[2]
 
 	elif argslist[1] == "send":
 		if len(argslist) < 4:
@@ -268,6 +289,15 @@ def pss_handle(data, buf, args):
 		if not pss[argslist[0]].send(argslist[2], " ".join(argslist[3:])):
 			weechat.prnt("", "send fail: " + pss[argslist[0]].error()['description'])
 			return weechat.WEECHAT_RC_ERROR
+
+	elif argslist[1] == "key" or argslist[1] == "pubkey":
+		weechat.prnt("", "[" + argslist[0] + ".key] " + pss[argslist[0]].key)
+
+	elif argslist[1] == "addr" or argslist[1] == "address":
+		weechat.prnt("", "[" + argslist[0] + ".address] " + pss[argslist[0]].base)
+
+	elif argslist[1] == "stop":
+		pss[argslist[0]].close()
 
 	else:
 		return weechat.WEECHAT_RC_ERROR
@@ -297,10 +327,21 @@ def pss_new_call(callid, method, args):
 
 cmd_main = weechat.hook_command(
 	"pss",
-	"description of pss",
-	"arg summary",
-	"arg detail heading",
-	"arg details"
-	"arg details line two",
+	"connect to pss node and manage local contact list",
+	"<cmd|name> [<arguments>]",
+	"            new: add new pss instance\n"
+	" <name>     set: set option for pss connection (see below)\n"
+	" <name> connect: connect to node\n"
+	" <name>     add: add public key and address pair to node and nick map\n"
+	" <name>    stop: disconnect from node\n"
+	" <name>     key: display public key\n"
+	" <name>    addr: display overlay address\n"
+	"\n"
+	"Valid options:\n"
+	"\n"
+	"\thost: hostname of node\n"
+	"\tport: port of node\n"
+	"\n",
+	"what is this then?",
 	"pss_handle",
 	"")
