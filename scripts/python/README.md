@@ -39,7 +39,7 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 
 * Connect to node
 * Add recipients to node's address book
-* Send message to node
+* Send message to recipient
 * Receive messages received by node while connected to it
 
 (if you send a message and there is noone listening on the other node, they won't get the message later on. This is regardless of whether the node even is up or not.)
