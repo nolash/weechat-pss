@@ -12,7 +12,9 @@ However there is **lots** to be explored before that. And for this exploration w
 
 ### Development
 
-If you want to help debugging this project I would greatly appreciate it. Please let me know that you will be doing so:
+If you want to help debugging this project I would greatly appreciate it. **You can help merely by trying to use it. No need to read code etc**
+
+Please let me know if you do:
 
 * email: dev@holbrook.no
 * XMPP: lash@pimux.de
