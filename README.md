@@ -1,6 +1,4 @@
-# weechat python scripts
-
-## pss-single.py
+# pss-single.py
 
 * version: 0.1.5 alpha
 
@@ -10,7 +8,7 @@ Ultimately, the idea is to create a proper shared object plugin which handles en
 
 However there is **lots** to be explored before that. And for this exploration we will use this simple prototype where you remote control a _single_ swarm node, using its public key and address.
 
-### Development
+## Development
 
 If you want to help debugging this project I would greatly appreciate it. **You can help merely by trying to use it. No need to read code etc**
 
@@ -40,17 +38,17 @@ The issue should contain the following:
 * Your version of the dependencies below (this will help identify minimum requirements).
 * Consise description of what you've observed, and what you expected to observe.
 
-### Dependencies
+## Dependencies
 
 * [linux v4.19.8](http://kernel.org)
 * [weechat v2.3](http://weechat.org) 
 * [python v2.7.15](https://python.org)
 * [python-websocket-client v0.54.0](https://pypi.org/project/websocket-client)
-* [xmpppy v1.4.0 (not used yet)](http://xmpppy.sf.net)
+* [xmpppy v1.4.0](http://xmpppy.sf.net) (not used yet)
 
 (Dependencies describe development environment, not minimal requirements)
 
-### Installation
+## Installation
 
 * Install [weechat](https://weechat.org) if you don't have it already.
 * Copy the two files `pss-single.py` and `pss-fetch.py` to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
@@ -60,7 +58,7 @@ The issue should contain the following:
 This adds a command `/pss` to your weechat instance. You can confirm load with calling the help text with `/help pss`
 
 
-### Current features
+## Current features
 
 * Connect to node
 * Add recipients to node's address book
@@ -70,7 +68,7 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 
 (if you send a message and there is noone listening on the other node, they won't get the message later on. This is regardless of whether the node even is up or not.)
 
-### Usage
+## Usage
 
 ```
 # Register a new pss instance in the plugin:
@@ -129,7 +127,7 @@ hsal ...if you pardon my french
 
 ```
 
-### Advanced
+## Advanced
 
 Upon connecting to a node, a subprocess loop will be started that receives incoming messages and passes it to the main process through a FIFO.
 
@@ -137,7 +135,7 @@ The subprocess catches disconnect exceptions from the websocket and retries fore
 
 If the FIFO can't be written to, the sub-process will quit after a number of retries. Whatever happens if the sub-process quits prematurely is currently undefined.
 
-### Security
+## Security
 
 Although `pss` uses safe components for encryption, it is still not weather-tested in any way. Furthermore, this script adds code and traffic beyond the pss node, and at this point in time there's no guaranteeing that that won't break some security premise `pss` may already provide.
 
@@ -151,15 +149,15 @@ If you're connecting to a node that's not on your local host but still want to k
 
 You can now reach that remote socket securely through your localhost 8546
 
-### License
+## License
 
 GPLv3
 
-### References
+## References
 
 * swarm - http://swarm-guide.readthedocs.com
 
-### Changelog
+## Changelog
 
 - v0.1.5: Bugfix wrong recipient data added on connect
 - v0.1.4: Add sends from node buffer window + a touch of color
