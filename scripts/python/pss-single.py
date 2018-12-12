@@ -315,11 +315,12 @@ def pss_handle(data, buf, args):
 
 	elif argslist[1] == "connect":
 	
-		weechat.prnt("", "o--> o\tconnecting")
+		weechat.prnt("", weechat.color("yellow") + "o-> o\tconnecting to " + argslist[0])
 		if not pss[argslist[0]].connect():
-			weechat.prnt("", "connect failed: " + pss[argslist[0]].error()['description'])
-			return weechat.WEECHAT_RC_ERROR
+			weechat.prnt("", weechat.color("red") + "o-x o\tconnect failed: " + pss[argslist[0]].error()['description'])
+			return weechat.WEECHAT_RC_ERRO
 		# \todo find option to get the correct path	
+		weechat.prnt("", weechat.color("green") + "o===o\tconnected!")
 		weechat.hook_process("python2 " + scriptPath + "/pss-fetch.py " + argslist[0] + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_url") + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_port") + " " + topic, 0, "recvHandle", argslist[0])
 		time.sleep(1)
 		pss[argslist[0]].pip = os.open("/tmp/pss_weechat_" + argslist[0] + ".fifo", os.O_RDONLY | os.O_NONBLOCK)
