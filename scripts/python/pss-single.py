@@ -180,7 +180,13 @@ class Pss:
 				# \todo 
 				weechat.prnt(self.buf, weechat.color("blue") + "+++\tadded '" + nicks[c].nick + "' to node (key: 0x" + self.key[2:10] + ", addr: " + self.base + ")")
 				self.add(nicks[c].nick, key, self.base)
-			
+	
+		weechat.prnt(self.buf, "")
+		weechat.prnt(self.buf, "!!!\tPlease note that this is not a chat room. All messages display here have been sent one-to-one.")
+		weechat.prnt(self.buf, "!!!\tTo send a message, first type the nick, then a space, then the message.")
+		weechat.prnt(self.buf, "!!!\tFor now there's on way to know if the recipient got the message. Patience, please. It's coming.")
+		weechat.prnt(self.buf, "!!!\tIf the script works, please tell me. If it doesn't please tell me - " + weechat.color("cyan,underline") + "https://github.com/nolash/weechat-tools")
+		weechat.prnt(self.buf, "")
 		return True
 
 
