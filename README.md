@@ -1,6 +1,6 @@
 # pss-single.py
 
-* version: 0.1.5 alpha
+* version: 0.1.6 alpha
 
 This script lets you send and receive messages through a `swarm` node using `pss`. If none of these terms mean anything to you, you have some research to do before reading on. See the references at the end of this README.
 
