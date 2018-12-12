@@ -9,7 +9,7 @@ import tempfile
 from websocket import create_connection
 
 # consts
-PSS_VERSION = "0.1.4"
+PSS_VERSION = "0.1.5"
 PSS_FIFO_POLL_DELAY = 500
 
 # error values
