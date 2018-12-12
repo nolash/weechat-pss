@@ -161,6 +161,7 @@ GPLv3
 
 ### Changelog
 
+- v0.1.4: Add sends from node buffer window + a touch of color
 - v0.1.3: Added persistent receipient store, temporary solution with single append file
 - v0.1.2: Add README documentation
 - v0.1.1: Add message retrieval script run as background process
