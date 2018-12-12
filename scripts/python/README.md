@@ -2,7 +2,7 @@
 
 ## pss-single.py
 
-* version: 0.1.3 alpha
+* version: 0.1.4 alpha
 
 This script lets you send and receive messages through a `swarm` node using `pss`. If none of these terms mean anything to you, you have some research to do before reading on. See the references at the end of this README.
 
@@ -17,7 +17,7 @@ If you want to help debugging this project I would greatly appreciate it. **You 
 Please let me know if you do:
 
 * email: dev@holbrook.no
-* XMPP: lash@pimux.de
+* XMPP: lash@jabber.in-berlin.de
 * gitter: @nolash
 * status: lash.stateofus.eth 
 
@@ -79,6 +79,7 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 # Connect to the node
 # by default host 127.0.0.1 port 8546
 # when connected a message buffer for that node is created
+# the buffer will be named pss_<pssname>, in this example pss_foo
 /pss foo connect
 
 # Print public key of node
@@ -92,11 +93,17 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 # the key and address below is for _my_ node. If you want to add a different node, you need _that_ node's values.
 /pss foo add lash 0x04578fcba26eb70ff2cef4a1ee6de5bbcac169adc6a067be6dab2e1781234d8ba9e97782ee2e460589e2925762c602d97d463549d4314e104a1d67d283e103c427 0xacae369e3fcef13ec171298c5d9a4ea3631cb4f082d9a72f8f95f27d54b4f145
 
-# Send a message to the peer
+# Send a message to the peer from the weechat buffer
 /pss foo send lash the future is now
+
+# you can also send from the node's buffer 
+# in this case simply prefix the message with the nick
+/buffer pss_foo
+lash I said, the future is now
 
 # You can add other nodes to the same weechat instance
 # Then you'll probably need different host and/or port other than 
+/buffer weechat
 /pss new bar
 /pss bar set host 127.0.0.2
 /pss bar set port 8547
@@ -110,6 +117,10 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 /pss bar connect
 /pss foo add hsal <bar.key> <bar.address>
 /pss foo send hsal mais plus ça change, plus c'est la même chose
+
+# or from the bar buffer
+/buffer pss_bar
+hsal ...if you pardon my french
 
 # Unloading the script will kill sub-processes and disconnect from nodes
 # Currently it will also erase all settings and nicks you've added

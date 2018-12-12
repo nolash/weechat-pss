@@ -9,6 +9,7 @@ import tempfile
 from websocket import create_connection
 
 # consts
+PSS_VERSION = "0.1.4"
 PSS_FIFO_POLL_DELAY = 500
 
 # error values
@@ -39,7 +40,7 @@ loadSigHook = None
 storeFile = None
 
 # all weechat scripts must run this as first function
-weechat.register("pss", "lash", "0.1.3", "GPLv3", "single-node pss chat", "pss_stop", "")
+weechat.register("pss", "lash", PSS_VERSION, "GPLv3", "single-node pss chat", "pss_stop", "")
 
 # perform a single read from pipe
 # \todo byte chunked reads, when messages arrive faster than one per loop need to reassemble individual msgs
@@ -73,7 +74,7 @@ def msgPipeRead(pssName, countLeft):
 		displayFrom = str(fromKey[2:10])
 
 	msgSrc = r['params']['result']['Msg'][2:].decode("hex")
-	weechat.prnt(pss[pssName].buf, displayFrom + " <-\t" + msgSrc)
+	weechat.prnt(pss[pssName].buf, weechat.color("green") + displayFrom + " <-\t" + msgSrc)
 
 	return weechat.WEECHAT_RC_OK
 
@@ -177,7 +178,7 @@ class Pss:
 		for c in nicks:
 			if nicks[c].src == self.key:
 				# \todo 
-				weechat.prnt(self.buf, "+++\tadded '" + nicks[c].nick + "' to node (key: 0x" + self.key[2:10] + ", addr: " + self.base + ")")
+				weechat.prnt(self.buf, weechat.color("blue") + "+++\tadded '" + nicks[c].nick + "' to node (key: 0x" + self.key[2:10] + ", addr: " + self.base + ")")
 				self.add(nicks[c].nick, key, self.base)
 			
 		return True
@@ -221,7 +222,7 @@ class Pss:
 		self.ws.send(pss_new_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, pss_strToHex(msg)]))
 		self.seq += 1
 
-		weechat.prnt(self.buf, nick + " ->\t" + msg)
+		weechat.prnt(self.buf, weechat.color("yellow") + nick + " ->\t" + msg)
 		#resp = self.ws.recv()
 		#weechat.prnt("", "result from send: " + resp)
 		return True
@@ -243,11 +244,24 @@ class Pss:
 		os.unlink(self.pipName)
 
 def buf_in(pssName, buf, inputdata):
-	weechat.prnt("", "got in buf " + pssName + ": " + inputdata)
+	global nicks, pss
+
+	try:
+		sepIndex = inputdata.index(" ")
+	except:
+		weechat.prnt(buf, "%s???\tempty message not allowed" % weechat.color("red"))
+		return weechat.WEECHAT_RC_ERROR
+
+	nick = inputdata[0:sepIndex]
+	if not nick in pss[pssName].contacts:
+		weechat.prnt(buf, "%s???\tunknown contact '" % weechat.color("red") + nick + "'" )
+		return weechat.WEECHAT_RC_ERROR
+
+	pss[pssName].send(nick, inputdata[sepIndex:])
 	return weechat.WEECHAT_RC_OK
 
 def buf_close(pssName, buf):
-	weechat.prnt("", "close buf " + pssName)
+	pss[pssName].close()
 	return weechat.WEECHAT_RC_OK
 
 # \todo use better func
@@ -300,7 +314,8 @@ def pss_handle(data, buf, args):
 		weechat.prnt("", "option " + argslist[0] + "_" + argslist[2] + " set to " + argslist[3])	
 
 	elif argslist[1] == "connect":
-
+	
+		weechat.prnt("", "o--> o\tconnecting")
 		if not pss[argslist[0]].connect():
 			weechat.prnt("", "connect failed: " + pss[argslist[0]].error()['description'])
 			return weechat.WEECHAT_RC_ERROR
@@ -426,6 +441,7 @@ loadSigHook = weechat.hook_signal(
 	"pss_sighandler_load",
 	""
 )
+
 
 weechat.hook_signal(
 	"python_script_unloaded",
