@@ -104,7 +104,7 @@ class PssContact:
 
 		self.nick = nick
 		self.key = key
-		self.addr = addr
+		self.address = addr
 		self.src = src
 
 # object encapsulating pss node connection
@@ -177,9 +177,7 @@ class Pss:
 		self.connected = True
 		for c in nicks:
 			if nicks[c].src == self.key:
-				# \todo 
-				weechat.prnt(self.buf, weechat.color("blue") + "+++\tadded '" + nicks[c].nick + "' to node (key: 0x" + self.key[2:10] + ", addr: " + self.base + ")")
-				self.add(nicks[c].nick, key, self.base)
+				self.add(nicks[c].nick, nicks[c].key, nicks[c].address)
 	
 		weechat.prnt(self.buf, "")
 		weechat.prnt(self.buf, "!!!\tPlease note that this is not a chat room. All messages display here have been sent one-to-one.")
@@ -211,7 +209,21 @@ class Pss:
 		self.seq += 1
 
 		self.contacts[nick] = contact
-		weechat.prnt("", "added contact " + nick + ": " + pubkey + " => " + address)
+		addrLabel = ""
+		keyLabel = ""
+
+		try:
+			addrLabel = pss_label(address)
+		except:
+			addrLabel = "0x"
+
+		# \todo maybe redundant check for corruption here as pubkey can't be short
+		try:
+			keyLabel = pss_label(pubkey)
+		except:
+			return False
+		
+		weechat.prnt(self.buf, weechat.color("blue") + "+++\tadded '" + nick + "' to node (key: 0x" + keyLabel + ", addr: " + addrLabel + ")")
 		return True
 
 	def send(self, nick, msg):
@@ -286,6 +298,22 @@ def pss_is_address(addr):
 def pss_is_pubkey(pubkey):
 	return True		
 
+def pss_label(hx):
+	l = 10
+	p = ""
+	try:
+		if hx[0:2] != "0x":
+			raise Exception("invalid hex string")
+	except:
+		raise Exception("invalid hex string")
+
+	if len(hx) < 10:
+		l = len(hx)
+	elif(hx) > 10:
+		p = "..."
+
+	return hx[0:l] + p
+
 def pss_handle(data, buf, args):
 	global pss
 
@@ -324,7 +352,7 @@ def pss_handle(data, buf, args):
 		weechat.prnt("", weechat.color("yellow") + "o-> o\tconnecting to " + argslist[0])
 		if not pss[argslist[0]].connect():
 			weechat.prnt("", weechat.color("red") + "o-x o\tconnect failed: " + pss[argslist[0]].error()['description'])
-			return weechat.WEECHAT_RC_ERRO
+			return weechat.WEECHAT_RC_ERROR
 		# \todo find option to get the correct path	
 		weechat.prnt("", weechat.color("green") + "o===o\tconnected!")
 		weechat.hook_process("python2 " + scriptPath + "/pss-fetch.py " + argslist[0] + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_url") + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_port") + " " + topic, 0, "recvHandle", argslist[0])
