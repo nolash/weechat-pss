@@ -19,14 +19,14 @@ name = ""
 ws = None
 connected = False
 running = True
-sub = ""
+fd = -1
 
 def connect_to_ws(host, port, topic):
 	""" handles connection to websocket server
 	
 	returns False on failed attempt, True on success
 	"""
-	global ws
+	global ws, fd
 	r = {}
 
 	# try connect
@@ -54,7 +54,7 @@ def connect_to_ws(host, port, topic):
 		if isinstance(e, IOError):
 			sys.stderr.write("recv fail " + str(errno.errorcode[e[0]]) + "\n")
 		return False 
-	sub = r['result']
+	#sub = r['result']
 
 	return True
 
@@ -97,9 +97,11 @@ if __name__ == "__main__":
 	# create connections
 	i = 0
 	while not connected:
+		os.write(fd, "\x03")
 		connected = connect_to_ws(host, port, topic)
 		connect_delay(i)
 		i += 1
+	os.write(fd, "\x02")
 
 	# poll websocket connection for messages	
 	while running:
@@ -113,11 +115,13 @@ if __name__ == "__main__":
 		except WebSocketConnectionClosedException as e:
 			print "got exception " + str(type(e))
 			connected = False
+			os.write(fd, "\x03")
 			i = 0
 			while not connected:
 				connect_delay(i)
 				connected = connect_to_ws(host, port, topic)	
 				i += 1
+			os.write(fd, "\x02")
 			continue
 
 		# if temporary fifo problem, try again to write until max attempts

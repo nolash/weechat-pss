@@ -8,8 +8,11 @@ import fcntl
 import tempfile
 from websocket import create_connection
 
+# internal mods
+from pss.tools import Stream
+
 # consts
-PSS_VERSION = "0.1.5"
+PSS_VERSION = "0.1.6"
 PSS_FIFO_POLL_DELAY = 500
 
 # error values
@@ -39,6 +42,11 @@ loadSigHook = None
 # \todo replace with ENCRYPTED key/value store
 storeFile = None
 
+# stream processor
+stream = Stream()
+
+
+
 # all weechat scripts must run this as first function
 weechat.register("pss", "lash", PSS_VERSION, "GPLv3", "single-node pss chat", "pss_stop", "")
 
@@ -49,7 +57,6 @@ def msgPipeRead(pssName, countLeft):
 	msg = ""
 	displayFrom = ""
 	fromKey = ""
-	r = ""
 
 	if pss[pssName].pip == -1:	
 		return weechat.WEECHAT_RC_ERROR
@@ -60,21 +67,37 @@ def msgPipeRead(pssName, countLeft):
 		#weechat.prnt("", "(no read)")
 		return weechat.WEECHAT_RC_OK
 
-	try:
-		r = json.loads(msg)
-	except Exception as e:
-		weechat.prnt("", "skipping invalid receive: " + r)
-		return weechat.WEECHAT_RC_OK
+	processed = stream.process(msg)
 
-	# resolve the nick if it exists
-	fromKey = r['params']['result']['Key']
-	if fromKey in nicks:
-		displayFrom = nicks[fromKey].nick
+	for o in processed['results']:
+		r = ""
+		try:
+			r = json.loads(o)
+		except Exception as e:
+			weechat.prnt("", "skipping invalid receive: " + r)
+			return weechat.WEECHAT_RC_OK
+
+		# resolve the nick if it exists
+		fromKey = r['params']['result']['Key']
+		if fromKey in nicks:
+			displayFrom = nicks[fromKey].nick
+		else:
+			displayFrom = str(fromKey[2:10])
+
+		msgSrc = r['params']['result']['Msg'][2:].decode("hex")
+		weechat.prnt(pss[pssName].buf, weechat.color("green") + displayFrom + " <-\t" + msgSrc)
+
+	# if the connection status has changed, output the appropriate notification
+	if pss[pssName].inputConnected:
+		if not processed['status']:
+			pss[pssName].inputConnected = False
+			weechat.prnt(pss[pssName].buf, weechat.color("red") + "o-x o\t" + "disconnected from '" + pssName + "'")
+			weechat.prnt("", weechat.color("red") + "o-x o\t" + "disconnected from '" + pssName + "'")
 	else:
-		displayFrom = str(fromKey[2:10])
-
-	msgSrc = r['params']['result']['Msg'][2:].decode("hex")
-	weechat.prnt(pss[pssName].buf, weechat.color("green") + displayFrom + " <-\t" + msgSrc)
+		if processed['status']:
+			pss[pssName].inputConnected = True
+			weechat.prnt(pss[pssName].buf, weechat.color("green") + "o===o\t" + "connected to '" + pssName + "'")
+			weechat.prnt("", weechat.color("green") + "o===o\t" + "connected to '" + pssName + "'")
 
 	return weechat.WEECHAT_RC_OK
 
@@ -111,6 +134,7 @@ class PssContact:
 # \todo move to separate package
 class Pss:
 	connected = False
+	inputConnected = False
 	base = ""
 	key = ""
 	err = 0
@@ -349,14 +373,15 @@ def pss_handle(data, buf, args):
 
 	elif argslist[1] == "connect":
 	
-		weechat.prnt("", weechat.color("yellow") + "o-> o\tconnecting to " + argslist[0])
+		weechat.prnt("", weechat.color("yellow") + "o-> o\tconnecting to '" + argslist[0] + "'")
 		if not pss[argslist[0]].connect():
-			weechat.prnt("", weechat.color("red") + "o-x o\tconnect failed: " + pss[argslist[0]].error()['description'])
+			weechat.prnt("", weechat.color("red") + "o-x o\tconnect to '" + argslist[0] + "' failed: " + pss[argslist[0]].error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 		# \todo find option to get the correct path	
-		weechat.prnt("", weechat.color("green") + "o===o\tconnected!")
 		weechat.hook_process("python2 " + scriptPath + "/pss-fetch.py " + argslist[0] + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_url") + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_port") + " " + topic, 0, "recvHandle", argslist[0])
 		time.sleep(1)
+
+		# \todo handle exception on socket open
 		pss[argslist[0]].pip = os.open("/tmp/pss_weechat_" + argslist[0] + ".fifo", os.O_RDONLY | os.O_NONBLOCK)
 		weechat.hook_timer(PSS_FIFO_POLL_DELAY, 0, 0, "msgPipeRead", argslist[0])
 

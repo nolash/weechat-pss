@@ -51,7 +51,8 @@ The issue should contain the following:
 ## Installation
 
 * Install [weechat](https://weechat.org) if you don't have it already.
-* Copy the two files `pss-single.py` and `pss-fetch.py` to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
+* Change directory to `scripts/python` in this source tree.
+* Copy the files `pss-single.py` and `pss-fetch.py` along with the `pss` directory along with its contents to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
 * Start weechat
 * Load the script with `/script load pss-single.py` (do _not_ load `pss-fetch.py`)
 
@@ -69,6 +70,15 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 (if you send a message and there is noone listening on the other node, they won't get the message later on. This is regardless of whether the node even is up or not.)
 
 ## Usage
+
+You need a running instance of swarm to connect to. When you run swarm, remember to include the websockets flags, for example:
+
+```
+--ws --wsorigins="*" --wsport 8546
+```
+
+When swarm is running, you can continue.
+
 
 ```
 # Register a new pss instance in the plugin:
@@ -159,6 +169,7 @@ GPLv3
 
 ## Changelog
 
+- v0.1.6: Add connection reporting to frontend + partial input processor on fifo
 - v0.1.5: Bugfix wrong recipient data added on connect
 - v0.1.4: Add sends from node buffer window + a touch of color
 - v0.1.3: Added persistent receipient store, temporary solution with single append file
