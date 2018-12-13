@@ -54,13 +54,19 @@ weechat.register("pss", "lash", PSS_VERSION, "GPLv3", "single-node pss chat", "p
 # 2 = in
 # 3 = out
 # 255 = debug
-def wcOut(level, bufs, prefix, content):
+def wOut(level, bufs, prefix, content):
 
 	pfxString = ""
-	
-	if level == 255 and weechat.config_get_plugin("debug"):
-		pfxString = weechat.color("black,white") + "DEBUG"
-		return 
+
+	if len(bufs) == 0:
+		bufs = [""]
+
+	# parse the level	
+	#if level == 255 and weechat.config_get_plugin("debug"):
+	if level == 255:
+		pfxString = weechat.color("black,white") + "DEBUG:" + prefix
+	elif level == 0:
+		pfxString = weechat.color("red") + prefix	
 	elif level == 1:
 		pfxString = weechat.color("blue") + prefix	
 	elif level == 2:
@@ -70,8 +76,11 @@ def wcOut(level, bufs, prefix, content):
 	else:
 		return
 
+	# write to all requested buffers
 	for b in bufs:
 		weechat.prnt(b, pfxString + "\t" + content)
+
+
 
 # perform a single read from pipe
 # \todo byte chunked reads, when messages arrive faster than one per loop need to reassemble individual msgs
@@ -81,16 +90,16 @@ def msgPipeRead(pssName, countLeft):
 	displayFrom = ""
 	fromKey = ""
 
-	if pss[pssName].pip == -1:	
+	if pss[pssName].pIn == -1:	
 		return weechat.WEECHAT_RC_ERROR
 
 	try:	
-		msg = os.read(pss[pssName].pip, 1024)
+		msg = os.read(pss[pssName].pIn, 1024)
 	except OSError as e:
 		#weechat.prnt("", "(no read)")
 		return weechat.WEECHAT_RC_OK
 
-	wcOut(255, [""], "", "read: " + msg)
+	wOut(255, [""], "", "read: " + msg)
 	weechat.prnt(pss[pssName].buf, msg)
 	return weechat.WEECHAT_RC_OK
 	processed = stream.process(msg)
@@ -171,21 +180,30 @@ class Pss:
 	name = ""
 	run = False
 	buf = None
-	pip = -1
-	pipName = ""
+	pIn = -1
+	pOut = -1
+	pInName = ""
+	pOutName = ""
 
 	def __init__(self, name):
 		""" set the pss instance name and create the fifo for catching msgs from subprocess
 		"""
 		self.name = name
-		self.pipName = tempfile.gettempdir() + "/pss_weechat_" + self.name + ".fifo"
-		if os.path.exists(self.pipName):
-			os.unlink(self.pipName)
-		self.pip = os.mkfifo(self.pipName)
+
+		# create the socket pair for the websocket process
+		self.pInName = tempfile.gettempdir() + "/pss_weechat_" + self.name + "_in.fifo"
+		if os.path.exists(self.pInName):
+			os.unlink(self.pInName)
+		os.mkfifo(self.pInName)
+
+		self.pOutName = tempfile.gettempdir() + "/pss_weechat_" + self.name + "_out.fifo"
+		if os.path.exists(self.pOutName):
+			os.unlink(self.pOutName)
+		os.mkfifo(self.pOutName)
+
+		print "nammmme " + name + "  out " + self.pOutName
 
 	def connect(self):
-
-		# \todo move to daemon and add protocol to receive connection data on fifo on initial connect
 
 		self.ws = None
 		try:
@@ -225,6 +243,17 @@ class Pss:
 		self.key = key
 		self.base = base
 
+		self.pIn = os.open(self.pInName, os.O_RDONLY | os.O_NONBLOCK)
+		#weechat.hook_process("python2 " + scriptPath + "/pss-fetch.py " + self.name + " " + weechat.config_get_plugin(self.name + "_url") + " " + weechat.config_get_plugin(self.name + "_port") + " " + topic, 0, "recvHandle", currentPssName)
+		weechat.hook_process("python2 " + scriptPath + "/pss-fetch.py " + self.name + " " + weechat.config_get_plugin(self.name + "_url") + " " + weechat.config_get_plugin(self.name + "_port") + " " + topic, 0, "recvHandle", self.name)
+
+		# get ack from read open on the other end of outgoing pipe
+		os.read(self.pIn, 1)
+
+		self.pOut = os.open(self.pOutName, os.O_WRONLY)
+
+		weechat.hook_timer(PSS_FIFO_POLL_DELAY, 0, 0, "msgPipeRead", self.name)
+
 		self.buf = weechat.buffer_new("pss_" + self.name, "buf_in", self.name, "buf_close", self.name)
 		weechat.buffer_set(self.buf, "title", "PSS '" + self.name + "' | node: " + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port") + " | key  " + self.key[2:10] + " | address " + self.base[2:10])
 
@@ -233,7 +262,7 @@ class Pss:
 			if nicks[c].src == self.key:
 				self.add(nicks[c].nick, nicks[c].key, nicks[c].address)
 
-		wcOut(1, self.buf, "!!!", "Please note that this is not a chat room. All messages display here have been sent one-to-one.\n"
+		wOut(1, ["pss_" + self.name], "!!!", "Please note that this is not a chat room. All messages display here have been sent one-to-one.\n"
 		"To send a message, first type the nick, then a space, then the message\n\n"
 		)
 #		weechat.prnt(self.buf, "!!!\tFor now there's on way to know if the recipient got the message. Patience, please. It's coming.")
@@ -290,8 +319,9 @@ class Pss:
 			self.errstr = "not connected"
 			return False
 
-		sys.stderr.write("fd " + str(self.pip))	
-		os.write(self.pip, pss_new_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, pss_strToHex(msg)]))
+		wOut(255, [], "", "fd in " + str(self.pIn))	
+		wOut(255, [], "", "fd out " + str(self.pOut))	
+		os.write(self.pOut, pss_new_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, pss_strToHex(msg)]))
 		#self.ws.send(pss_new_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, pss_strToHex(msg)]))
 		self.seq += 1
 
@@ -313,8 +343,10 @@ class Pss:
 		self.connected = False
 		self.run = False
 		self.ws.close()
-		os.close(self.pip)
-		os.unlink(self.pipName)
+		os.close(self.pIn)
+		os.close(self.pOut)
+		os.unlink(self.pInName)
+		os.unlink(self.pOutName)
 
 def buf_in(pssName, buf, inputdata):
 	global nicks, pss
@@ -372,51 +404,59 @@ def pss_label(hx):
 def pss_handle(data, buf, args):
 	global pss
 
+	# \todo remove consecutive
 	argslist = args.split(" ")
 
+	# create a new pss instance
 	if (argslist[0] == "new"):
-		try:	
-			_ = pss[argslist[1]]	
-		except:
-			weechat.prnt("", "added pss " + argslist[1])
-			pss[argslist[1]] = Pss(argslist[1])
-			weechat.config_set_plugin(argslist[1] + "_url", "127.0.0.1")
-			weechat.config_set_plugin(argslist[1] + "_port", "8546")
-			return weechat.WEECHAT_RC_OK
+		if argslist[1] in pss:
+			weechat.prnt("", "pss " + argslist[1] + " already exists")
+			return weechat.WEECHAT_RC_ERROR
+		
+		weechat.prnt("", "added pss " + argslist[1])
+		pss[argslist[1]] = Pss(argslist[1])
+		weechat.config_set_plugin(argslist[1] + "_url", "127.0.0.1")
+		weechat.config_set_plugin(argslist[1] + "_port", "8546")
+		return weechat.WEECHAT_RC_OK
 
-		weechat.prnt("", "pss " + argslist[1] + " already exists")
-		return weechat.WEECHAT_RC_ERROR
-
+	# do not continue if we don't have a pss instance with this name
 	elif not argslist[0] in pss:
-		#weechat.prnt("", "pss " + argslist[1] + " does not exist")
+		weechat.prnt("", "pss " + argslist[1] + " does not exist")
 		return weechat.WEECHAT_RC_ERROR
-	
-	
-	if (argslist[1] == "set"):
-		if not weechat.config_is_set_plugin(argslist[0] + "_" + argslist[2]):
+
+
+
+	# readable var names
+	currentPssName = argslist[0]
+	currentPss = pss[currentPssName]
+	subCmd = argslist[1]
+
+
+
+	# command "set" controls config variables for the plugin	
+	if (subCmd == "set"):
+		if not weechat.config_is_set_plugin(currentPssName + "_" + argslist[2]):
 			weechat.prnt("", "invalid option name " + argslist[2])
 			return weechat.WEECHAT_RC_ERROR
 		if not pss_check_option(argslist[2], argslist[3]):
 			weechat.prnt("", "invalid option value " + argslist[3] + " for option " + argslist[2])
 			return weechat.WEECHAT_RC_ERROR
-		weechat.config_set_plugin(argslist[0] + "_" + argslist[2], argslist[3])
-		weechat.prnt("", "option " + argslist[0] + "_" + argslist[2] + " set to " + argslist[3])	
+		weechat.config_set_plugin(currentPssName + "_" + argslist[2], argslist[3])
+		weechat.prnt("", "option " + currentPssName + "_" + argslist[2] + " set to " + argslist[3])	
 
-	elif argslist[1] == "connect":
-	
-		weechat.prnt("", weechat.color("yellow") + "o-> o\tconnecting to '" + argslist[0] + "'")
-		if not pss[argslist[0]].connect():
-			weechat.prnt("", weechat.color("red") + "o-x o\tconnect to '" + argslist[0] + "' failed: " + pss[argslist[0]].error()['description'])
+
+
+	# handle the connect command
+	elif subCmd == "connect":
+
+		wOut(2, [], "0-> 0", "connecting to '" + currentPssName + "'")
+		if not currentPss.connect():
+			wOut(0, [], "0-x 0", "connect to '" + currentPssName + "' failed: " + currentPss.error()['description'])
 			return weechat.WEECHAT_RC_ERROR
-		# \todo find option to get the correct path	
-		weechat.hook_process("python2 " + scriptPath + "/pss-fetch.py " + argslist[0] + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_url") + " " + weechat.config_get_plugin(pss[argslist[0]].name + "_port") + " " + topic, 0, "recvHandle", argslist[0])
-		time.sleep(1)
 
-		# \todo handle exception on socket open
-		pss[argslist[0]].pip = os.open("/tmp/pss_weechat_" + argslist[0] + ".fifo", os.O_RDWR | os.O_NONBLOCK)
-		weechat.hook_timer(PSS_FIFO_POLL_DELAY, 0, 0, "msgPipeRead", argslist[0])
 
-	elif argslist[1] == "add":
+	# add a recipient to the address books of plugin and node
+	elif subCmd == "add":
 		nick = ""
 		key = ""
 		addr = ""
@@ -429,30 +469,30 @@ def pss_handle(data, buf, args):
 		key = argslist[3]
 		addr = argslist[4]
 			
-		if not pss[argslist[0]].add(nick, key, addr):
-			weechat.prnt("", "add contact error: " + pss[argslist[0]].error()['description'])
+		if not currentPss.add(nick, key, addr):
+			weechat.prnt("", "add contact error: " + currentPss.error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 
-		nicks[key] = PssContact(nick, key, addr, argslist[0])
-		storeFile.write(nick + "\t" + key + "\t" + addr + "\t" + pss[argslist[0]].key + "\n")
+		nicks[key] = PssContact(nick, key, addr, currentPssName)
+		storeFile.write(nick + "\t" + key + "\t" + addr + "\t" + currentPss.key + "\n")
 
-	elif argslist[1] == "send":
+	elif subCmd == "send":
 		if len(argslist) < 4:
 			weechat.prnt("", "not enough arguments for send")
 			return weechat.WEECHAT_RC_ERROR
 
-		if not pss[argslist[0]].send(argslist[2], " ".join(argslist[3:])):
-			weechat.prnt("", "send fail: " + pss[argslist[0]].error()['description'])
+		if not currentPss.send(argslist[2], " ".join(argslist[3:])):
+			weechat.prnt("", "send fail: " + currentPss.error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 
-	elif argslist[1] == "key" or argslist[1] == "pubkey":
-		weechat.prnt("", "[" + argslist[0] + ".key] " + pss[argslist[0]].key)
+	elif subCmd == "key" or subCmd == "pubkey":
+		weechat.prnt("", "[" + currentPssName + ".key] " + currentPss.key)
 
-	elif argslist[1] == "addr" or argslist[1] == "address":
-		weechat.prnt("", "[" + argslist[0] + ".address] " + pss[argslist[0]].base)
+	elif subCmd == "addr" or subCmd == "address":
+		weechat.prnt("", "[" + currentPssName + ".address] " + currentPss.base)
 
-	elif argslist[1] == "stop":
-		pss[argslist[0]].close()
+	elif subCmd == "stop":
+		currentPss.close()
 
 	else:
 		return weechat.WEECHAT_RC_ERROR

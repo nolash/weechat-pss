@@ -21,7 +21,12 @@ name = ""
 ws = None
 connected = False
 running = True
-fd = -1
+
+# pipe for incoming traffic (to plugin)
+pIn = -1
+
+# pipe for outgoing traffic (to websocket)
+pOut = -1
 
 def connect_to_ws(host, port, topic):
 	""" handles connection to websocket server
@@ -89,31 +94,41 @@ if __name__ == "__main__":
 	if len(sys.argv) > 3:
 		host = sys.argv[2]
 
-	# if fifo does not exist, then die
+	# open the fifo to communicate with the main plugin thread
 	try:
-		fd = os.open(tempfile.gettempdir() + "/pss_weechat_" + name + ".fifo", os.O_WRONLY)
+		pIn = os.open(tempfile.gettempdir() + "/pss_weechat_" + name + "_in.fifo", os.O_WRONLY)
 	except OSError as e:
-		sys.stderr.write("fifo not available for " + name + "\n")
+		sys.stderr.write("fifo IN not available for " + name + "\n")
 		sys.exit(1)
-	
-	# create connections
+
+	# if fifos do not exist, then die
+	try:
+		pOut = os.open(tempfile.gettempdir() + "/pss_weechat_" + name + "_out.fifo", os.O_RDONLY)
+	except OSError as e:
+		sys.stderr.write("fifo OUT not available for " + name + "\n")
+		sys.exit(1)
+
+	# send ack 
+	os.write(pIn, "\x06")
+
+	# create websocket connection
 	i = 0
 	while not connected:
-		os.write(fd, "\x03")
+		os.write(pIn, "\x03")
 		connected = connect_to_ws(host, port, topic)
 		connect_delay(i)
 		i += 1
-	os.write(fd, "\x02")
+	os.write(pIn, "\x02")
 
 	# poll websocket connection for messages	
 	while running:
 
-
 		# listen on both websocket for receives for forward to fifo
 		# and fifo for sends to forward to websocket
 		# \todo what happens on disconnect here if the other side writes to fifo
+		# \todo keep write queue and poll for write ready
 		sys.stderr.write("selection\n")
-		rr, wr, xr = select.select([ws, fd], [], [fd])
+		rr, wr, xr = select.select([ws, pOut], [], [])
 
 		for nr in rr:
 
@@ -129,20 +144,20 @@ if __name__ == "__main__":
 				except WebSocketConnectionClosedException as e:
 					print "got exception " + str(type(e))
 					connected = False
-					os.write(fd, "\x03")
+					os.write(pIn, "\x03")
 					i = 0
 					while not connected:
 						connect_delay(i)
 						connected = connect_to_ws(host, port, topic)	
 						i += 1
-					os.write(fd, "\x02")
+					os.write(pIn, "\x02")
 					continue
 
 				# if temporary fifo problem, try again to write until max attempts
 				i = 0
 				while not written:	
 					try:	
-						os.write(fd, msg)
+						os.write(pIn, msg)
 						written = True				
 					except OSError as e:
 						if i > fifoRetryMax:
@@ -152,14 +167,16 @@ if __name__ == "__main__":
 						i += 1
 
 			# case fifo ready
-			elif nr == fd:
+			elif nr == pOut:
 				
 				msg = ""
 
 				sys.stderr.write("ws write\n")
 				# probably we should implement out stream reader here, for now let's just pretend one msg per read, for now let's just pretend one msg per read
-				msg = os.read(fd, 5120)
+				msg = os.read(pOut, 5120)
 
 				ws.send(msg)
-	
-	os.close(fd)
+
+	ws.close()	
+	os.close(pIn)
+	os.close(pOut)
