@@ -1,6 +1,7 @@
 #!/usr/bin/python2
 
 # this script is NOT a plugin script. Don't load it into weechat
+# \todo move all json processing to this layer
 
 import websocket
 from websocket._exceptions import WebSocketConnectionClosedException
@@ -11,6 +12,7 @@ import socket
 import errno
 import time
 import tempfile
+import select
 
 # our constants
 retryDelay = [1, 2, 4, 8, 16, 32]
@@ -105,36 +107,59 @@ if __name__ == "__main__":
 
 	# poll websocket connection for messages	
 	while running:
-		sys.stderr.write("getting msg\n")
-		msg = ""
-		written = False
 
-		# if receive fails due to connection being broken, attempt reconnect until back	
-		try:
-			msg = ws.recv()
-		except WebSocketConnectionClosedException as e:
-			print "got exception " + str(type(e))
-			connected = False
-			os.write(fd, "\x03")
-			i = 0
-			while not connected:
-				connect_delay(i)
-				connected = connect_to_ws(host, port, topic)	
-				i += 1
-			os.write(fd, "\x02")
-			continue
 
-		# if temporary fifo problem, try again to write until max attempts
-		i = 0
-		while not written:	
-			try:	
-				os.write(fd, msg)
-				written = True				
-			except OSError as e:
-				if i > fifoRetryMax:
-					raise RuntimeError("FIFO still unavailable even after " + str(fifoRetryMax) + " tries. Assuming it went away so I'm outta here. Sorry")
-				sys.stderr.write("socket error: " + repr(e))
-				connect_delay(i)
-				i += 1
+		# listen on both websocket for receives for forward to fifo
+		# and fifo for sends to forward to websocket
+		# \todo what happens on disconnect here if the other side writes to fifo
+		sys.stderr.write("selection\n")
+		rr, wr, xr = select.select([ws, fd], [], [fd])
+
+		for nr in rr:
+
+			# case websocket ready 
+			if nr == ws:
+				sys.stderr.write("ws read\n")
+				msg = ""
+				written = False
+
+				# if receive fails due to connection being broken, attempt reconnect until back	
+				try:
+					msg = ws.recv()
+				except WebSocketConnectionClosedException as e:
+					print "got exception " + str(type(e))
+					connected = False
+					os.write(fd, "\x03")
+					i = 0
+					while not connected:
+						connect_delay(i)
+						connected = connect_to_ws(host, port, topic)	
+						i += 1
+					os.write(fd, "\x02")
+					continue
+
+				# if temporary fifo problem, try again to write until max attempts
+				i = 0
+				while not written:	
+					try:	
+						os.write(fd, msg)
+						written = True				
+					except OSError as e:
+						if i > fifoRetryMax:
+							raise RuntimeError("FIFO still unavailable even after " + str(fifoRetryMax) + " tries. Assuming it went away so I'm outta here. Sorry")
+						sys.stderr.write("socket error: " + repr(e))
+						connect_delay(i)
+						i += 1
+
+			# case fifo ready
+			elif nr == fd:
+				
+				msg = ""
+
+				sys.stderr.write("ws write\n")
+				# probably we should implement out stream reader here, for now let's just pretend one msg per read, for now let's just pretend one msg per read
+				msg = os.read(fd, 5120)
+
+				ws.send(msg)
 	
 	os.close(fd)

@@ -12,7 +12,7 @@ from websocket import create_connection
 from pss.tools import Stream
 
 # consts
-PSS_VERSION = "0.1.6"
+PSS_VERSION = "0.1.7"
 PSS_FIFO_POLL_DELAY = 500
 
 # error values
@@ -46,9 +46,32 @@ storeFile = None
 stream = Stream()
 
 
-
 # all weechat scripts must run this as first function
 weechat.register("pss", "lash", PSS_VERSION, "GPLv3", "single-node pss chat", "pss_stop", "")
+
+# levels:
+# 1 = info
+# 2 = in
+# 3 = out
+# 255 = debug
+def wcOut(level, bufs, prefix, content):
+
+	pfxString = ""
+	
+	if level == 255 and weechat.config_get_plugin("debug"):
+		pfxString = weechat.color("black,white") + "DEBUG"
+		return 
+	elif level == 1:
+		pfxString = weechat.color("blue") + prefix	
+	elif level == 2:
+		pfxString = weechat.color("green") + prefix	
+	elif level == 3:
+		pfxString = weechat.color("yellow") + prefix	
+	else:
+		return
+
+	for b in bufs:
+		weechat.prnt(b, pfxString + "\t" + content)
 
 # perform a single read from pipe
 # \todo byte chunked reads, when messages arrive faster than one per loop need to reassemble individual msgs
@@ -67,6 +90,9 @@ def msgPipeRead(pssName, countLeft):
 		#weechat.prnt("", "(no read)")
 		return weechat.WEECHAT_RC_OK
 
+	wcOut(255, [""], "", "read: " + msg)
+	weechat.prnt(pss[pssName].buf, msg)
+	return weechat.WEECHAT_RC_OK
 	processed = stream.process(msg)
 
 	for o in processed['results']:
@@ -158,13 +184,17 @@ class Pss:
 		self.pip = os.mkfifo(self.pipName)
 
 	def connect(self):
+
+		# \todo move to daemon and add protocol to receive connection data on fifo on initial connect
+
+		self.ws = None
 		try:
 			self.ws = create_connection("ws://" + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port"))
 		except Exception as e:
 			self.err = PSS_ESOCK
 			self.errstr = "could not connect to pss " + self.name + " on " + weechat.config_get_plugin(self.name + "_url") + ":" + weechat.config_get_plugin(self.name + "_port")
 			return False
-
+	
 		self.ws.send(pss_new_call(self.seq, "baseAddr", []))
 		self.seq += 1
 		resp = json.loads(self.ws.recv())
@@ -187,9 +217,9 @@ class Pss:
 
 		key = resp['result']
 
-		self.ws.send(pss_new_call(self.seq, "subscribe", ["receive", topic, False, False]))
-		self.ws.recv()
-		self.seq += 1
+#		self.self.ws.send(pss_new_call(self.seq, "subscribe", ["receive", topic, False, False]))
+#		self.self.ws.recv()
+#		self.seq += 1
 
 		self.run = True
 		self.key = key
@@ -202,13 +232,12 @@ class Pss:
 		for c in nicks:
 			if nicks[c].src == self.key:
 				self.add(nicks[c].nick, nicks[c].key, nicks[c].address)
-	
-		weechat.prnt(self.buf, "")
-		weechat.prnt(self.buf, "!!!\tPlease note that this is not a chat room. All messages display here have been sent one-to-one.")
-		weechat.prnt(self.buf, "!!!\tTo send a message, first type the nick, then a space, then the message.")
-		weechat.prnt(self.buf, "!!!\tFor now there's on way to know if the recipient got the message. Patience, please. It's coming.")
-		weechat.prnt(self.buf, "!!!\tIf the script works, please tell me. If it doesn't please tell me - " + weechat.color("cyan,underline") + "https://github.com/nolash/weechat-tools")
-		weechat.prnt(self.buf, "")
+
+		wcOut(1, self.buf, "!!!", "Please note that this is not a chat room. All messages display here have been sent one-to-one.\n"
+		"To send a message, first type the nick, then a space, then the message\n\n"
+		)
+#		weechat.prnt(self.buf, "!!!\tFor now there's on way to know if the recipient got the message. Patience, please. It's coming.")
+#		weechat.prnt(self.buf, "!!!\tIf the script works, please tell me. If it doesn't please tell me - " + weechat.color("cyan,underline") + "https://github.com/nolash/weechat-tools")
 		return True
 
 
@@ -260,8 +289,10 @@ class Pss:
 			self.err = PSS_ESOCK
 			self.errstr = "not connected"
 			return False
-	
-		self.ws.send(pss_new_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, pss_strToHex(msg)]))
+
+		sys.stderr.write("fd " + str(self.pip))	
+		os.write(self.pip, pss_new_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, pss_strToHex(msg)]))
+		#self.ws.send(pss_new_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, pss_strToHex(msg)]))
 		self.seq += 1
 
 		weechat.prnt(self.buf, weechat.color("yellow") + nick + " ->\t" + msg)
@@ -382,7 +413,7 @@ def pss_handle(data, buf, args):
 		time.sleep(1)
 
 		# \todo handle exception on socket open
-		pss[argslist[0]].pip = os.open("/tmp/pss_weechat_" + argslist[0] + ".fifo", os.O_RDONLY | os.O_NONBLOCK)
+		pss[argslist[0]].pip = os.open("/tmp/pss_weechat_" + argslist[0] + ".fifo", os.O_RDWR | os.O_NONBLOCK)
 		weechat.hook_timer(PSS_FIFO_POLL_DELAY, 0, 0, "msgPipeRead", argslist[0])
 
 	elif argslist[1] == "add":
