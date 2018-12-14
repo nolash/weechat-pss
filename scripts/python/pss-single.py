@@ -377,8 +377,9 @@ def pss_handle(data, buf, args):
 	# \todo ensure clean shutdown so conncet can be called over
 	elif subCmd == "stop":
 		weechat.unhook(hookFds[currentPssName])
+		wOut(PSS_BUFPFX_INFO, [], "!!!", "disconnected from " + currentPssName)
 		currentPss.close()
-		del psses[currentPssName]
+		#del psses[currentPssName]
 
 
 	# invalid input

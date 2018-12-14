@@ -1,12 +1,14 @@
-# pss-single.py
-
-* version: 0.1.10 alpha
+# PSS plugin for Weechat
 
 This script lets you send and receive messages through a `swarm` node using `pss`. If none of these terms mean anything to you, you have some research to do before reading on. See the references at the end of this README.
 
 Ultimately, the idea is to create a proper shared object plugin which handles encryption internally and uses swarm nodes as multiplexers. 
 
 However there is **lots** to be explored before that. And for this exploration we will use this simple prototype where you remote control a _single_ swarm node, using its public key and address.
+
+## Version
+
+0.1.10 alpha
 
 ## Development
 
@@ -86,8 +88,6 @@ When swarm is running, you can continue.
 
 # Connect to the node
 # by default host 127.0.0.1 port 8546
-# when connected a message buffer for that node is created
-# the buffer will be named pss_<pssname>, in this example pss_foo
 /pss foo connect
 
 # Print public key of node
@@ -101,13 +101,14 @@ When swarm is running, you can continue.
 # the key and address below is for _my_ node. If you want to add a different node, you need _that_ node's values.
 /pss foo add lash 0x04578fcba26eb70ff2cef4a1ee6de5bbcac169adc6a067be6dab2e1781234d8ba9e97782ee2e460589e2925762c602d97d463549d4314e104a1d67d283e103c427 0xacae369e3fcef13ec171298c5d9a4ea3631cb4f082d9a72f8f95f27d54b4f145
 
-# Send a message to the peer from the weechat buffer
+# Send a message to the peer
+# a new buffer will be created with name pss:<nick>
 /pss foo send lash the future is now
 
 # you can also send from the node's buffer 
 # in this case simply prefix the message with the nick
-/buffer pss_foo
-lash I said, the future is now
+/buffer lash
+I said, the future is now
 
 # You can add other nodes to the same weechat instance
 # Then you'll probably need different host and/or port other than 
@@ -126,9 +127,16 @@ lash I said, the future is now
 /pss foo add hsal <bar.key> <bar.address>
 /pss foo send hsal mais plus ça change, plus c'est la même chose
 
-# or from the bar buffer
-/buffer pss_bar
-hsal ...if you pardon my french
+# if you close the other buffer
+# it will re-open upon receiving a new message
+/close lash
+/buffer hsal
+if you pardon my french...
+
+# stop means disconnect. you can reconnect again and continue as before
+/pss foo stop
+/pss foo connect
+/pss foo lash send cheer up, dude
 
 # Unloading the script will kill sub-processes and disconnect from nodes
 # Currently it will also erase all settings and nicks you've added
@@ -136,14 +144,6 @@ hsal ...if you pardon my french
 /script unload pss
 
 ```
-
-## Advanced
-
-Upon connecting to a node, a subprocess loop will be started that receives incoming messages and passes it to the main process through a FIFO.
-
-The subprocess catches disconnect exceptions from the websocket and retries forever.
-
-If the FIFO can't be written to, the sub-process will quit after a number of retries. Whatever happens if the sub-process quits prematurely is currently undefined.
 
 ## Security
 
