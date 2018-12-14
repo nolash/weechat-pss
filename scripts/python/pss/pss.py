@@ -25,7 +25,6 @@ class Pss:
 	ws = None
 	name = ""
 	run = False
-	buf = None
 	sub = ""
 
 
@@ -92,10 +91,6 @@ class Pss:
 
 
 	
-	def setBuf(self, buf):
-		self.buf = buf	
-
-
 
 	# adds recipient to node
 	def add(self, nick, pubkey, address):
@@ -152,7 +147,6 @@ class Pss:
 		self.ws.send(rpc_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, "0x" + msg.encode("hex")]))
 		self.seq += 1
 
-		# give response to user
 		return True
 
 
@@ -175,3 +169,7 @@ class Pss:
 		self.ws.close()
 
 
+
+	# check if nick is registered in node
+	def is_nick(self, nick):
+		return nick in self.contacts
