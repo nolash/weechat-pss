@@ -14,13 +14,22 @@ import time
 import tempfile
 import select
 
-# our constants
-retryDelay = [1, 2, 4, 8, 16, 32]
-fifoRetryMax = 4
+# the name of this pss instance
 name = ""
+
+# websocket object
 ws = None
+
+# connection status
 connected = False
+
+# running status
+# when false, routine will end
 running = True
+
+# maximum retries for fifo io
+# \todo this needs a more thought through solution
+fifoRetryMax = 4
 
 # pipe for incoming traffic (to plugin)
 pIn = -1
@@ -28,6 +37,14 @@ pIn = -1
 # pipe for outgoing traffic (to websocket)
 pOut = -1
 
+# progressive delay intervals for connection
+retryDelay = [1, 2, 4, 8, 16, 32]
+
+
+
+
+# perform connection to websocket
+# upon success perform subscription to incoming messages
 def connect_to_ws(host, port, topic):
 	""" handles connection to websocket server
 	
@@ -65,6 +82,9 @@ def connect_to_ws(host, port, topic):
 
 	return True
 
+
+
+# perform delay with progressive timeout according to input index
 def connect_delay(s):
 	""" creates progressive delay of connection attempts
 
@@ -74,10 +94,14 @@ def connect_delay(s):
 	else:
 		time.sleep(retryDelay[s])
 	return
-	
+
+
+
+# fire her up	
 if __name__ == "__main__":
 
 	# defaults
+	# \todo put in separate settings file
 	host = "127.0.0.1"
 	port = "8546"
 	topic = "0xdeadbee2"
@@ -108,9 +132,6 @@ if __name__ == "__main__":
 		sys.stderr.write("fifo OUT not available for " + name + "\n")
 		sys.exit(1)
 
-	# send ack 
-	os.write(pIn, "\x06")
-
 	# create websocket connection
 	i = 0
 	while not connected:
@@ -127,14 +148,12 @@ if __name__ == "__main__":
 		# and fifo for sends to forward to websocket
 		# \todo what happens on disconnect here if the other side writes to fifo
 		# \todo keep write queue and poll for write ready
-		sys.stderr.write("selection\n")
 		rr, wr, xr = select.select([ws, pOut], [], [])
 
 		for nr in rr:
 
 			# case websocket ready 
 			if nr == ws:
-				sys.stderr.write("ws read\n")
 				msg = ""
 				written = False
 
@@ -142,7 +161,6 @@ if __name__ == "__main__":
 				try:
 					msg = ws.recv()
 				except WebSocketConnectionClosedException as e:
-					print "got exception " + str(type(e))
 					connected = False
 					os.write(pIn, "\x03")
 					i = 0
@@ -161,8 +179,8 @@ if __name__ == "__main__":
 						written = True				
 					except OSError as e:
 						if i > fifoRetryMax:
+							sys.stderr.write("socket error: " + repr(e))
 							raise RuntimeError("FIFO still unavailable even after " + str(fifoRetryMax) + " tries. Assuming it went away so I'm outta here. Sorry")
-						sys.stderr.write("socket error: " + repr(e))
 						connect_delay(i)
 						i += 1
 
@@ -171,12 +189,12 @@ if __name__ == "__main__":
 				
 				msg = ""
 
-				sys.stderr.write("ws write\n")
-				# probably we should implement out stream reader here, for now let's just pretend one msg per read, for now let's just pretend one msg per read
+				# \todoprobably we should implement out stream reader here, for now let's just pretend one msg per read, for now let's just pretend one msg per read
 				msg = os.read(pOut, 5120)
 
 				ws.send(msg)
 
+	# close up shop
 	ws.close()	
 	os.close(pIn)
 	os.close(pOut)

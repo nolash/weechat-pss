@@ -1,6 +1,6 @@
 # pss-single.py
 
-* version: 0.1.6 alpha
+* version: 0.1.7 alpha
 
 This script lets you send and receive messages through a `swarm` node using `pss`. If none of these terms mean anything to you, you have some research to do before reading on. See the references at the end of this README.
 
@@ -169,10 +169,24 @@ GPLv3
 
 ## Changelog
 
-- v0.1.6: Add connection reporting to frontend + partial input processor on fifo
-- v0.1.5: Bugfix wrong recipient data added on connect
-- v0.1.4: Add sends from node buffer window + a touch of color
-- v0.1.3: Added persistent receipient store, temporary solution with single append file
-- v0.1.2: Add README documentation
-- v0.1.1: Add message retrieval script run as background process
-- v0.1.0: Initial framework
+* v0.1.7:
+    - Handle by subprocess with FIFO pair
+    - Add generic output formatting function for buffer
+    - Add comments and make code nicer to look at
+* v0.1.6:
+    - Add connection reporting to frontend
+    - Partial input processor on fifo
+* v0.1.5:
+    - Bugfix wrong recipient data added on connect
+* v0.1.4:
+    - Add sends from node buffer window
+    - A touch of color
+* v0.1.3:
+    - Added persistent receipient store
+    - Temporary solution with single append file
+* v0.1.2:
+    - Add README documentation
+* v0.1.1:
+    - Add message retrieval script run as background process
+* v0.1.0:
+    - Initial framework
