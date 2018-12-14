@@ -1,6 +1,6 @@
 # pss-single.py
 
-* version: 0.1.8 alpha
+* version: 0.1.9 alpha
 
 This script lets you send and receive messages through a `swarm` node using `pss`. If none of these terms mean anything to you, you have some research to do before reading on. See the references at the end of this README.
 
@@ -169,6 +169,8 @@ GPLv3
 
 ## Changelog
 
+* v0.1.9:
+    - Move rpc and pss/swarm specific components to pss package
 * v0.1.8:
     - Move ws fd handling to newly discovered weechat hook_fd
     - Remind self to RTFM in the future before rushing to ipc acrobatics
