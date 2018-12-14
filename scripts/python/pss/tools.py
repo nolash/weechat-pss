@@ -24,25 +24,22 @@ class Stream:
 
 		last = 0
 		for i in range(0, n):
-			if ord(data[i]) == 0x03:
-				r['status'] = False
-				self.buf = ""
-				self.depth = 0
-				continue
-			elif ord(data[i]) == 0x02:
-				r['status'] = True
-				continue
-			self.buf += data[i]
 
 			if ord(data[i]) == 0x7b:
 				self.depth += 1
+				self.buf += data[i]
 			elif ord(data[i]) == 0x7d:
 				self.depth -= 1
 				if self.depth == 0:
+					self.buf += data[i]
 					r['results'].append(self.buf)
 					self.buf = ""
 					last = i
-			
+				else:
+					self.buf += data[i]
+			elif self.depth > 0:
+				self.buf += data[i]
+
 		if self.depth > 0:
 			r['processing'] = True
 
