@@ -1,6 +1,6 @@
 import websocket
 
-from tools import *
+from tools import is_address, is_pubkey, label
 from error import *
 from content import rpc_call, rpc_parse
 from contact import PssContact

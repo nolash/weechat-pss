@@ -1,5 +1,4 @@
-from tools import *
-from error import *
+from tools import is_pubkey, is_address
 
 # object representing a single recipient
 # \todo move to separate package

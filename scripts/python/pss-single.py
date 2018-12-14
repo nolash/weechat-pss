@@ -1,15 +1,6 @@
 import weechat
-import xmpp
-import json
-import sys
-import time
 import os
-import fcntl
-import tempfile
-from websocket import create_connection
-
-# internal mods
-import pss
+import pss # plugin package, nothing official
 
 # consts
 PSS_VERSION = "0.1.8"
@@ -120,7 +111,7 @@ def msgPipeRead(pssName, fd):
 
 		# check if data is valid	
 		try:
-			r = json.loads(o)
+			r = pss.rpc_parse(o)
 			_ = r['params']['result']
 		except Exception as e:
 			wOut(PSS_BUFPFX_DEBUG, [], "", "skipping invalid receive: " + repr(o))
