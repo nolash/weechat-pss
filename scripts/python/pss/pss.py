@@ -1,6 +1,6 @@
 import websocket
 
-from tools import is_address, is_pubkey, label
+from tools import clean_address, clean_pubkey
 from error import *
 from content import rpc_call, rpc_parse
 from contact import PssContact
@@ -36,10 +36,22 @@ class Pss:
 			self.host = host
 		if port != "":
 			self.port = port
-		
+	
+
+
+	# get underlying file descriptor of websocket
+	def get_fd(self):
+		if self.ws == None:
+			return -1
+		return self.ws.fileno()
+
+
 
 	# open sockets and get initial data
 	def connect(self):
+
+		base = ""
+		key = ""
 
 		self.ws = None
 		try:
@@ -55,11 +67,12 @@ class Pss:
 		resp = rpc_parse(self.ws.recv())
 
 		# verify address
-		if not is_address(resp['result']):
+		try:
+			base = clean_address(resp['result'])
+		except ValueError as e:
 			self.err = PSS_EREMOTEINVAL
 			self.errstr = "received bogus base address " + resp['result']
 			return False
-		base = resp['result']
 		
 		# retrieve the node key	data
 		self.ws.send(rpc_call(self.seq, "getPublicKey", []))
@@ -67,12 +80,12 @@ class Pss:
 		resp = rpc_parse(self.ws.recv())
 	
 		# verify key
-		if not is_pubkey(resp['result']):
+		try: 
+			key = clean_pubkey(resp['result'])
+		except ValueError as e:
 			self.err = PSS_EREMOTEINVAL
 			self.errstr = "received bogus pubkey " + resp['result']
 			return False
-
-		key = resp['result']
 
 		# subscribe to incoming
 		self.ws.send(rpc_call(self.seq, "subscribe", ['receive', topic, False, False]))
@@ -103,6 +116,7 @@ class Pss:
 		keyLabel = ""
 
 		# no use if we're not connected
+		# \todo use exception instead
 		if self.ws == None or not self.connected:
 			self.err = PSS_ESTATE
 			self.errstr = "pss " + self.name + " not connected"
@@ -111,15 +125,14 @@ class Pss:
 		# create the contact object	
 		try:
 			contact = PssContact(nick, pubkey, address, self.key)
-		except Exception as e:
+		except ValueError as e:
 			self.err = PSS_ELOCALINVAL
 			self.errstr = "invalid input for add: " + repr(e)
 			return False
 
 		# add to node and object cache
-		# \todo check success	
-		self.ws.send(rpc_call(self.seq, "setPeerPublicKey", [pubkey, topic, address]))
-		self.ws.recv()
+		self.ws.send(rpc_call(self.seq, "setPeerPublicKey", [contact.key, topic, contact.address]))
+		#self.ws.recv()
 		self.seq += 1
 		self.contacts[nick] = contact
 
@@ -170,6 +183,14 @@ class Pss:
 
 
 
+	# retrieve a registered contact	
+	def get_contact(self, nick):
+		try:
+			return self.contacts[nick]
+		except:	
+			return None
+
+
 	# check if nick is registered in node
-	def is_nick(self, nick):
+	def have_nick(self, nick):
 		return nick in self.contacts

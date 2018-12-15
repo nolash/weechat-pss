@@ -1,4 +1,4 @@
-from tools import is_pubkey, is_address
+from tools import clean_pubkey, clean_address, clean_nick
 
 # object representing a single recipient
 # \todo move to separate package
@@ -9,13 +9,17 @@ class PssContact:
 	src = ""
 
 	def __init__(self, nick, key, addr, src):
-		if not is_pubkey(key):
-			raise Exception("invalid key " + key)
 
-		if not is_address(addr):
-			raise Exception("invalid address " + addr)
+		validnick = ""
+		validkey = ""
+		validaddr = ""
 
-		self.nick = nick
-		self.key = key
-		self.address = addr
+		validnick = clean_nick(nick)
+		validkey = clean_pubkey(key)
+		if len(addr) > 0:
+			validaddr = clean_address(addr)
+
+		self.nick = validnick
+		self.key = "0x" + validkey
+		self.address = "0x" + validaddr
 		self.src = src
