@@ -554,8 +554,8 @@ cmd_main = weechat.hook_command(
 	"pss",
 	"connect to pss node and manage local contact list",
 	"THIS HELP OUTPUT IS STALE AND INSUFFICENT. LOOK AT THE README INSTEAD",
-	"\n",
-	"<cmd|name> [<arguments>]",
+	"\n"
+	"<cmd|name> [<arguments>]"
 	" <name> connect: connect to node\n"
 	" <name>     add: add new contact\n"
 	" <name>     msg: send message to contact\n"
