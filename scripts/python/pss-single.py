@@ -3,7 +3,7 @@ import os
 import pss # plugin package, nothing official
 
 # consts
-PSS_VERSION = "0.1.10"
+PSS_VERSION = "0.1.11"
 PSS_FIFO_POLL_DELAY = 500
 PSS_BUFPFX_OK = 0
 PSS_BUFPFX_ERROR = 1
@@ -222,8 +222,8 @@ def buf_get_context(buf):
 	bufname = weechat.buffer_get_string(buf, "name")
 	flds = bufname.split(".")
 
-	for f in flds:
-		wOut(PSS_BUFPFX_DEBUG, [], "", "bufname parse fld: " + str(f))
+	#for f in flds:
+	#	wOut(PSS_BUFPFX_DEBUG, [], "", "bufname parse fld: " + str(f))
 	
 	# all pss context nodes have pss as the first field
 	if flds[0] != "pss":
@@ -255,7 +255,7 @@ def buf_node_in(pssName, buf, args):
 	argv = args.split(" ")
 	argc = len(argv)
 
-	wOut(PSS_BUFPFX_DEBUG, [], "", "buffer " + pssName + " bufname " + weechat.buffer_get_string(buf, "name"))
+	# wOut(PSS_BUFPFX_DEBUG, [], "", "buffer " + pssName + " bufname " + weechat.buffer_get_string(buf, "name"))
 
 	# first we handle commands that are node independent	
 
@@ -560,20 +560,16 @@ unloadSigHook = weechat.hook_signal(
 cmd_main = weechat.hook_command(
 	"pss",
 	"connect to pss node and manage local contact list",
+	"THIS HELP OUTPUT IS STALE AND INSUFFICENT. LOOK AT THE README INSTEAD",
+	"\n",
 	"<cmd|name> [<arguments>]",
-	"            new: add new pss instance\n"
-	" <name>     set: set option for pss connection (see below)\n"
 	" <name> connect: connect to node\n"
-	" <name>     add: add public key and address pair to node and nick map\n"
+	" <name>     add: add new contact\n"
+	" <name>     msg: send message to contact\n"
 	" <name>    stop: disconnect from node\n"
 	" <name>     key: display public key\n"
 	" <name>    addr: display overlay address\n"
-	"\n"
-	"Valid options:\n"
-	"\n"
-	"\thost: hostname of node\n"
-	"\tport: port of node\n"
 	"\n",
-	"what is this then?",
+	"(if this displays anywhere please tell me)",
 	"pss_handle",
 	"")

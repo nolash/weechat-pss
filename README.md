@@ -8,7 +8,7 @@ However there is **lots** to be explored before that. And for this exploration w
 
 ## Version
 
-0.1.10 alpha
+0.1.11 alpha
 
 ## Development
 
@@ -83,29 +83,27 @@ When swarm is running, you can continue.
 
 
 ```
-# Register a new pss instance in the plugin:
-# This will create a new node buffer merged with the core buffer
-# you can choose between them with ctrl-x
-/pss new foo
+# Connect to a pss node
+# this will create a buffer with a node context
+# if you don't supply host and port it uses defaults of 127.0.0.1 8546
+/pss connect foo 127.0.0.1 8546
 
-# Connect to the node
-# by default host 127.0.0.1 port 8546
-/pss foo connect
-
+# While in the context of node you can issue commands to it
+# (ctrl-x changes context, see weechat docs if you don't understand)
 # Print public key of node
-/pss foo key
+/pss key
 
 # Print address of node
-/pss foo address
+/pss address
 
 # Add a peer to the node's address book
 # After this you can send to the peer, and also incoming msgs matching the key will be marked by the nick you choose
 # the key and address below is for _my_ node. If you want to add a different node, you need _that_ node's values.
-/pss foo add lash 0x04578fcba26eb70ff2cef4a1ee6de5bbcac169adc6a067be6dab2e1781234d8ba9e97782ee2e460589e2925762c602d97d463549d4314e104a1d67d283e103c427 0xacae369e3fcef13ec171298c5d9a4ea3631cb4f082d9a72f8f95f27d54b4f145
+/pss add lash 0x04578fcba26eb70ff2cef4a1ee6de5bbcac169adc6a067be6dab2e1781234d8ba9e97782ee2e460589e2925762c602d97d463549d4314e104a1d67d283e103c427 0xacae369e3fcef13ec171298c5d9a4ea3631cb4f082d9a72f8f95f27d54b4f145
 
 # Send a message to the peer
-# a new buffer will be created with name pss:<nick>
-/pss foo send lash the future is now
+# a new buffer will be created with name pss:<nick> (but won't focus automatically)
+/pss msg lash the future is now
 
 # you can also send from the node's buffer 
 # in this case simply prefix the message with the nick
@@ -113,21 +111,17 @@ When swarm is running, you can continue.
 I said, the future is now
 
 # You can add other nodes to the same weechat instance
-# Then you'll probably need different host and/or port other than 
-/buffer weechat
-/pss new bar
-/pss bar set host 127.0.0.2
-/pss bar set port 8547
-/pss bar connect
+# Then you'll probably need different host and/or port other than the one already used
+# You will be automatically switched to this node buffer
+/pss connect bar 127.0.0.2 8547
 
 # And of course you can even send between these nodes 
-/pss bar key
+/pss key
 [bar.key] 0xdeadbeef....feca1666
-/pss bar address
+/pss address
 [bar.address] 0xdeadbeef....feca1666
-/pss bar connect
-/pss foo add hsal <bar.key> <bar.address>
-/pss foo send hsal mais plus ça change, plus c'est la même chose
+/pss add hsal <bar.key> <bar.address>
+/pss msg hsal mais plus ça change, plus c'est la même chose
 
 # if you close the other buffer
 # it will re-open upon receiving a new message
@@ -136,9 +130,12 @@ I said, the future is now
 if you pardon my french...
 
 # stop means disconnect. you can reconnect again and continue as before
-/pss foo stop
-/pss foo connect
-/pss foo lash send cheer up, dude
+/pss stop
+/pss connect
+
+# you can also issue commands from the core buffer, by prefixing the pss node name to the args
+/buffer weechat
+/pss bar msg lash cheer up, dude
 
 # Unloading the script will kill sub-processes and disconnect from nodes
 # Currently it will also erase all settings and nicks you've added
@@ -171,6 +168,11 @@ GPLv3
 
 ## Changelog
 
+* v0.1.11:
+    - Reinstate node buffer, merge with core buffer
+    - Make command context depend on buffer
+    - Improve data validation tools
+    - Remove conceal of setPeerPublicKey RPC return value
 * v0.1.10:
     - Buffers now per recipient, not per node
     - Clean close of ws file descriptors
