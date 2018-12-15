@@ -120,7 +120,7 @@ def msgPipeRead(pssName, fd):
 			r = pss.rpc_parse(o)
 			_ = r['params']['result']
 		except Exception as e:
-			wOut(PSS_BUFPFX_DEBUG, [], "", "skipping invalid receive: " + repr(o))
+			wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "skipping invalid receive: " + repr(o))
 			return weechat.WEECHAT_RC_OK
 	
 		# decode contents and display in buffer
@@ -189,9 +189,9 @@ def buf_in(pssName, buf, inputdata):
 	# send message
 	# \todo move to common function for /pss send
 	if psses[pssName].send(name, inputdata):
-		wOut(PSS_BUFPFX_OUT, [buf], "you", inputdata)
+		wOut(PSS_BUFPFX_OUT, [bufs[pssName]], "you", inputdata)
 	else:
-		wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "send fail: " + psses[pssName].error()['description'])
+		wOut(PSS_BUFPFX_ERROR, [buf[pssName]], "!!!", "send fail: " + psses[pssName].error()['description'])
 
 	return weechat.WEECHAT_RC_OK
 
@@ -199,7 +199,22 @@ def buf_in(pssName, buf, inputdata):
 
 # when buffer is closed, node should also close down
 def buf_close(pssName, buf):
+
 	return weechat.WEECHAT_RC_OK
+
+
+
+# node buffer input
+# \todo implement
+def buf_node_in(pssName, buf, inputdata):
+	wOut(PSS_BUFPFX_DEBUG, [buf], "", "(noop node buf in)")
+	return weechat.WEECHAT_RC_OK
+
+
+
+# node buffer close
+def buf_node_close(pssName, buf):
+	wOut(PSS_BUFPFX_DEBUG, [buf], "", "(noop node buf close)")
 
 
 
@@ -217,6 +232,9 @@ def pss_handle(data, buf, args):
 	# \todo save server name so we can recall across sessions
 	# \todo implement list command for stored pss instances
 	if (argslist[0] == "new"):
+
+		currentPssName = argslist[1]
+
 		if argslist[1] in psses:
 			weechat.window_search_with_buffer(bufs[argslist[1]])
 			wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + argslist[1] + " already exists")
@@ -226,6 +244,13 @@ def pss_handle(data, buf, args):
 		weechat.config_set_plugin(argslist[1] + "_port", "8546")
 		psses[argslist[1]] = pss.Pss(argslist[1])
 		wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + argslist[1])
+
+		# open and merge the node buffer
+		bufs[currentPssName] = weechat.buffer_new("pss.node." + currentPssName, "buf_node_in", currentPssName, "buf_node_close", currentPssName)
+		weechat.buffer_set(bufs[currentPssName], "short_name", "pss."+ currentPssName)
+		weechat.buffer_merge(bufs[currentPssName], weechat.buffer_search_main())
+		weechat.buffer_set(bufs[currentPssName], "display", "1")
+
 		return weechat.WEECHAT_RC_OK
 
 
@@ -252,12 +277,12 @@ def pss_handle(data, buf, args):
 		v = argslist[3]
 		# verify that the key is a valid option
 		if not weechat.config_is_set_plugin(currentPssName + "_" + k):
-			wOut(PSS_BUFPFX_ERROR, [], "!!!",  "invalid option name " + k)
+			wOut(PSS_BUFPFX_ERROR, [bufs[currentPssName]], "!!!",  "invalid option name " + k)
 			return weechat.WEECHAT_RC_ERROR
 	
 		# verify the value is a valid option for the key
 		if not pss_check_option(k, v):
-			wOut(PSS_BUFPFX_ERROR, [], "!!!", "invalid option value " + v + " for option " + k)
+			wOut(PSS_BUFPFX_ERROR, [bufs[currentPssName]], "!!!", "invalid option value " + v + " for option " + k)
 			return weechat.WEECHAT_RC_ERROR
 
 		# set it and tell user the good news
@@ -273,13 +298,12 @@ def pss_handle(data, buf, args):
 
 	# handle the connect command
 	elif subCmd == "connect":
-
 		# start the websocket comms background process
-		wOut(PSS_BUFPFX_WARN, [], "0-> 0", "connecting to '" + currentPssName + "'")
+		wOut(PSS_BUFPFX_WARN, [bufs[currentPssName]], "0-> 0", "connecting to '" + currentPssName + "'")
 
 		# start the sockets in the pss instance
 		if not currentPss.connect():
-			wOut(PSS_BUFPFX_ERROR, [], "0-x 0", "connect to '" + currentPssName + "' failed: " + currentPss.error()['description'])
+			wOut(PSS_BUFPFX_ERROR, [bufs[currentPssName]], "0-x 0", "connect to '" + currentPssName + "' failed: " + currentPss.error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 
 		# create the buffer window 
@@ -294,7 +318,7 @@ def pss_handle(data, buf, args):
 		#"If the script works, please tell me. If it doesn't please tell me - " + weechat.color("cyan,underline") + "https://github.com/nolash/weechat-tools\n\n"
 		#)
 
-		wOut(PSS_BUFPFX_OK, [], "0---0", "connected to '" + currentPssName + "'")
+		wOut(PSS_BUFPFX_OK, [bufs[currentPssName]], "0---0", "connected to '" + currentPssName + "'")
 
 		# add all nicks in the plugin's memory nick map
 		# that match the pubkey of the node to the node's recipient address book
@@ -302,9 +326,9 @@ def pss_handle(data, buf, args):
 			if nicks[c].src == currentPss.key:
 				if currentPss.add(nicks[c].nick, nicks[c].key, nicks[c].address):
 
-					wOut(PSS_BUFPFX_INFO, [], "+++", "added '" + nicks[c].nick + "' to node (key: 0x" + pss.label(currentPss.key) + ", addr: " + pss.label(currentPss.base) + ")")
+					wOut(PSS_BUFPFX_INFO, [bufs[currentPssName]], "+++", "added '" + nicks[c].nick + "' to node (key: 0x" + pss.label(currentPss.key) + ", addr: " + pss.label(currentPss.base) + ")")
 				else:
-					wOut(PSS_BUFPFX_DEBUG, [], "", "nick " + c + " not added: " + currentPss.error()['description'])
+					wOut(PSS_BUFPFX_DEBUG, [bufs[currentPssName]], "", "nick " + c + " not added: " + currentPss.error()['description'])
 
 		# process websocket io
 		hookFds[currentPssName] = weechat.hook_fd(currentPss.ws.fileno(), 1, 0, 0, "msgPipeRead", currentPssName)
@@ -318,7 +342,7 @@ def pss_handle(data, buf, args):
 
 		# input sanity check
 		if len(argslist) != 5:
-			wOut(PSS_BUFPFX_ERROR, [], "!!!", "not enough arguments for add")
+			wOut(PSS_BUFPFX_ERROR, [bufs[currentPssName]], "!!!", "not enough arguments for add")
 			return weechat.WEECHAT_RC_ERROR
 
 		# legible varnames
@@ -328,7 +352,7 @@ def pss_handle(data, buf, args):
 		
 		# backend add recipient call	
 		if not currentPss.add(nick, key, addr):
-			wOut(PSS_BUFPFX_ERROR, [], "!!!", "add contact error: " + currentPss.error()['description'])
+			wOut(PSS_BUFPFX_ERROR, [bufs[currentPssName]], "!!!", "add contact error: " + currentPss.error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 
 		# refresh the plugin memory map version of the recipient
@@ -338,45 +362,45 @@ def pss_handle(data, buf, args):
 		storeFile.write(nick + "\t" + key + "\t" + addr + "\t" + currentPss.key + "\n")
 
 		# open the buffer if it doesn't exist
-		buf_get(pssName, "chat", nick)	
+		buf_get(currentPssName, "chat", nick)	
 
 
 	# send a message to a recipient
 	elif subCmd == "send" or subCmd == "msg":
 
 		if len(argslist) < 3:
-			wOut(PSS_BUFPFX_ERROR, [], "!!!", "not enough arguments for send")
+			wOut(PSS_BUFPFX_ERROR, [bufs[currentPssName]], "!!!", "not enough arguments for send")
 			return weechat.WEECHAT_RC_ERROR
 
 		nick = argslist[2]
 		msg = " ".join(argslist[3:])
 		
 		if not currentPss.is_nick(nick):
-			wOut(PSS_BUFPFX_ERROR, [], "!!!", "invalid nick " + nick)
+			wOut(PSS_BUFPFX_ERROR, [bufs[currentPssName]], "!!!", "invalid nick " + nick)
 			return weechat.WEECHAT_RC_ERROR
 
 		buf = buf_get(currentPssName, "chat", nick)
 
 		if not pss.is_message(msg):
-			wOut(PSS_BUFPFX_DEBUG, [], "", "invalid message " + msg)
+			wOut(PSS_BUFPFX_DEBUG, [bufs[currentPssName]], "", "invalid message " + msg)
 			return weechat.WEECHAT_RC_ERROR
 
 		if currentPss.send(nick, msg):
 			# open the buffer if it doesn't exist
-			wOut(PSS_BUFPFX_OUT, [buf], "you", msg)
+			wOut(PSS_BUFPFX_OUT, [bufs[currentPssName]], "you", msg)
 		else:
-			wOut(PSS_BUFPFX_ERROR, [], "!!!", "send fail: " + currentPss.error()['description'])
+			wOut(PSS_BUFPFX_ERROR, [bufs[currentPssName]], "!!!", "send fail: " + currentPss.error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 
 
 	# output node key
 	elif subCmd == "key" or subCmd == "pubkey":
-		wOut(PSS_BUFPFX_INFO, [], currentPssName + ".key", currentPss.key)
+		wOut(PSS_BUFPFX_INFO, [bufs[currentPssName]], currentPssName + ".key", currentPss.key)
 
 
 	# output node base address
 	elif subCmd == "addr" or subCmd == "address":
-		wOut(PSS_BUFPFX_INFO, [], currentPssName + ".addr", currentPss.base)
+		wOut(PSS_BUFPFX_INFO, [bufs[currentPssName]], currentPssName + ".addr", currentPss.base)
 
 
 	# stop connection
@@ -384,7 +408,7 @@ def pss_handle(data, buf, args):
 	# \todo ensure clean shutdown so conncet can be called over
 	elif subCmd == "stop":
 		weechat.unhook(hookFds[currentPssName])
-		wOut(PSS_BUFPFX_INFO, [], "!!!", "disconnected from " + currentPssName)
+		wOut(PSS_BUFPFX_INFO, [bufs[currentPssName]], "!!!", "disconnected from " + currentPssName)
 		currentPss.close()
 		#del psses[currentPssName]
 
@@ -447,7 +471,7 @@ def pss_sighandler_load(data, sig, sigdata):
 
 			# add it to the map and report
 			nicks[key] = pss.PssContact(nick, key, addr, src)
-			wOut(PSS_BUFPFX_INFO, [], "+++", "contact loaded from db '" + nick + "' (0x" + key[2:10] + ")")
+			wOut(PSS_BUFPFX_INFO, [], "+++", "pss contact loaded from db '" + nick + "' (0x" + key[2:10] + ")")
 
 		f.close()
 	except IOError as e:
