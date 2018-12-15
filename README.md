@@ -54,9 +54,9 @@ The issue should contain the following:
 
 * Install [weechat](https://weechat.org) if you don't have it already.
 * Change directory to `scripts/python` in this source tree.
-* Copy the files `pss-single.py` and `pss-fetch.py` along with the `pss` directory along with its contents to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
+* Copy the file `pss-single.py` and the `pss` directory along with its contents to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
 * Start weechat
-* Load the script with `/script load pss-single.py` (do _not_ load `pss-fetch.py`)
+* Load the script with `/script load pss-single.py`
 
 This adds a command `/pss` to your weechat instance. You can confirm load with calling the help text with `/help pss`
 
@@ -84,6 +84,8 @@ When swarm is running, you can continue.
 
 ```
 # Register a new pss instance in the plugin:
+# This will create a new node buffer merged with the core buffer
+# you can choose between them with ctrl-x
 /pss new foo
 
 # Connect to the node
