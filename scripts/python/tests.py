@@ -1,6 +1,10 @@
-from pss.tools import Stream
+import pss
 import json
 import sys
+
+
+print "broken"
+sys.exit(1)
 
 a = json.dumps(
 	{

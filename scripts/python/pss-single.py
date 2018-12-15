@@ -420,13 +420,6 @@ def buf_node_in(pssName, buf, args):
 			return weechat.WEECHAT_RC_ERROR
 
 		return buf_in(pssName, buf, msg)
-#		if currentPss.send(nick, msg):
-#			# open the buffer if it doesn't exist
-#			wOut(PSS_BUFPFX_OUT, [bufs[pssName]], "you", msg)
-#		else:
-#			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "send fail: " + currentPss.error()['description'])
-#			return weechat.WEECHAT_RC_ERROR
-
 
 	# output node key
 	elif argv[0] == "key" or argv[0] == "pubkey":
@@ -538,7 +531,7 @@ def pss_sighandler_unload(data, sig, sigdata):
 	if not os.path.basename(sigdata) == "pss-single.py":
 		return weechat.WEECHAT_RC_OK	
 
-	storeFd.close()
+	storeFile.close()
 	return weechat.WEECHAT_RC_OK_EAT
 
 
