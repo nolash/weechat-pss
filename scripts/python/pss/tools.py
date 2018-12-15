@@ -1,6 +1,5 @@
 # check validity of address 
 # \todo implement
-# \todo move to util package
 def is_address(addr):
 	return True		
 
@@ -8,28 +7,28 @@ def is_address(addr):
 
 # check validity of key format
 # \todo implement
-# \todo move to util package
 def is_pubkey(pubkey):
 	return True		
 
 
 
 # hex excerpt for display
-# \todo move to util package
-def label(hx):
-	l = 10
-	p = ""
+def label(hx, l=8):
+	if l == 0:
+		return "0x"
+	l += 2	
+
+	decodedHex = repr(hx)
+	if decodedHex[:2] == "u'":
+		decodedHex = decodedHex[2:-1]
+
 	try:
-		if hx[0:2] != "0x":
+		if decodedHex[:2] != "0x":
 			raise Exception("invalid hex string")
 	except:
 		raise Exception("invalid hex string")
 
-	if len(hx) < 10:
+	if len(decodedHex) < l:
 		l = len(hx)
-	elif(hx) > 10:
-		p = "..."
 
-	return hx[0:l] + p
-
-
+	return decodedHex[2:l] 

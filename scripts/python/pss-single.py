@@ -130,10 +130,11 @@ def msgPipeRead(pssName, fd):
 		fromKey = r['params']['result']['Key']
 		if fromKey in nicks:
 			displayFrom = nicks[fromKey].nick
-			wOut(PSS_BUFPFX_IN, [buf_get(pssName, "chat", displayFrom)], displayFrom + " <-", msgSrc)
+			wOut(PSS_BUFPFX_IN, [buf_get(pssName, "chat", displayFrom, True)], displayFrom, msgSrc)
 		else:
-			displayFrom = str(fromKey[2:10])
-			wOut(PSS_BUFPFX_IN, [], displayFrom, msgSrc)
+			displayFrom = pss.label(fromKey, 8)
+			buf = buf_get(pssName, "chat", pss.label(fromKey, 16), False)
+			wOut(PSS_BUFPFX_IN, [buf], displayFrom, msgSrc)
 
 	return weechat.WEECHAT_RC_OK
 
@@ -141,7 +142,7 @@ def msgPipeRead(pssName, fd):
 
 # gets the buffer matching the type and the name given
 # creates if it doesn't exists
-def buf_get(pssName, typ, name):
+def buf_get(pssName, typ, name, known):
 
 	# \todo integrity check of input data
 	bufname = "pss." + pssName + "." + typ + "." + name
@@ -152,8 +153,14 @@ def buf_get(pssName, typ, name):
 		return ""
 
 	if buf == "":
+		shortname = ""
+		if known:
+			shortname = "pss:" + name
+		else:
+			shortname = "pss:" + name[:8]
+
 		buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
-		weechat.buffer_set(buf, "short_name", "pss:" + name)
+		weechat.buffer_set(buf, "short_name", shortname)
 		weechat.buffer_set(buf, "title", name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(psses[pssName].key) + " | address " + pss.label(psses[pssName].base))
 		weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 		plugin = weechat.buffer_get_pointer(buf, "plugin")
