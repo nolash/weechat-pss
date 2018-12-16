@@ -54,7 +54,7 @@ The issue should contain the following:
 * [secp256k1-py v0.13.2](https://github.com/ludbb/secp256k1-py)
 * [xmpppy v1.4.0](http://xmpppy.sf.net) (not used yet)
 
-(Dependencies describe the environment this script is being developed in. They are not necessarily minimal requirements)
+(The _versions_ of the dependencies are not necessarily minimal requirements, but are the versions in which the plugin is being developed in)
 
 
 ## Installation
