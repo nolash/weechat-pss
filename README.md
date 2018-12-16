@@ -9,7 +9,7 @@ However there is **lots** to be explored before that. And for this exploration w
 
 ## Version
 
-0.2.0 alpha
+0.2.1 alpha
 
 
 ## Development
@@ -175,6 +175,8 @@ GPLv3
 
 ## Changelog
 
+* v0.2.1:
+    - Add (synchronous) swarm storage of messages and update of swarm feed
 * v0.2.0:
     - Add swarm gateway connect on pss websocket connect
     - Add basic ethereum tooling (keys, address)

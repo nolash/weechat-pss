@@ -3,8 +3,7 @@ import os
 import pss # plugin package, nothing official
 
 # consts
-PSS_VERSION = "0.2.0"
-PSS_FIFO_POLL_DELAY = 500
+PSS_VERSION = "0.2.1"
 PSS_BUFPFX_OK = 0
 PSS_BUFPFX_ERROR = 1
 PSS_BUFPFX_WARN = 2
@@ -27,7 +26,7 @@ hookFds = {}
 hookSocks = []
 
 # bzz gateway agents
-bzzs = []
+bzzs = {}
 
 # active swarm feeds
 feeds = {}
@@ -182,14 +181,14 @@ def buf_get(pssName, typ, name, known):
 		plugin = weechat.buffer_get_pointer(buf, "plugin")
 		bufs[bufname] = buf
 
-		if psses[pssName].have_account() and len(bzzs) > 0:
+		if psses[pssName].have_account() and pssName in bzzs:
 			pubkey = ""
 			if ispubkey:
 				pubkey = name.decode("hex")
 			else:
 				pubkey = remotekeys[name].decode("hex")
 			try:
-				feeds[name] = pss.Feed(bzzs[len(bzzs)-1], psses[pssName].get_account(), "d" + pss.publickey_to_account(pubkey))
+				feeds[name] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_account(pubkey))
 				wOut(PSS_BUFPFX_DEBUG, [], "", "added feed with topic " + feeds[name].topic.encode("hex"))
 			except ValueError as e:
 				wOut(PSS_BUFPFX_ERROR, [], "???", "could not set up feed: " + str(e))
@@ -218,6 +217,17 @@ def buf_in(pssName, buf, inputdata):
 		wOut(PSS_BUFPFX_OUT, [buf], "you", inputdata)
 	else:
 		wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "send fail: " + psses[pssName].error()['description'])
+
+	# \todo make this asynchronous instead, we want command to print and return immediately in the ui
+	# \todo add buffering of sub-second updates (and a timer hook to send them, this solves async too)
+	if name in feeds:
+		try:
+			hsh = bzzs[pssName].add(inputdata)
+			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "bzz sent: " + hsh)
+			r = feeds[name].update(hsh)
+			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "feed sent: " + r)
+		except IOError as e:
+			wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "add feed fail: " + psses[pssName].error()['description'])
 
 	return weechat.WEECHAT_RC_OK
 
@@ -267,14 +277,14 @@ def pss_handle(data, buf, args):
 
 
 # \todo remove unsuccessful hooks
-def sock_connect(data, status, tlsrc, sock, error, ip):
+def sock_connect(pssName, status, tlsrc, sock, error, ip):
 	if status != weechat.WEECHAT_HOOK_CONNECT_OK:
 		wOut(PSS_BUFPFX_ERROR, [], "???", "swarm gateway connect failed (" + str(status) + "): " + error )
 		return weechat.WEECHAT_RC_ERROR
 
-	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected")
-	agent = pss.Agent(ip, 8500, sock)
-	bzzs.append(agent)
+	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected, sock " + repr(sock))
+	agent = pss.Agent(psses[pssName].host, 8500, sock)
+	bzzs[pssName] = pss.Bzz(agent)
 
 	return weechat.WEECHAT_RC_OK
 
@@ -320,7 +330,7 @@ def buf_node_in(pssName, buf, args):
 			existingBuf = weechat.buffer_search("python", "pss.node." + pssName)
 			if existingBuf != "":
 				wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + pssName + " already exists, changing to that buffer")
-				weechat.buffer_set(bufs[pssName], "display", 1)
+				weechat.buffer_set(bufs[pssName], "display", "1")
 				return weechat.WEECHAT_RC_OK
 
 			if host == "":
@@ -373,7 +383,7 @@ def buf_node_in(pssName, buf, args):
 		hookFds[pssName] = weechat.hook_fd(psses[pssName].get_fd(), 1, 0, 0, "msgPipeRead", pssName)
 
 		# \todo temporary solution, swarm gateway should be set explicitly or at least we need to be able to choose port
-		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "sock_connect", ""))
+		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "sock_connect", pssName))
 		
 		return weechat.WEECHAT_RC_OK
 
@@ -578,6 +588,9 @@ def pss_sighandler_load(data, sig, sigdata):
 			# add it to the map and report
 			try: 
 				nicks[key] = pss.PssContact(nick, key, addr, src)
+				# \todo function to strip 0x or store no 0x only add on send
+				remotekeys[nick] = key[2:]
+
 			# \todo delete the record from the contact store
 			except:
 				wOut(PSS_BUFPFX_ERROR, [], "!!!", "stored contact '" + nick + "' has invalid data, skipping")

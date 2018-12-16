@@ -1,4 +1,5 @@
 import re
+import time
 
 # \todo make unicode aware
 regexValidNick = re.compile("^[\w\d_]$")
@@ -103,3 +104,8 @@ def label(hx, l=8):
 		l = len(hx)
 
 	return decodedHex[:l] 
+
+
+# \todo implement
+def now_int():
+	return int(time.time())

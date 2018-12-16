@@ -1,22 +1,38 @@
+import struct
+
 from Crypto.Hash import keccak
 from urllib import urlencode
+
+from tools import now_int
 
 
 signPrefix = "\x19Ethereum Signed Message:\x0a\x20" # for 32 byte hashes
 feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06\x02\x02awesomepsschats\x00\x01"
 
 
+class Bzz():
+	agent = None
 
-class Feed:
+	def __init__(self, httpagent):
+		self.agent = httpagent
+
+	def add(self, data):
+		return self.agent.send("/bzz-raw:/", data)
+	
+
+class Feed():
 	agent = None
 	account = None
 	tim = 0
 	epoch = 25
+	lastupdate = 0
 	topic = ""
 
 
+	# \todo get last update from node
 	def __init__(self, httpagent, account, name, single=True):
 		self.account = account
+		self.agent = httpagent
 		#name = name.encode("ascii")
 		if len(name) > 32 or len(name) == 0:
 			raise ValueError("invalid name length 0 < n <= 32")
@@ -27,21 +43,39 @@ class Feed:
 				self.topic += feedRootTopic[i]
 
 
+
+	# \todo implement
+	def get_epoch(self):
+		return 1
+
+
 	# data is raw bytes
+	# \todo and epoch calculate
 	def update(self, data):
-		d = self.digest(self.topic, self.account.address, data)
+		epoch = self.get_epoch()
+		tim = now_int()
+		d = compile_digest(self.topic, self.account.address, data, tim, epoch)
 		s = sign_digest(self.account.pk, d)
 		q = {
 			'user': "0x" + self.account.address.encode("hex"),
 			'topic': "0x" + self.topic.encode("hex"),
-			'signature': s,
-			'level': "25",
-			'time': 0,
+			'signature': "0x" + s.encode("hex"),
+			'level': str(epoch),
+			'time': str(tim),
 		}
 		querystring = urlencode(q)
-		sendpath = "/bzz-resource:/"
-		r = self.agent.send(sendpath, data, querystring)
+		sendpath = "/bzz-feed:/"
+		r = ""
+		try:
+			r = self.agent.send(sendpath, data, querystring)
+		except Exception as e:
+			raise e	
+	
+		self.lastupdate = tim
+		self.epoch = epoch
 
+		return r	
+			
 
 
 def sign_digest(pk, digest):
@@ -53,7 +87,7 @@ def sign_digest(pk, digest):
 
 
 # input here is raw bytes not hex
-def digest(topic, user, inputdata, tim=0, epoch=25):
+def compile_digest(topic, user, inputdata, tim, epoch=1):
 
 	# protocolversion + padding 7 bytes
 	data = "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -66,10 +100,6 @@ def digest(topic, user, inputdata, tim=0, epoch=25):
 
 	# time now little endian
 	# time is 7 bytes, actually
-	if tim == 0:
-		# wtf python, getting int time...? how?
-		tim = 15744905717
-
 	data += struct.pack("<L", tim)
 	data += "\x00\x00\x00"
 
