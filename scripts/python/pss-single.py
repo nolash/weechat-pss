@@ -23,11 +23,21 @@ psses = {}
 # hook for ws read fd
 hookFds = {}
 
+# hook for swarm gateway socket
+hookSocks = []
+
+# bzz gateway agents
+bzzs = []
+
+# active swarm feeds
+feeds = {}
+
 # buffers
 bufs = {}
 
 # nick to PssContact mappings in memory
 nicks = {}
+remotekeys = {}
 
 # path to scripts
 scriptPath = ""
@@ -158,18 +168,31 @@ def buf_get(pssName, typ, name, known):
 
 	if buf == "":
 		shortname = ""
+		ispubkey = False
 		if known:
 			shortname = "pss:" + name
 		else:
 			shortname = "pss:" + name[:8]
+			ispubkey = True
 
 		buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
 		weechat.buffer_set(buf, "short_name", shortname)
 		weechat.buffer_set(buf, "title", name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(psses[pssName].key) + " | address " + pss.label(psses[pssName].base))
 		weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 		plugin = weechat.buffer_get_pointer(buf, "plugin")
-		name = weechat.plugin_get_name(plugin)
 		bufs[bufname] = buf
+
+		if psses[pssName].have_account() and len(bzzs) > 0:
+			pubkey = ""
+			if ispubkey:
+				pubkey = name.decode("hex")
+			else:
+				pubkey = remotekeys[name].decode("hex")
+			try:
+				feeds[name] = pss.Feed(bzzs[len(bzzs)-1], psses[pssName].get_account(), "d" + pss.publickey_to_account(pubkey))
+				wOut(PSS_BUFPFX_DEBUG, [], "", "added feed with topic " + feeds[name].topic.encode("hex"))
+			except ValueError as e:
+				wOut(PSS_BUFPFX_ERROR, [], "???", "could not set up feed: " + str(e))
 
 	return buf
 
@@ -194,7 +217,7 @@ def buf_in(pssName, buf, inputdata):
 	if psses[pssName].send(name, inputdata):
 		wOut(PSS_BUFPFX_OUT, [buf], "you", inputdata)
 	else:
-		wOut(PSS_BUFPFX_ERROR, [buf[pssName]], "!!!", "send fail: " + psses[pssName].error()['description'])
+		wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "send fail: " + psses[pssName].error()['description'])
 
 	return weechat.WEECHAT_RC_OK
 
@@ -235,9 +258,26 @@ def buf_get_context(buf):
 
 	return r
 
+
+
 # handle slash command inputs
 def pss_handle(data, buf, args):
 	return buf_node_in(data, buf, args)
+
+
+
+# \todo remove unsuccessful hooks
+def sock_connect(data, status, tlsrc, sock, error, ip):
+	if status != weechat.WEECHAT_HOOK_CONNECT_OK:
+		wOut(PSS_BUFPFX_ERROR, [], "???", "swarm gateway connect failed (" + str(status) + "): " + error )
+		return weechat.WEECHAT_RC_ERROR
+
+	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected")
+	agent = pss.Agent(ip, 8500, sock)
+	bzzs.append(agent)
+
+	return weechat.WEECHAT_RC_OK
+
 
 
 # handle node inputs	
@@ -262,8 +302,8 @@ def buf_node_in(pssName, buf, args):
 	# the connect command is the same for any context
 	if argv[0] == "connect":
 
-		host = ""
-		port = ""
+		host = "127.0.0.1"
+		port = "8546"
 		pssName = "" 
 	
 		if argc < 2:
@@ -291,7 +331,7 @@ def buf_node_in(pssName, buf, args):
 	
 			wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + target + " already exists")
 		else:
-			psses[pssName] = pss.Pss(pssName)
+			psses[pssName] = pss.Pss(pssName, host, port)
 			wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + pssName)
 
 
@@ -313,7 +353,7 @@ def buf_node_in(pssName, buf, args):
 		# we can proceed with connection in the pss instance
 		wOut(PSS_BUFPFX_WARN, [bufs[pssName]], "0-> 0", "connecting to '" + pssName + "'")
 		if not psses[pssName].connect():
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "0-x 0", "connect to '" + pssName + "' failed: " + psses[targetbode].error()['description'])
+			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "0-x 0", "connect to '" + pssName + "' failed: " + psses[targetnode].error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 		wOut(PSS_BUFPFX_OK, [bufs[pssName]], "0---0", "connected to '" + pssName + "'")
 
@@ -331,6 +371,10 @@ def buf_node_in(pssName, buf, args):
 
 		# start processing inputs on the websocket
 		hookFds[pssName] = weechat.hook_fd(psses[pssName].get_fd(), 1, 0, 0, "msgPipeRead", pssName)
+
+		# \todo temporary solution, swarm gateway should be set explicitly or at least we need to be able to choose port
+		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "sock_connect", ""))
+		
 		return weechat.WEECHAT_RC_OK
 
 	# get the context we're getting the command in
@@ -356,6 +400,38 @@ def buf_node_in(pssName, buf, args):
 		wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown pss connection '" + pssName + "'")
 		return weechat.WEECHAT_RC_ERROR
 	currentPss = psses[pssName]
+
+
+
+	# set configuation values
+	if argv[0] == "set":
+		if argc < 3:
+			wOut(PSS_BUFPFX_ERROR, [], "!!!", "insufficient number of arguments <TODO help output")
+			return weechat.WEECHAT_RC_ERROR
+
+		k = argv[1]
+		v = argv[2]
+
+		# for now we handle privkeys directly
+		# we will read keystore jsons in near future instead, though
+		if k == "pk":
+			try:
+				privkey = pss.clean_privkey(v)
+			except:
+				wOut(PSS_BUFPFX_ERROR, [], "!!!", "invalid key format")
+				return weechat.WEECHAT_RC_ERROR
+			try:
+				currentPss.set_account(privkey.decode("hex"))
+			except ValueError as e:
+				wOut(PSS_BUFPFX_ERROR, [], "!!!", str(e))
+				return weechat.WEECHAT_RC_ERROR
+
+		else:
+			wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown config key")
+			return weechat.WEECHAT_RC_ERROR
+					
+		weechat.WEECHAT_RC_OK	
+	
 
 
 	# add a recipient to the address books of plugin and node
@@ -385,7 +461,9 @@ def buf_node_in(pssName, buf, args):
 			return weechat.WEECHAT_RC_ERROR
 
 		# refresh the plugin memory map version of the recipient
+		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added key " + key + " to nick " + nick)
 		nicks[key] = currentPss.get_contact(nick)
+		remotekeys[nick] = key[2:]
 
 		# append recipient to file for reinstating across sessions
 		storeFile.write(nick + "\t" + key + "\t" + addr + "\t" + currentPss.key + "\n")

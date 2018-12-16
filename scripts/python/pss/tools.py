@@ -5,6 +5,19 @@ regexValidNick = re.compile("^[\w\d_]$")
 
 
 
+# check validity of private key
+# length and valid hex check
+# \todo add unit test 
+def clean_privkey(key):
+	keyhex = clean_hex(key)
+
+	if len(keyhex) != 64:
+		raise ValueError("wrong privkey size")
+
+	return keyhex
+
+
+
 # check validity of address 
 # length and valid hex check
 # \todo add unit test 

@@ -1,4 +1,6 @@
 import websocket
+import secp256k1
+from Crypto.Hash import keccak
 
 from tools import clean_address, clean_pubkey
 from error import *
@@ -7,6 +9,28 @@ from contact import PssContact
 
 # topic we will be using for this messenger service
 topic = "0xdeadbee2"
+
+
+
+# holds ethereum account
+# \todo move out of pss to enable sync comms even though crypto modules doesn't exist
+class Eth:
+	pk = None
+	publickeybytes = "" 
+	address = None
+
+
+	def __init__(self, keybytes):
+		self.pk = secp256k1.PrivateKey(keybytes)
+		self.publickeybytes = self.pk.pubkey.serialize(False)[1:]
+		self.address = publickey_to_account(self.publickeybytes)
+
+
+def publickey_to_account(keybytes):
+	h = keccak.new(digest_bits=256)
+	h.update(keybytes)
+	return h.digest()[12:]
+	
 
 # object encapsulating pss node connection
 # \todo move to separate package
@@ -18,6 +42,7 @@ class Pss:
 	inputConnected = False
 	base = ""
 	key = ""
+	eth = None
 	err = 0
 	errstr = ""
 	contacts = {}
@@ -36,7 +61,28 @@ class Pss:
 			self.host = host
 		if port != "":
 			self.port = port
+
+
 	
+	def have_account(self):
+		return self.eth != None
+
+
+
+	def set_account(self, privkeybytes):
+		eth = Eth(privkeybytes)
+		# node pubkey is prefixed with 04
+		# \todo verify that the number can't be other than 4
+		if  eth.publickeybytes.encode("hex") != self.key[2:]:
+			raise ValueError("private key does not match pss node public key " + self.key + " " + eth.publickeybytes.encode("hex"))
+			return
+
+		self.eth = eth
+	
+
+
+	def get_account(self):
+		return self.eth
 
 
 	# get underlying file descriptor of websocket
