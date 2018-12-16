@@ -329,7 +329,7 @@ def buf_node_in(pssName, buf, args):
 			if port == "":
 				port = weechat.config_get_plugin(pssName + "_port", port)
 	
-			wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + target + " already exists")
+			wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + pssName + " already exists")
 		else:
 			psses[pssName] = pss.Pss(pssName, host, port)
 			wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + pssName)
@@ -353,7 +353,7 @@ def buf_node_in(pssName, buf, args):
 		# we can proceed with connection in the pss instance
 		wOut(PSS_BUFPFX_WARN, [bufs[pssName]], "0-> 0", "connecting to '" + pssName + "'")
 		if not psses[pssName].connect():
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "0-x 0", "connect to '" + pssName + "' failed: " + psses[targetnode].error()['description'])
+			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "0-x 0", "connect to '" + pssName + "' failed: " + psses[pssName].error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 		wOut(PSS_BUFPFX_OK, [bufs[pssName]], "0---0", "connected to '" + pssName + "'")
 
