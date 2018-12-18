@@ -18,6 +18,19 @@ class Bzz():
 
 	def add(self, data):
 		return self.agent.send("/bzz-raw:/", data)
+
+
+
+class FeedUpdate:
+	name = ""
+	data = ""
+	typ = ""
+
+	def __init__(self, typ, name, data):
+		self.typ = typ
+		self.name = name
+		self.data = data	
+
 	
 
 class Feed():
@@ -65,11 +78,7 @@ class Feed():
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
-		r = ""
-		try:
-			r = self.agent.send(sendpath, data, querystring)
-		except Exception as e:
-			raise e	
+		r = self.agent.send(sendpath, data, querystring)
 	
 		self.lastupdate = tim
 		self.epoch = epoch

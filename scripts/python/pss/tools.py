@@ -109,3 +109,40 @@ def label(hx, l=8):
 # \todo implement
 def now_int():
 	return int(time.time())
+
+
+
+class Queue:
+	store = []
+	capacity = 0
+	rcrsr = 0
+	wcrsr = 0
+
+	
+	def __init__(self, capacity):
+		self.capacity = capacity
+		self.store = [None for x in range(capacity)]
+
+
+	def add(self, o):
+		nxt = self.next_index(self.wcrsr)
+		if nxt == self.rcrsr:
+			raise RuntimeError("full")
+		self.store[self.wcrsr] = o
+		self.wcrsr = nxt
+
+
+	def get(self):
+		if self.wcrsr == self.rcrsr:
+			return None
+		o = self.store[self.rcrsr]
+		self.rcrsr = self.next_index(self.rcrsr)
+		return o
+		
+
+	def next_index(self, c):
+		nxt = c + 1
+		nxt %= self.capacity
+		return nxt
+
+

@@ -25,11 +25,20 @@ hookFds = {}
 # hook for swarm gateway socket
 hookSocks = []
 
+# hook for feed queue processing timers
+hookTimers = []
+
 # bzz gateway agents
 bzzs = {}
 
 # active swarm feeds
 feeds = {}
+
+# feed outbox
+# 32 is a reasonable buffer as we're talking about human input frequency
+# and flush every second
+feedBox = pss.Queue(10)
+feedBoxPeriod = 1000
 
 # buffers
 bufs = {}
@@ -56,6 +65,8 @@ stream = pss.Stream()
 # all weechat scripts must run this as first function
 weechat.register("pss", "lash", PSS_VERSION, "GPLv3", "single-node pss chat", "pss_stop", "")
 
+
+# writes to weechat console
 # levels:
 # 1 = info
 # 2 = in
@@ -91,6 +102,24 @@ def wOut(level, oBufs, prefix, content):
 	for b in oBufs:
 		weechat.prnt(b, pfxString + "\t" + content)
 
+
+def processFeedBox(pssName, _):
+	while 1:
+		update = feedBox.get()
+		if update == None:
+			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "no feed updates for " + pssName)
+			break
+
+		try:
+			hsh = bzzs[pssName].add(update.data)
+			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "bzz sent for " + pssName + "." + update.name + ": " + hsh)
+			r = feeds[update.name].update(hsh)
+			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "feed sent for " + pssName + "." + update.name + ": " + r)
+		except IOError as e:
+			wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "add feed for " + pssName + "." + update.name + " fail: " + psses[pssName].error()['description'])
+			return weechat.WEECHAT_RC_ERROR
+
+	return weechat.WEECHAT_RC_OK
 
 
 # perform a single read from pipe
@@ -222,13 +251,10 @@ def buf_in(pssName, buf, inputdata):
 	# \todo add buffering of sub-second updates (and a timer hook to send them, this solves async too)
 	if name in feeds:
 		try:
-			hsh = bzzs[pssName].add(inputdata)
-			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "bzz sent: " + hsh)
-			r = feeds[name].update(hsh)
-			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "feed sent: " + r)
-		except IOError as e:
-			wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "add feed fail: " + psses[pssName].error()['description'])
-
+			feedBox.add(pss.FeedUpdate(typ, name, inputdata))
+		except RuntimeError as e:
+			wOut(PSS_BUFPFX_ERROR, [], "!!!", "feed add to buffer fail: " + str(e))
+			
 	return weechat.WEECHAT_RC_OK
 
 
@@ -384,6 +410,7 @@ def buf_node_in(pssName, buf, args):
 
 		# \todo temporary solution, swarm gateway should be set explicitly or at least we need to be able to choose port
 		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "sock_connect", pssName))
+		hookTimers.append(weechat.hook_timer(feedBoxPeriod, 0, 0, "processFeedBox", pssName))
 		
 		return weechat.WEECHAT_RC_OK
 
@@ -425,6 +452,7 @@ def buf_node_in(pssName, buf, args):
 		# for now we handle privkeys directly
 		# we will read keystore jsons in near future instead, though
 		if k == "pk":
+			wOut(PSS_BUFPFX_DEBUG, [], "!!!", "fooo")
 			try:
 				privkey = pss.clean_privkey(v)
 			except:
@@ -487,7 +515,7 @@ def buf_node_in(pssName, buf, args):
 	# send a message to a recipient
 	elif argv[0] == "send" or argv[0] == "msg":
 
-		if len(argv) < 3:
+		if argc < 3:
 			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "not enough arguments for send")
 			return weechat.WEECHAT_RC_ERROR
 
