@@ -25,11 +25,13 @@ class FeedUpdate:
 	name = ""
 	data = ""
 	typ = ""
+	nod = ""
 
-	def __init__(self, typ, name, data):
+	def __init__(self, nod, typ, name, data):
 		self.typ = typ
 		self.name = name
-		self.data = data	
+		self.data = data
+		self.nod = nod
 
 	
 

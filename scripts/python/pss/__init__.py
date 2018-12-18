@@ -6,3 +6,4 @@ from error import *
 from message import *
 from bzz import *
 from agent import *
+from room import *

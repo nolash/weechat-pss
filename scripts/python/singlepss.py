@@ -40,6 +40,9 @@ feeds = {}
 feedBox = pss.Queue(10)
 feedBoxPeriod = 1000
 
+# active multiuser chat rooms
+rooms = {}
+
 # buffers
 bufs = {}
 
@@ -113,7 +116,8 @@ def processFeedBox(pssName, _):
 		try:
 			hsh = bzzs[pssName].add(update.data)
 			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "bzz sent for " + pssName + "." + update.name + ": " + hsh)
-			r = feeds[update.name].update(hsh)
+			feedKey = generate_bufname(update.nod, update.typ, update.name)
+			r = feeds[feedKey].update(hsh)
 			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "feed sent for " + pssName + "." + update.name + ": " + r)
 		except IOError as e:
 			wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "add feed for " + pssName + "." + update.name + " fail: " + psses[pssName].error()['description'])
@@ -186,41 +190,73 @@ def msgPipeRead(pssName, fd):
 # creates if it doesn't exists
 def buf_get(pssName, typ, name, known):
 
+	haveBzz = False
 	# \todo integrity check of input data
-	bufname = "pss." + pssName + "." + typ + "." + name
+	bufname = generate_bufname(pssName, typ, name)
 
 	try:
 		buf = weechat.buffer_search("python", bufname)
+	# \todo re-evaluate why exception can occur here, and which one specifically
 	except Exception as e:
 		return ""
 
+	if pssName in bzzs:
+		haveBzz == True
+	elif typ == "room":
+		raise RuntimeException("gateway needed for multiuser chats over swarm")
+	
 	if buf == "":
+
 		shortname = ""
-		ispubkey = False
-		if known:
-			shortname = "pss:" + name
-		else:
-			shortname = "pss:" + name[:8]
-			ispubkey = True
 
-		buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
-		weechat.buffer_set(buf, "short_name", shortname)
-		weechat.buffer_set(buf, "title", name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(psses[pssName].key) + " | address " + pss.label(psses[pssName].base))
-		weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
-		plugin = weechat.buffer_get_pointer(buf, "plugin")
-		bufs[bufname] = buf
-
-		if psses[pssName].have_account() and pssName in bzzs:
-			pubkey = ""
-			if ispubkey:
-				pubkey = name.decode("hex")
+		# chat is DM between two parties
+		if typ == "chat":
+			ispubkey = False
+			if known:
+				shortname = "pss:" + name
 			else:
-				pubkey = remotekeys[name].decode("hex")
-			try:
-				feeds[name] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_account(pubkey))
-				wOut(PSS_BUFPFX_DEBUG, [], "", "added feed with topic " + feeds[name].topic.encode("hex"))
-			except ValueError as e:
-				wOut(PSS_BUFPFX_ERROR, [], "???", "could not set up feed: " + str(e))
+				shortname = "pss:" + name[:8]
+				ispubkey = True
+
+			buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
+			weechat.buffer_set(buf, "short_name", shortname)
+			weechat.buffer_set(buf, "title", name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(psses[pssName].key) + " | address " + pss.label(psses[pssName].base))
+			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
+			plugin = weechat.buffer_get_pointer(buf, "plugin")
+			bufs[bufname] = buf
+
+			if psses[pssName].have_account() and haveBzz:
+				pubkey = ""
+				if ispubkey:
+					pubkey = name.decode("hex")
+				else:
+					pubkey = remotekeys[name].decode("hex")
+				try:
+					feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_account(pubkey))
+					wOut(PSS_BUFPFX_DEBUG, [], "", "added feed with topic " + feeds[bufname].topic.encode("hex"))
+				except ValueError as e:
+					wOut(PSS_BUFPFX_ERROR, [], "???", "could not set up feed: " + str(e))
+
+		# room is multiuser conversation
+		elif typ == "room":
+	
+			shortname = "pss#" + name
+
+			buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
+			weechat.buffer_set(buf, "short_name", shortname)
+			weechat.buffer_set(buf, "title", "#" + name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(psses[pssName].key) + " | address " + pss.label(psses[pssName].base))
+			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
+			weechat.buffer_set(buf, "nicklist", "1")
+			weechat.nicklist_add_group(buf, "", "me", "weechat.color.nicklist_group", 1)
+			weechat.nicklist_add_nick(buf, "me", psses[pssName].name, "bar_fg", "", "bar_fg", 1)
+	
+			plugin = weechat.buffer_get_pointer(buf, "plugin")
+			bufs[bufname] = buf
+			
+			rooms[name] = pss.Room(name)
+	
+		else:
+			raise RuntimeError("invalid buffer type")
 
 	return buf
 
@@ -233,6 +269,7 @@ def buf_in(pssName, buf, inputdata):
 	global psses
 
 	bufname = weechat.buffer_get_string(buf, "name")
+	wOut(PSS_BUFPFX_DEBUG, [], "<<<" , "input in " + bufname)
 	pssName, typ, name = bufname[4:].split(".")
 
 	# check if the recipient is registered
@@ -251,12 +288,15 @@ def buf_in(pssName, buf, inputdata):
 	# \todo add buffering of sub-second updates (and a timer hook to send them, this solves async too)
 	if name in feeds:
 		try:
-			feedBox.add(pss.FeedUpdate(typ, name, inputdata))
+			feedBox.add(pss.FeedUpdate(pssName, typ, name, inputdata))
 		except RuntimeError as e:
 			wOut(PSS_BUFPFX_ERROR, [], "!!!", "feed add to buffer fail: " + str(e))
 			
 	return weechat.WEECHAT_RC_OK
 
+
+def generate_bufname(pssName, typ, name):
+	return "pss." + pssName + "." + typ + "." + name
 
 
 # when buffer is closed, node should also close down
@@ -515,12 +555,16 @@ def buf_node_in(pssName, buf, args):
 	# send a message to a recipient
 	elif argv[0] == "send" or argv[0] == "msg":
 
-		if argc < 3:
+		nick = ""
+		msg = ""
+
+		if argc < 2:
 			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "not enough arguments for send")
 			return weechat.WEECHAT_RC_ERROR
 
 		nick = argv[1]
-		msg = " ".join(argv[2:])
+		if argc > 2:
+			msg = " ".join(argv[2:])
 	
 		# \todo handle hex address only	
 		if not currentPss.have_nick(nick):
@@ -531,11 +575,24 @@ def buf_node_in(pssName, buf, args):
 		# \todo remove the bufs dict, since we can use weechat method for getting it
 		bufs[weechat.buffer_get_string(buf, "name")] = buf
 
-		if not pss.is_message(msg):
-			wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "invalid message " + msg)
+		# if no message body we've just opened the chat window
+		if msg != "":
+			if not pss.is_message(msg):
+				wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "invalid message " + msg)
+				return weechat.WEECHAT_RC_ERROR
+			return buf_in(pssName, buf, msg)
+
+
+	# create/join existing chat room
+	elif argv[0] == "join":
+		if argc < 2:
+			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "not enough arguments for join")
 			return weechat.WEECHAT_RC_ERROR
 
-		return buf_in(pssName, buf, msg)
+		room = argv[1]
+	
+		buf = buf_get(pssName, "room", room, True)
+
 
 	# output node key
 	elif argv[0] == "key" or argv[0] == "pubkey":
@@ -585,12 +642,13 @@ def pss_check_option(name, value):
 
 
 # signal handler for load
+
 # catches the script path used to locate other required resources
 def pss_sighandler_load(data, sig, sigdata):
 	global scriptPath, storeFile, nicks
 
 	# ignore if not our load signal
-	if not os.path.basename(sigdata) == "pss-single.py":
+	if not os.path.basename(sigdata) == "singlepss.py":
 		return weechat.WEECHAT_RC_OK	
 
 	# parse dir and check if websocket comms script is there
@@ -629,13 +687,15 @@ def pss_sighandler_load(data, sig, sigdata):
 		f.close()
 	except IOError as e:
 		wOut(PSS_BUFPFX_WARN, [], "!!!", "could not open contact store " + scriptPath + "/.pss-contacts: " + repr(e))
+			
 	
-	# open file for append (and create if not exist)
-	# \todo postfix db name with username
-	storeFile = open(scriptPath + "/.pss-contacts", "a", 0600)
-
 	# debug output confirming receive signal
 	wOut(PSS_BUFPFX_DEBUG, [], "", "(" + repr(sig) + ") using scriptpath " + scriptPath)
+
+	# open file for append (and create if not exist)
+	# \todo postfix db name with username
+	# \todo catch no write access
+	storeFile = open(scriptPath + "/.pss-contacts", "a", 0600)
 
 	# signal is not needed anymore now, unhook and stop it from propagating
 	weechat.unhook(loadSigHook)
