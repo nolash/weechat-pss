@@ -9,7 +9,7 @@ However there is **lots** to be explored before that. And for this exploration w
 
 ## Version
 
-0.2.2 alpha
+0.2.3 alpha
 
 
 ## Development
@@ -177,6 +177,9 @@ GPLv3
 
 ## Changelog
 
+* v0.2.3:
+    - Add /pss join command
+    - Add multiuser chat buffer
 * v0.2.2:
     - Feed updates now put in fifo buffer upon entry
     - Feed/swarm submission executed in separate timer loop
