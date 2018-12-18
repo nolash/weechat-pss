@@ -9,7 +9,7 @@ However there is **lots** to be explored before that. And for this exploration w
 
 ## Version
 
-0.2.1 alpha
+0.2.2 alpha
 
 
 ## Development
@@ -165,6 +165,8 @@ If you're connecting to a node that's not on your local host but still want to k
 
 You can now reach that remote socket securely through your localhost 8546
 
+And! Swarm/feed updates are stored _unencrypted_ for now.
+
 ## License
 
 GPLv3
@@ -175,6 +177,9 @@ GPLv3
 
 ## Changelog
 
+* v0.2.2:
+    - Feed updates now put in fifo buffer upon entry
+    - Feed/swarm submission executed in separate timer loop
 * v0.2.1:
     - Add (synchronous) swarm storage of messages and update of swarm feed
 * v0.2.0:
