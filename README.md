@@ -61,9 +61,9 @@ The issue should contain the following:
 
 * Install [weechat](https://weechat.org) if you don't have it already.
 * Change directory to `scripts/python` in this source tree.
-* Copy the file `pss-single.py` and the `pss` directory along with its contents to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
+* Copy the file `singlepss.py` and the `pss` directory along with its contents to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
 * Start weechat
-* Load the script with `/script load pss-single.py`
+* Load the script with `/script load singlepss.py`
 
 This adds a command `/pss` to your weechat instance. You can confirm load with calling the help text with `/help pss`
 
