@@ -810,7 +810,7 @@ def pss_sighandler_load(data, sig, sigdata):
 def pss_sighandler_unload(data, sig, sigdata):
 	global storeFile
 
-	if not os.path.basename(sigdata) == "pss-single.py":
+	if not os.path.basename(sigdata) == "singlepss.py":
 		return weechat.WEECHAT_RC_OK	
 
 	storeFile.close()
