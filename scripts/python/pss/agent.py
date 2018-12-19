@@ -14,7 +14,6 @@ class Agent:
 	host = "localhost"
 	port = "8546"	
 
-
 	
 	def __init__(self, host, port, sock):
 		# common request params
@@ -28,13 +27,40 @@ class Agent:
 		self.basereq.add_header("Accept", "*/*")
 			
 
-
 	def new_request(self):
 		req = urllib2.Request("http://" + self.host + ":" + self.port + "/")
 		req.add_header("Connection", "keep-alive")
 		req.add_header("Content-type", "application/x-www-form-urlencoded")
 		req.add_header("Accept", "*/*")
 		return req
+
+
+	def _write(self, requeststring):
+		print requeststring
+		select.select([], [self.sock], [])
+		os.write(self.sock, requeststring)
+		select.select([self.sock], [], [])
+		r = os.read(self.sock, 1024)
+		m = regexStatusLine.match(r)
+		if m.group(1) != "200":
+			print r
+			raise Exception("HTTP send to swarm failed: " + str(m.group(0)))
+
+		body = ""
+		try:
+			_, body  = r.split("\x0d\x0a\x0d\x0a")
+		except:
+			_, body = r.split("\x0a\x0a")
+		return body
+
+
+	def get(self, path, querystring=""):
+		req = self.new_request()
+		requeststring = req.get_method() + " " + path
+		if querystring != "":
+			requeststring += "?" + querystring
+		requeststring += " HTTP/1.1\nHost: " + req.get_host() + "\n\n"
+		return self._write(requeststring)
 
 
 	def send(self, path, data, querystring=""):
@@ -49,23 +75,5 @@ class Agent:
 		for (k, v) in req.header_items():
 			requeststring += k + ": " + v + "\n"
 		requeststring += "\n" + req.get_data()	
-		print requeststring
-		#self.sock.send(requeststring)
-		select.select([], [self.sock], [])
-		os.write(self.sock, requeststring)
-		#r = self.sock.recv(1024)
-		select.select([self.sock], [], [])
-		r = os.read(self.sock, 1024)
-		m = regexStatusLine.match(r)
-		if m.group(1) != "200":
-			print r
-			raise Exception("HTTP send to swarm failed: " + str(m.group(0)))
-
-		body = ""
-		try:
-			_, body  = r.split("\x0d\x0a\x0d\x0a")
-		except:
-			_, body = r.split("\x0a\x0a")
-
-		return body
+		return self._write(requeststring)
 	

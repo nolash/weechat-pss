@@ -1,4 +1,5 @@
 import struct
+import json
 
 from Crypto.Hash import keccak
 from urllib import urlencode
@@ -19,6 +20,8 @@ class Bzz():
 	def add(self, data):
 		return self.agent.send("/bzz-raw:/", data)
 
+	def get(self, hsh):
+		return self.agent.get("/bzz-raw:/" + hsh + "/")
 
 
 class FeedUpdate:
@@ -39,7 +42,7 @@ class Feed():
 	agent = None
 	account = None
 	tim = 0
-	epoch = 25
+	lastepoch = 25
 	lastupdate = 0
 	topic = ""
 
@@ -48,7 +51,6 @@ class Feed():
 	def __init__(self, httpagent, account, name, single=True):
 		self.account = account
 		self.agent = httpagent
-		#name = name.encode("ascii")
 		if len(name) > 32 or len(name) == 0:
 			raise ValueError("invalid name length 0 < n <= 32")
 		for i in range( len(feedRootTopic)):
@@ -58,25 +60,41 @@ class Feed():
 				self.topic += feedRootTopic[i]
 
 
-
 	# \todo implement
 	def get_epoch(self):
 		return 1
 
 
+	
+	def sync(self):
+		(tim, level) = self.info()
+		self.lastupdate = int(tim)
+		self.lastepoch = int(level)
+
+	def info(self):
+		q = {
+			'user': '0x' + self.account.address.encode("hex"),
+			'topic': '0x' + self.topic.encode("hex"),
+			'meta': '1',
+		}
+		querystring = urlencode(q)
+		sendpath = "/bzz-feed:/"
+		r = json.loads(self.agent.get(sendpath, querystring))
+		return (r['epoch']['time'], r['epoch']['level'])
+			
+
 	# data is raw bytes
-	# \todo and epoch calculate
+	# \todo client side next epoch calc (retrieve from server is WAY too slow)
 	def update(self, data):
-		epoch = self.get_epoch()
-		tim = now_int()
-		d = compile_digest(self.topic, self.account.address, data, tim, epoch)
+		(tim, epoch) = self.info()
+		d = compile_digest(self.topic, self.account.address, data, int(tim), int(epoch))
 		s = sign_digest(self.account.pk, d)
 		q = {
 			'user': "0x" + self.account.address.encode("hex"),
 			'topic': "0x" + self.topic.encode("hex"),
 			'signature': "0x" + s.encode("hex"),
-			'level': str(epoch),
-			'time': str(tim),
+			'level': epoch,
+			'time': tim,
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
@@ -85,7 +103,17 @@ class Feed():
 		self.lastupdate = tim
 		self.epoch = epoch
 
-		return r	
+		return r
+
+
+	def head(self):
+		q = {
+			'user': '0x' + self.account.address.encode("hex"),
+			'topic': '0x' + self.topic.encode("hex"),
+		}
+		querystring = urlencode(q)
+		sendpath = "/bzz-feed:/"
+		return self.agent.get(sendpath, querystring)
 			
 
 
