@@ -9,8 +9,12 @@ from tools import now_int
 
 signPrefix = "\x19Ethereum Signed Message:\x0a\x20" # for 32 byte hashes
 feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06\x02\x02awesomepsschats\x00\x01"
+zerohsh = ""
+for i in range(32):
+	zerohsh += "00"
 
 
+# \todo pass agent to all methods instead of storing
 class Bzz():
 	agent = None
 
@@ -22,6 +26,7 @@ class Bzz():
 
 	def get(self, hsh):
 		return self.agent.get("/bzz-raw:/" + hsh + "/")
+
 
 
 class FeedUpdate:
@@ -38,6 +43,7 @@ class FeedUpdate:
 
 	
 
+# \todo pass agent to all methods instead of storing
 class Feed():
 	agent = None
 	account = None
@@ -116,6 +122,52 @@ class Feed():
 		return self.agent.get(sendpath, querystring)
 			
 
+
+class FeedCollection:
+	feeds = {}
+
+
+	def add(self, name, feed):
+		if name in self.feeds[name]:
+			raise Exception("feed already exists")
+		feeds = {
+			obj: feed,
+			headhash: "",
+			lasthash: zerohsh,
+			lasttime: 0,	
+		}
+
+
+	def remove(self, name):
+		del self.feeds[name]
+
+	# \todo buffer results while keeping state of incomplete retrieve across calls
+	def sync(self, bzz):
+	
+		feedmsgs = {}
+
+		for feed in self.feeds:
+
+			msgs = {}
+
+			if feed.obj.headhash == "":
+				feed.obj.headhash = feed.obj.head()
+
+			while feed.obj.headhash != feed.obj.lasthsh:
+				r = feed.obj.agent.bzz.get(feed.obj.headhash)
+				if r = "":
+					# \todo what to do when the trail goes cold
+					break
+				feed.obj.headhash = r[:64]
+				serial = r[64:69] # 4 bytes time + 1 byte serial
+				content = r[69:]	
+				msgs[serial] = Message(serial, user, content)
+				 	
+				
+			feedmsgs[feed.obj.account.address] = msgs[serial]
+			feed.obj.headhash = ""
+
+		return feedmsgs
 
 def sign_digest(pk, digest):
 	sig = pk.ecdsa_sign_recoverable(digest, raw=True)
