@@ -5,6 +5,7 @@ from Crypto.Hash import keccak
 from urllib import urlencode
 
 from tools import now_int
+from message import Message
 
 
 signPrefix = "\x19Ethereum Signed Message:\x0a\x20" # for 32 byte hashes
@@ -53,7 +54,6 @@ class Feed():
 	topic = ""
 
 
-	# \todo get last update from node
 	def __init__(self, httpagent, account, name, single=True):
 		self.account = account
 		self.agent = httpagent
@@ -76,6 +76,7 @@ class Feed():
 		(tim, level) = self.info()
 		self.lastupdate = int(tim)
 		self.lastepoch = int(level)
+
 
 	def info(self):
 		q = {
@@ -128,46 +129,75 @@ class FeedCollection:
 
 
 	def add(self, name, feed):
-		if name in self.feeds[name]:
+		if name in self.feeds:
 			raise Exception("feed already exists")
-		feeds = {
-			obj: feed,
-			headhash: "",
-			lasthash: zerohsh,
-			lasttime: 0,	
+
+		self.feeds[name] = {
+
+			# feed object
+			"obj": feed,
+
+			# head of the current retrieve
+			"headhash": "",
+
+			# head from previous update
+			"lasthash": zerohsh,
+	
+			# timestamp of last processed head
+			"lasttime": 0,	
 		}
 
 
 	def remove(self, name):
 		del self.feeds[name]
 
-	# \todo buffer results while keeping state of incomplete retrieve across calls
-	def sync(self, bzz):
+
+	# \todo make sure this completes or fully abandons retrieves before returning
+	def retrieve(self, bzz):
 	
 		feedmsgs = {}
 
-		for feed in self.feeds:
+		for name, feed in self.feeds.iteritems():
 
 			msgs = {}
 
-			if feed.obj.headhash == "":
-				feed.obj.headhash = feed.obj.head()
+			# headhash will be empty string 
+			# between completed retrieves
+			# we then need to get the new head hash
+			# the feed is currently pointing to
+			if feed['headhash'] == "":
+				try:
+					feed['headhash'] = feed['obj'].head()
+				except:
+					continue
 
-			while feed.obj.headhash != feed.obj.lasthsh:
-				r = feed.obj.agent.bzz.get(feed.obj.headhash)
-				if r = "":
+			curhash = feed['headhash']
+			print "headhash " + feed['headhash']
+
+			if curhash == "":
+				continue
+
+			# we break out of loop when we reach the previous head	
+			while curhash != feed['lasthash']:
+				# \todo probably need bet,er error reporting here
+				r = bzz.get(curhash)
+				if r == "":
 					# \todo what to do when the trail goes cold
 					break
-				feed.obj.headhash = r[:64]
+				curhash = r[:64]
 				serial = r[64:69] # 4 bytes time + 1 byte serial
 				content = r[69:]	
-				msgs[serial] = Message(serial, user, content)
-				 	
-				
-			feedmsgs[feed.obj.account.address] = msgs[serial]
-			feed.obj.headhash = ""
+				msgs[serial] = Message(serial, feed['obj'].account.address, content)
+			
+			# store new messages for feed	 	
+			feedmsgs[feed['obj'].account.address] = msgs
+
+			# set next retrieve to terminate on
+			feed['lasthsh'] = feed['headhash']
+			feed['headhash'] = ""
 
 		return feedmsgs
+
 
 def sign_digest(pk, digest):
 	sig = pk.ecdsa_sign_recoverable(digest, raw=True)

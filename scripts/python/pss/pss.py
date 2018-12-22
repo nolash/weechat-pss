@@ -19,8 +19,13 @@ class Eth:
 	publickeybytes = "" 
 	address = None
 
-
-	def __init__(self, keybytes):
+	# \todo check address
+	def set_address(self, address):
+		self.pk = ""
+		self.publickeybytes = ""
+		self.address = address
+		
+	def set_key(self, keybytes):
 		self.pk = secp256k1.PrivateKey(keybytes)
 		self.publickeybytes = self.pk.pubkey.serialize(False)[1:]
 		self.address = publickey_to_account(self.publickeybytes)
