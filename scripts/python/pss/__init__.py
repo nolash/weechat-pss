@@ -1,4 +1,4 @@
-from pss import Pss, Eth, publickey_to_account
+from pss import Pss, Account, publickey_to_account
 from contact import PssContact
 from content import Stream, rpc_parse
 from tools import *

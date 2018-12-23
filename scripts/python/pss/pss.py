@@ -14,21 +14,26 @@ topic = "0xdeadbee2"
 
 # holds ethereum account
 # \todo move out of pss to enable sync comms even though crypto modules doesn't exist
-class Eth:
+class Account:
 	pk = None
 	publickeybytes = "" 
 	address = None
 
 	# \todo check address
 	def set_address(self, address):
-		self.pk = ""
-		self.publickeybytes = ""
+		self._clear_key()
 		self.address = address
 		
 	def set_key(self, keybytes):
+		self._clear_key()
 		self.pk = secp256k1.PrivateKey(keybytes)
 		self.publickeybytes = self.pk.pubkey.serialize(False)[1:]
 		self.address = publickey_to_account(self.publickeybytes)
+
+	def _clear_key(self):
+		self.pk = None
+		self.publickeybytes = ""
+		self.address = None
 
 
 def publickey_to_account(keybytes):
@@ -75,7 +80,7 @@ class Pss:
 
 
 	def set_account(self, privkeybytes):
-		eth = Eth(privkeybytes)
+		eth = Account(privkeybytes)
 		# node pubkey is prefixed with 04
 		# \todo verify that the number can't be other than 4
 		if  eth.publickeybytes.encode("hex") != self.key[2:]:

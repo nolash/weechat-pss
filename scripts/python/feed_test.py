@@ -45,7 +45,7 @@ class TestFeedRebuild(unittest.TestCase):
 				hx += "{:02x}".format(random.randint(0, 255))
 			print "#" + str(i) + " is using " + hx
 			self.privkeys.append(hx)
-			acc = pss.Eth()
+			acc = pss.Account()
 			acc.set_key(pss.clean_privkey(self.privkeys[i]).decode("hex"))
 			self.accounts.append(acc)
 			sys.stderr.write("added random (seed " + str(seedval) + " key " + self.privkeys[i] + " account " + self.accounts[i].address.encode("hex") + "\n")
@@ -90,7 +90,7 @@ class TestFeedRebuild(unittest.TestCase):
 		for i in range(len(self.feeds)):
 			lasthsh = copy.copy(zerohsh)
 			addr = self.feeds[i].account.address
-			acc = pss.Eth()
+			acc = pss.Account()
 			acc.set_address(addr)
 			outfeeds.append(pss.Feed(self.agent, acc, "one", True))
 			print "set addr " +  str(i) + " " + addr
