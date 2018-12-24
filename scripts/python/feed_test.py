@@ -10,7 +10,7 @@ import struct
 
 privkey = "2ea3f401733d3ecc1e18b305245adc98f3ffc4c6e46bf42f37001fb18b5a70ac"
 pubkey = "b72985aa2104e41c1a2d40340c2b71a8d641bb6ac0f9fd7dc2dbbd48c0eaf172baa41456d252532db97704ea4949e1f42f66fd57de00f8f1f4514a2889f42df6"
-seedval = 42
+seedval = 13
 
 # \todo put in single test setup
 zerohsh = ""
@@ -24,7 +24,6 @@ class TestFeedRebuild(unittest.TestCase):
 	agent = None
 	accounts = []
 	feeds = []
-	seedval = 42
 	privkeys = []
 
 
@@ -52,7 +51,6 @@ class TestFeedRebuild(unittest.TestCase):
 
 		seedval += 1
 
-	@unittest.skip("yes")	
 	def test_single_feed(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
 		self.feeds[0].sync()
@@ -86,6 +84,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
 
 		tim = pss.now_int()
+		timebytes = struct.pack(">I", tim)
 		outfeeds = []
 		for i in range(len(self.feeds)):
 			lasthsh = copy.copy(zerohsh)
@@ -95,7 +94,7 @@ class TestFeedRebuild(unittest.TestCase):
 			outfeeds.append(pss.Feed(self.agent, acc, "one", True))
 			print "set addr " +  str(i) + " " + addr
 			for j in range(3):
-				lasthsh = self.bzz.add(lasthsh + struct.pack(">I", tim) + chr(j) + hex((i*3)+j))
+				lasthsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
 				self.feeds[i].update(lasthsh)
 	
 		coll = pss.FeedCollection()
@@ -103,12 +102,15 @@ class TestFeedRebuild(unittest.TestCase):
 		coll.add("bar", outfeeds[1])
 		msgs = coll.retrieve(self.bzz)
 
+		i = 0
 		for k, v in msgs.iteritems():
-			print "msgs for " + k.encode("hex")
-			i = 0
-			for m in v:
-				print "#" + str(i) + " " + v[m].timestamp.encode("hex") + ": " + v[m].content
-				i += 1
+			self.assertEqual(v[timebytes + "\x00"].content, "0x" + str(i*3))
+			self.assertEqual(v[timebytes + "\x00"].user, k)
+			self.assertEqual(v[timebytes + "\x01"].content, "0x" + str((i*3)+1))
+			self.assertEqual(v[timebytes + "\x01"].user, k)
+			self.assertEqual(v[timebytes + "\x02"].content, "0x" + str((i*3)+2))
+			self.assertEqual(v[timebytes + "\x02"].user, k)	
+			i += 1
 
 	def tearDown(self):
 		sys.stderr.write("teardown\n")

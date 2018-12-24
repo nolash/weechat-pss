@@ -154,11 +154,13 @@ class FeedCollection:
 
 	# \todo make sure this completes or fully abandons retrieves before returning
 	def retrieve(self, bzz):
-	
+
+		# hash map eth address => hash map serial to Message 
 		feedmsgs = {}
 
 		for name, feed in self.feeds.iteritems():
 
+			# hash map serial (timestamp+seq) => Message
 			msgs = {}
 
 			# headhash will be empty string 
