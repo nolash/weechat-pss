@@ -16,6 +16,15 @@ for i in range(32):
 	zerohsh += "00"
 
 
+class BzzRetrieveError(Exception):
+	hsh = ""
+
+	def __init__(self, hsh, reason):
+		super(BzzRetrieveError, self).__init__(reason)
+		self.hsh = hsh
+		
+	pass
+
 # \todo pass agent to all methods instead of storing
 class Bzz():
 	agent = None
@@ -173,17 +182,18 @@ class FeedCollection:
 				except:
 					continue
 
-			curhash = feed['headhsh']
 			sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
 
-			if curhash == "":
+			if feed['headhsh'] == "":
 				continue
 				
 			# store new messages for feed
 			try:
-				feedmsgs[feed['obj'].account.address] = self._retrieve(bzz, feed['obj'].account.address, curhash, feed['lasthsh'])
-			except:
-				feed['orphans'][curhash] = feed['lasthsh'] 
+				feedmsgs[feed['obj'].account.address] = self._retrieve(bzz, feed['obj'].account.address, feed['headhsh'], feed['lasthsh'])
+			except BzzRetrieveError as e:
+				sys.stderr.write("retrieve fail: " + str(e))
+				feed['lasthsh'] = e.hsh
+				feed['orphans'][feed['headhsh']] = feed['lasthsh']
 
 			# set next retrieve to terminate on
 			feed['lasthsh'] = feed['headhsh']
@@ -198,17 +208,21 @@ class FeedCollection:
 		msgs = {}
 
 		# we break out of loop when we reach the previous head	
-		while curhash != targethsh:
+		while curhsh != targethsh:
 			# \todo probably need better error reporting here
-			r = bzz.get(curhash)
+			try:
+				r = bzz.get(curhsh)
+			except Exception as e:
+				sys.stderr.write("request fail: " + str(e) + "\n")
+				raise BzzRetrieveError(curhsh, str(e))
 			if r == "":
-				# \todo what to do when the trail goes cold
-				raise RuntimeError("broken chain")
-			curhash = r[:64]
+				raise BzzRetrieveError(curhsh, "empty HTTP response body")
+			curhsh = r[:64]
 			serial = r[64:69] # 4 bytes time + 1 byte serial
 			content = r[69:]	
 			msgs[serial] = Message(serial, feedaddress, content)
 
+		return curhsh
 
 def sign_digest(pk, digest):
 	sig = pk.ecdsa_sign_recoverable(digest, raw=True)

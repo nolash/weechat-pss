@@ -51,7 +51,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 		seedval += 1
 
-	def test_single_feed(self):
+	def _test_single_feed(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
 		self.feeds[0].sync()
 
@@ -79,10 +79,10 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[:64], zerohsh)
 		self.assertEqual(r[64:], "inky")
 
-	def test_feed_collection_ok(self):
-		for i in range(2):
-			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
 
+	def _test_feed_single_ok(self):
+		for i in range(2):
+				self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
 		tim = pss.now_int()
 		timebytes = struct.pack(">I", tim)
 		outfeeds = []
@@ -96,7 +96,7 @@ class TestFeedRebuild(unittest.TestCase):
 			for j in range(3):
 				lasthsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
 				self.feeds[i].update(lasthsh)
-	
+
 		coll = pss.FeedCollection()
 		coll.add("foo", outfeeds[0])
 		coll.add("bar", outfeeds[1])
@@ -111,6 +111,38 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(v[timebytes + "\x02"].content, "0x" + str((i*3)+2))
 			self.assertEqual(v[timebytes + "\x02"].user, k)	
 			i += 1
+
+
+	def test_feed_collection_single_gap(self):
+		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
+
+		tim = pss.now_int()
+		timebytes = struct.pack(">I", tim)
+		bogushsh = ""
+		for i in range(32):
+			bogushsh += "01"
+		lasthsh = copy.copy(bogushsh)
+
+
+		addr = feed.account.address
+		acc = pss.Account()
+		acc.set_address(addr)
+		outfeed = pss.Feed(self.agent, acc, "one", True)
+		print "set addr " +  str(i) + " " + addr
+		for j in range(3):
+			lasthsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
+			feed.update(lasthsh)
+	
+		coll = pss.FeedCollection()
+		coll.add("foo", outfeed)
+		# \todo this is not theoretically safe on a busy node, as things may change between, but in controlled test should be ok
+		headhsh = feed.head()
+		msgs = coll.gethead(self.bzz)
+		try:
+			self.assertEqual(coll.feeds['foo']['orphans'][headhsh], bogushsh)
+		except Exception as e:
+			self.fail("dict key in test assert fail: " + str(e))
+
 
 	def tearDown(self):
 		sys.stderr.write("teardown\n")
