@@ -9,7 +9,7 @@ class TestCommandUntil(unittest.TestCase):
 		self.assertEqual(argList[1], "command")
 		self.assertEqual(argList[2], "--here")
 	
-	def test_split_command(self):
+	def test_split(self):
 		# test a correct connect
 		argList = ["connect", "lash", "127.0.0.1"]
 		pssName, cmd, params = command.split(argList)
