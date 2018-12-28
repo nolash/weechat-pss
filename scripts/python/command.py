@@ -27,7 +27,9 @@ string_to_cmd = {
 }
 
 # check functions still need proper error handling
-def chk_connect(params):
+def chk_connect(pssName, command, params):
+	if pssName != None:
+		raise CommandException("connect command isn't bound to a pssName")
 	if len(params) > 3:
 		raise CommandException("too many parameters")
 	if len(params) < 1:
@@ -60,7 +62,6 @@ def chk_stop(params):
 	pass
 
 cmd_to_checker = {
-	CONNECT: chk_connect,
 	SET: chk_set,
 	ADD: chk_add,
 	SEND: chk_send,
@@ -75,18 +76,13 @@ cmd_to_checker = {
 # command string can be at position 0 or 1
 # if command is at 1, then 0 has to be the name
 def split(argList):
-	arg_zero = string_to_cmd.get(argList[0])
-	if arg_zero != None:
-		return (None, arg_zero, argList[1:])
-		
-	arg_one = string_to_cmd.get(argList[1])
-	if arg_one != None and arg_one != CONNECT:
-		return (argList[0], arg_one, argList[2:])
+	if string_to_cmd.get(argList[0]) != None:
+		argList.insert(0, None)
 
-	if arg_one == CONNECT:
-		raise CommandException("connect command isn't bound to a pssName")
-
-	raise CommandException("command unknown")
+	if string_to_cmd.get(argList[1]) == None:
+		raise CommandException("command unknown")
+	
+	return (argList[0], string_to_cmd.get(argList[1]), argList[2:])
 
 # parse args removing white spaces
 def argsParse(args):
@@ -99,6 +95,9 @@ def parseCommand(args):
 	argList = argsParse(args)
 	pssName, command, params = split(argList)
 
+	# connect needs an exception
+	if command == CONNECT:
+		chk_connect(pssName, command, params)
 	check = cmd_to_checker.get(command)
 	check(params)
 

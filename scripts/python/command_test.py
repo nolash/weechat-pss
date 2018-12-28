@@ -26,12 +26,6 @@ class TestCommandUntil(unittest.TestCase):
 		self.assertEqual(cmd, command.ADD)
 		self.assertEqual(params, ["lash", "pubkey", "addr"])
 
-		# test a malformed connect
-		argList = ["name", "connect", "john"]
-		with self.assertRaises(command.CommandException) as context:
-			command.split(argList)
-		self.assertTrue("connect command isn't bound to a pssName" in context.exception)
-
 		# test an unknown command
 		argList = ["test", "whatever", "string"]
 		with self.assertRaises(command.CommandException) as context:
