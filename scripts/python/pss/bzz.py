@@ -1,5 +1,6 @@
 import struct
 import json
+import sys
 
 from Crypto.Hash import keccak
 from urllib import urlencode
@@ -138,13 +139,15 @@ class FeedCollection:
 			"obj": feed,
 
 			# head of the current retrieve
-			"headhash": "",
+			"headhsh": "",
 
 			# head from previous update
-			"lasthash": zerohsh,
+			"lasthsh": zerohsh,
 	
 			# timestamp of last processed head
 			"lasttime": 0,	
+
+			"orphans": {}, # orphaned key => target key
 		}
 
 
@@ -153,52 +156,58 @@ class FeedCollection:
 
 
 	# \todo make sure this completes or fully abandons retrieves before returning
-	def retrieve(self, bzz):
+	def gethead(self, bzz):
 
 		# hash map eth address => hash map serial to Message 
 		feedmsgs = {}
 
 		for name, feed in self.feeds.iteritems():
 
-			# hash map serial (timestamp+seq) => Message
-			msgs = {}
-
-			# headhash will be empty string 
+			# headhsh will be empty string 
 			# between completed retrieves
 			# we then need to get the new head hash
 			# the feed is currently pointing to
-			if feed['headhash'] == "":
+			if feed['headhsh'] == "":
 				try:
-					feed['headhash'] = feed['obj'].head()
+					feed['headhsh'] = feed['obj'].head()
 				except:
 					continue
 
-			curhash = feed['headhash']
-			print "headhash " + feed['headhash']
+			curhash = feed['headhsh']
+			sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
 
 			if curhash == "":
 				continue
-
-			# we break out of loop when we reach the previous head	
-			while curhash != feed['lasthash']:
-				# \todo probably need bet,er error reporting here
-				r = bzz.get(curhash)
-				if r == "":
-					# \todo what to do when the trail goes cold
-					break
-				curhash = r[:64]
-				serial = r[64:69] # 4 bytes time + 1 byte serial
-				content = r[69:]	
-				msgs[serial] = Message(serial, feed['obj'].account.address, content)
-			
-			# store new messages for feed	 	
-			feedmsgs[feed['obj'].account.address] = msgs
+				
+			# store new messages for feed
+			try:
+				feedmsgs[feed['obj'].account.address] = self._retrieve(bzz, feed['obj'].account.address, curhash, feed['lasthsh'])
+			except:
+				feed['orphans'][curhash] = feed['lasthsh'] 
 
 			# set next retrieve to terminate on
-			feed['lasthsh'] = feed['headhash']
-			feed['headhash'] = ""
+			feed['lasthsh'] = feed['headhsh']
+			feed['headhsh'] = ""
 
 		return feedmsgs
+
+	
+	def _retrieve(self, bzz, feedaddress, curhsh, targethsh):
+
+		# hash map serial (timestamp+seq) => Message
+		msgs = {}
+
+		# we break out of loop when we reach the previous head	
+		while curhash != targethsh:
+			# \todo probably need better error reporting here
+			r = bzz.get(curhash)
+			if r == "":
+				# \todo what to do when the trail goes cold
+				raise RuntimeError("broken chain")
+			curhash = r[:64]
+			serial = r[64:69] # 4 bytes time + 1 byte serial
+			content = r[69:]	
+			msgs[serial] = Message(serial, feedaddress, content)
 
 
 def sign_digest(pk, digest):

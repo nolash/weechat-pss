@@ -100,7 +100,7 @@ class TestFeedRebuild(unittest.TestCase):
 		coll = pss.FeedCollection()
 		coll.add("foo", outfeeds[0])
 		coll.add("bar", outfeeds[1])
-		msgs = coll.retrieve(self.bzz)
+		msgs = coll.gethead(self.bzz)
 
 		i = 0
 		for k, v in msgs.iteritems():
