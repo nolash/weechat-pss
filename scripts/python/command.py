@@ -1,29 +1,19 @@
-CONNECT = 1
-SET = 2
-ADD = 3
-SEND = 4
-JOIN = 5
-INVITE = 6
-KEY = 7
-ADDR = 8
-STOP = 9
-
 class CommandException(Exception):
     pass
 
-string_to_cmd = {
-	"connect": CONNECT,
-	"set": SET,
-	"add": ADD,
-	"send": SEND,
-	"msg": SEND,
-	"join": JOIN,
-	"invite": INVITE,
-	"key": KEY,
-	"pubkey": KEY,
-	"address": ADDR,
-	"addr": ADDR,
-	"stop": STOP,
+alias_to_cmd = {
+	"connect": "connect",
+	"set": "set",
+	"add": "add",
+	"send": "send",
+	"msg": "send",
+	"join": "join",
+	"invite": "invite",
+	"key": "key",
+	"pubkey": "key",
+	"address": "addr",
+	"addr": "addr",
+	"stop": "stop",
 }
 
 # check functions still need proper error handling
@@ -37,68 +27,54 @@ def chk_connect(pssName, command, params):
 	
 	#TODO add check regex 
 
-def chk_set(params):
+def chk_set(pssName, command, params):
 	pass
 
-def chk_add(params):
+def chk_add(pssName, command, params):
 	pass
 
-def chk_send(params):
+def chk_send(pssName, command, params):
 	pass
 
-def chk_join(params):
+def chk_join(pssName, command, params):
 	pass
 
-def chk_invite(params):
+def chk_invite(pssName, command, params):
 	pass
 
-def chk_key(params):
+def chk_key(pssName, command, params):
 	pass
 
-def chk_addr(params):
+def chk_addr(pssName, command, params):
 	pass
 
-def chk_stop(params):
+def chk_stop(pssName, command, params):
 	pass
-
-cmd_to_checker = {
-	SET: chk_set,
-	ADD: chk_add,
-	SEND: chk_send,
-	JOIN: chk_join,
-	INVITE: chk_invite,
-	KEY: chk_key,
-	ADDR: chk_addr,
-	STOP: chk_stop,
-}
 
 # split and isolate pssname, command, and params
 # command string can be at position 0 or 1
 # if command is at 1, then 0 has to be the name
-def split(argList):
-	if string_to_cmd.get(argList[0]) != None:
+def parseList(argList):
+	if alias_to_cmd.get(argList[0]) != None and alias_to_cmd.get(argList[1]) == None:
 		argList.insert(0, None)
 
-	if string_to_cmd.get(argList[1]) == None:
+	if alias_to_cmd.get(argList[1]) == None:
 		raise CommandException("command unknown")
 	
-	return (argList[0], string_to_cmd.get(argList[1]), argList[2:])
+	return (argList[0], alias_to_cmd.get(argList[1]), argList[2:])
 
 # parse args removing white spaces
-def argsParse(args):
+def argsToList(args):
 	argList = args.split(" ")
 	argList = [x for x in argList if x != ""]
 
 	return argList
 
 def parseCommand(args):
-	argList = argsParse(args)
-	pssName, command, params = split(argList)
+	argList = argsToList(args)
+	pssName, alias, params = parseList(argList)
+	command = alias_to_cmd.get(alias)
 
-	# connect needs an exception
-	if command == CONNECT:
-		chk_connect(pssName, command, params)
-	check = cmd_to_checker.get(command)
-	check(params)
+	globals()["chk_" + command](pssName, command, params)
 
 	return (pssName, command, params)
