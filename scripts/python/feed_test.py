@@ -85,7 +85,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "inky")
 
 
-	def test_feed_single_ok(self):
+	def test_feed_collection_ok(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
 		tim = pss.now_int()
@@ -118,6 +118,39 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(v[timebytes + "\x02"].content, "0x" + str((i*3)+2))
 			self.assertEqual(v[timebytes + "\x02"].user, k)	
 			i += 1
+
+	
+	def test_feed_collection_sort(self):
+		for i in range(2):
+			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
+		tim = pss.now_int()
+		timebytes = struct.pack(">I", tim)
+		outfeeds = []
+		for i in range(len(self.feeds)):
+			lasthsh = copy.copy(zerohsh)
+			addr = self.feeds[i].account.address
+			acc = pss.Account()
+			acc.set_address(addr)
+			outfeeds.append(pss.Feed(self.agent, acc, "one", True))
+			print "set addr " +  str(i) + " " + addr
+			for j in range(3):
+				lasthsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
+				self.feeds[i].update(lasthsh)
+
+		self.coll.add("foo", outfeeds[0])
+		self.coll.add("bar", outfeeds[1])
+		self.coll.gethead(self.bzz)
+		msgs = self.coll.get()
+
+		# \todo more elegance, please
+		if msgs[0].content == "0x0":
+			self.assertEqual(msgs[1].content, "0x3")
+			self.assertEqual(msgs[2].content, "0x1")
+			self.assertEqual(msgs[3].content, "0x4")
+		if msgs[0].content == "0x3":
+			self.assertEqual(msgs[1].content, "0x0")
+			self.assertEqual(msgs[2].content, "0x4")
+			self.assertEqual(msgs[3].content, "0x1")
 
 
 	def test_feed_collection_single_gap(self):
@@ -155,6 +188,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	def tearDown(self):
+		self.feeds = []
 		colls = []
 		for k, v in self.coll.feeds.iteritems():
 			colls.append(k)

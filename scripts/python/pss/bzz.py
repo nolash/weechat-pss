@@ -164,6 +164,29 @@ class FeedCollection:
 		del self.feeds[name]
 
 
+	def get(self, idx=-1):
+
+		msgs = {}
+		msgssorted = []
+
+		if idx == -1:
+			if len(self.retrievals) == 0:
+				return []
+			idx = len(self.retrievals)-1	
+	
+		feedmsgs = self.retrievals.pop(idx)
+
+		# \todo refactor to use keys function in sorted
+		for k in feedmsgs.keys():
+			for s, m in feedmsgs[k].iteritems():
+				msgs[str(s) + k] = m
+
+		for m in sorted(msgs):
+			msgssorted.append(msgs[m])
+
+		return msgssorted
+
+
 	# \todo make sure this completes or fully abandons retrieves before returning
 	def gethead(self, bzz):
 
