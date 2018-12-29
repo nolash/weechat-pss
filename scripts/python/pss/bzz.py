@@ -136,7 +136,7 @@ class Feed():
 
 class FeedCollection:
 	feeds = {}
-
+	retrievals = []
 
 	def add(self, name, feed):
 		if name in self.feeds:
@@ -199,7 +199,8 @@ class FeedCollection:
 			feed['lasthsh'] = feed['headhsh']
 			feed['headhsh'] = ""
 
-		return feedmsgs
+		self.retrievals.append(feedmsgs)
+		return len(self.retrievals)-1
 
 	
 	def _retrieve(self, bzz, feedaddress, curhsh, targethsh):
@@ -209,7 +210,6 @@ class FeedCollection:
 
 		# we break out of loop when we reach the previous head	
 		while curhsh != targethsh:
-			# \todo probably need better error reporting here
 			try:
 				r = bzz.get(curhsh)
 			except Exception as e:
@@ -222,7 +222,7 @@ class FeedCollection:
 			content = r[69:]	
 			msgs[serial] = Message(serial, feedaddress, content)
 
-		return curhsh
+		return msgs
 
 def sign_digest(pk, digest):
 	sig = pk.ecdsa_sign_recoverable(digest, raw=True)

@@ -25,6 +25,7 @@ class TestFeedRebuild(unittest.TestCase):
 	accounts = []
 	feeds = []
 	privkeys = []
+	coll = None
 
 
 	def setUp(self):
@@ -37,6 +38,7 @@ class TestFeedRebuild(unittest.TestCase):
 	
 		random.seed(pss.now_int()+seedval)
 		self.privkeys = []
+
 
 		for i in range(10):
 			hx = ""
@@ -51,7 +53,10 @@ class TestFeedRebuild(unittest.TestCase):
 
 		seedval += 1
 
-	def _test_single_feed(self):
+		self.coll = pss.FeedCollection()
+
+
+	def test_single_feed(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
 		self.feeds[0].sync()
 
@@ -80,9 +85,9 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "inky")
 
 
-	def _test_feed_single_ok(self):
+	def test_feed_single_ok(self):
 		for i in range(2):
-				self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
+			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
 		tim = pss.now_int()
 		timebytes = struct.pack(">I", tim)
 		outfeeds = []
@@ -97,13 +102,15 @@ class TestFeedRebuild(unittest.TestCase):
 				lasthsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
 				self.feeds[i].update(lasthsh)
 
-		coll = pss.FeedCollection()
-		coll.add("foo", outfeeds[0])
-		coll.add("bar", outfeeds[1])
-		msgs = coll.gethead(self.bzz)
+		self.coll.add("foo", outfeeds[0])
+		self.coll.add("bar", outfeeds[1])
+		ridx = self.coll.gethead(self.bzz)
+		msgs = self.coll.retrievals.pop(ridx)
 
 		i = 0
-		for k, v in msgs.iteritems():
+		for n in ["foo", "bar"]:
+			k = self.coll.feeds[n]['obj'].account.address
+			v = msgs[k]
 			self.assertEqual(v[timebytes + "\x00"].content, "0x" + str(i*3))
 			self.assertEqual(v[timebytes + "\x00"].user, k)
 			self.assertEqual(v[timebytes + "\x01"].content, "0x" + str((i*3)+1))
@@ -133,18 +140,26 @@ class TestFeedRebuild(unittest.TestCase):
 			lasthsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
 			feed.update(lasthsh)
 	
-		coll = pss.FeedCollection()
-		coll.add("foo", outfeed)
+		self.coll.add("foo", outfeed)
 		# \todo this is not theoretically safe on a busy node, as things may change between, but in controlled test should be ok
 		headhsh = feed.head()
-		msgs = coll.gethead(self.bzz)
+		ridx = self.coll.gethead(self.bzz)
+		self.coll.retrievals.pop(ridx)
+		#ridx = self.coll.gethead(self.bzz)
+		#msgs = self.coll.retrievals.pop(ridx)
+
 		try:
-			self.assertEqual(coll.feeds['foo']['orphans'][headhsh], bogushsh)
+			self.assertEqual(self.coll.feeds['foo']['orphans'][headhsh], bogushsh)
 		except Exception as e:
 			self.fail("dict key in test assert fail: " + str(e))
 
 
 	def tearDown(self):
+		colls = []
+		for k, v in self.coll.feeds.iteritems():
+			colls.append(k)
+		for k in colls:
+			self.coll.remove(k)
 		sys.stderr.write("teardown\n")
 		self.sock.close()
 
