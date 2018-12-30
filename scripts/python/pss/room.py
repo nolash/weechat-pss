@@ -1,27 +1,37 @@
-class Participant():
-	contact = None # Contact type
+from contact import PssContact
+from bzz import FeedCollection, Feed
+from pss import Account
+
+
+class Participant(PssContact):
 	trust = 0
 
-	def __init__(self, contact):
-		self.contact = contact
-
-
-	def serialize(self):
-		return self.contact.serialize()
 
 class Room:
 	name = ""
+	agent = None
 	participants = {} # Participant type
+	feedcollection = None
 	
-	def __init__(self, name):
-		self.name = name	
+	def __init__(self, name, agent):
+		self.name = name
+		self.agent = agent
+		self.feedcollection = FeedCollection()
 
 
+	# \todo do we really need nick in addition to participant.nick here
 	def add(self, nick, participant):
 		self.participants[nick] = participant
+		acc = Account()
+		acc.set_address(participant.address)
+		participantfeed = Feed(self.agent, acc, participant.nick, False)
+		self.feedcollection.add(participant.nick, participantfeed)
 
-	def remove(self, nick, participant):
+
+	# \todo pass participant instead?
+	def remove(self, nick):
 		del self.participants[nick]
+		self.feedcollection.remove(nick)
 
 
 	# \todo proper nested json serialize

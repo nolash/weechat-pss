@@ -54,6 +54,8 @@ class TestFeedRebuild(unittest.TestCase):
 
 		self.coll = pss.FeedCollection()
 
+
+	@unittest.skip("showing class skipping")
 	def test_single_feed(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
 
@@ -82,7 +84,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "inky")
 
 
-	#@unittest.skip("showing class skipping")
+	@unittest.skip("showing class skipping")
 	def test_feed_collection_ok(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -118,7 +120,7 @@ class TestFeedRebuild(unittest.TestCase):
 			i += 1
 
 	
-	#@unittest.skip("showing class skipping")
+	@unittest.skip("showing class skipping")
 	def test_feed_collection_sort(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -152,7 +154,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(msgs[3].content, "0x1")
 
 
-	#@unittest.skip("showing class skipping")
+	@unittest.skip("showing class skipping")
 	def test_feed_collection_single_gap(self):
 		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
 
@@ -185,6 +187,20 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(self.coll.feeds['foo']['orphans'][headhsh], bogushsh)
 		except Exception as e:
 			self.fail("dict key in test assert fail: " + str(e))
+
+	
+	def test_feed_room(self):
+		nicks = []
+		r = pss.Room("foo", self.agent)
+		for i in range(len(self.accounts)):
+			addrhx = self.accounts[i].address.encode("hex")
+			nicks.append(addrhx[:16])
+			pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
+			p = pss.Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
+			r.add(nicks[i], p)
+		
+		for k, v in r.feedcollection.feeds.iteritems():
+			print "have feed " + k + " topic: " + v['obj'].topic
 
 
 	def tearDown(self):

@@ -15,7 +15,7 @@ topic = "0xdeadbee2"
 # holds ethereum account
 # \todo move out of pss to enable sync comms even though crypto modules doesn't exist
 class Account:
-	pk = None
+	privatekey = None
 	publickeybytes = "" 
 	address = None
 
@@ -26,12 +26,12 @@ class Account:
 		
 	def set_key(self, keybytes):
 		self._clear_key()
-		self.pk = secp256k1.PrivateKey(keybytes)
-		self.publickeybytes = self.pk.pubkey.serialize(False)[1:]
+		self.privatekey = secp256k1.PrivateKey(keybytes)
+		self.publickeybytes = self.privatekey.pubkey.serialize(False)[1:]
 		self.address = publickey_to_account(self.publickeybytes)
 
 	def _clear_key(self):
-		self.pk = None
+		self.privkatekey = None
 		self.publickeybytes = ""
 		self.address = None
 

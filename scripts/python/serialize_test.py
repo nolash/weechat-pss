@@ -35,21 +35,28 @@ class TestSerialize(unittest.TestCase):
 		pass
 
 
+	@unittest.skip("modular serialization not implemented, reinstate when it is")
 	def test_contact(self):
 		c = pss.PssContact("foo", self.pubkey[0], self.addr[0], self.nodekey[0])
-		print c.serialize()
+
+		s = c.serialize()
+		try:
+			roomobj = json.loads(s)
+		except ValueError as e:
+			self.fail("json deserialize error: " + (str(e)))
 
 
 	def test_room(self):
 		r = pss.Room("foo")
 		for i in range(len(self.pubkey)):
-			r.add(str(i), pss.Participant(pss.PssContact(str(i), self.pubkey[i], self.addr[i], self.nodekey[i])))
+			r.add(str(i), pss.Participant(str(i), self.pubkey[i], self.addr[i], self.nodekey[i]))
 
 		s = r.serialize()
 		try:
 			roomobj = json.loads(s)
 		except ValueError as e:
 			self.fail("json deserialize error: " + (str(e)))
+
 
 if __name__ == "__main__":
 	unittest.main()

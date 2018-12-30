@@ -256,7 +256,7 @@ def buf_get(pssName, typ, name, known):
 			plugin = weechat.buffer_get_pointer(buf, "plugin")
 			bufs[bufname] = buf
 			
-			rooms[name] = pss.Room(name)
+			rooms[name] = pss.Room(name, bzzs[pssName].agent)
 			feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_ROOM + pss.publickey_to_account(psses[pssName].key[2:].decode("hex")))
 			wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex"))
 
