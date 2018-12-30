@@ -51,7 +51,7 @@ class TestFeedRebuild(unittest.TestCase):
 			acc = pss.Account()
 			acc.set_key(pss.clean_privkey(self.privkeys[i]).decode("hex"))
 			self.accounts.append(acc)
-			sys.stderr.write("added random (seed " + str(seedval) + " key " + self.privkeys[i] + " account " + self.accounts[i].address.encode("hex") + "\n")
+			sys.stderr.write("added random (seed " + str(seedval) + " key " + self.privkeys[i] + " account " + self.accounts[i].address.encode("hex") + " pubkey " + self.accounts[i].publickeybytes.encode("hex") + "\n")
 
 		seedval += 1
 
@@ -195,7 +195,8 @@ class TestFeedRebuild(unittest.TestCase):
 	#@unittest.skip("wip")	
 	def test_feed_room_name(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "foo", False))
-		r = pss.Room("foo", self.agent, self.feeds[0])
+		r = pss.Room(self.agent)
+		r.set("foo", self.feeds[0])
 		addrhx = self.accounts[0].address.encode("hex")
 		pubkeyhx = "04"+self.accounts[0].publickeybytes.encode("hex")
 		nick = "bar"
@@ -207,14 +208,15 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
 		
 
-	#@unittest.skip("wip")	
+	##@unittest.skip("wip")	
 	def test_feed_room(self):
 
 		# room ctrl feed
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "root", False))
 
 		nicks = [self.accounts[0].address.encode("hex")]
-		r = pss.Room("abc", self.agent, self.feeds[0])
+		r = pss.Room(self.agent)
+		r.set("abc", self.feeds[0])
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
 			nicks.append(str(i))
@@ -222,13 +224,22 @@ class TestFeedRebuild(unittest.TestCase):
 			p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
 			r.add(nicks[i], p)
 	
-		# \todo check room names are correct	
-		for k, v in r.feedcollection.feeds.iteritems():
-			print "have feed " + k + " topic: " + v['obj'].topic
+		serializedRoom = r.serialize()
+		rr = pss.Room(self.agent)
+		rr.load(serializedRoom)
 
-		roomhsh = self.bzz.add(r.serialize())
-		self.feeds[0].update(roomhsh)
-		
+		matchesleft = len(self.accounts)-1	
+		for f in rr.feedcollection.feeds.values():
+			matched = False
+			for a in self.accounts:
+				if f['obj'].account.address == a.address:
+					matched = True
+					matchesleft -= 1
+			if not matched:
+				self.fail("found unknown address " + f['obj'].account.address.encode("hex"))
+		if matchesleft != 0:
+			self.fail("have " + str(matchesleft) + " unmatched addresses")
+
 
 
 	def tearDown(self):

@@ -40,16 +40,25 @@ class Account:
 	publickeybytes = "" 
 	address = None
 
+
 	# \todo check address
 	def set_address(self, address):
 		self._clear_key()
 		self.address = address
-		
+
+
+	def set_public_key(self, pubkey):
+		self._clear_key()
+		self.publickeybytes = pubkey
+		self.address = publickey_to_account(self.publickeybytes[1:])
+	
+	
 	def set_key(self, keybytes):
 		self._clear_key()
 		self.privatekey = secp256k1.PrivateKey(keybytes)
 		self.publickeybytes = self.privatekey.pubkey.serialize(False)[1:]
 		self.address = publickey_to_account(self.publickeybytes)
+
 
 	def _clear_key(self):
 		self.privkatekey = None

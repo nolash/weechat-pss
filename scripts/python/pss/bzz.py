@@ -128,8 +128,12 @@ class Feed():
 
 # convenience class for handling feed aggregation (multiuser room, for instance)
 class FeedCollection:
-	feeds = {}
-	retrievals = []
+	feeds = None
+	retrievals = None
+
+	def __init__(self):
+		self.feeds = {}
+		self.retrievals = []
 
 	def add(self, name, feed):
 		if name in self.feeds:

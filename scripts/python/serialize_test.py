@@ -52,7 +52,8 @@ class TestSerialize(unittest.TestCase):
 		acc = pss.Account()
 		acc.set_address(self.addr[0])
 		feed = pss.Feed(None, acc, "root", False)
-		r = pss.Room("foo", None, feed)
+		r = pss.Room(None)
+		r.set("foo", feed)
 		for i in range(len(self.pubkey)):
 			r.add(str(i), Participant(str(i), self.pubkey[i], self.addr[i], self.nodekey[i]))
 
