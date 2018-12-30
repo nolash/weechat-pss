@@ -1,3 +1,5 @@
+import json
+
 from tools import clean_pubkey, clean_address, clean_nick
 
 # object representing a single recipient
@@ -23,3 +25,7 @@ class PssContact:
 		self.key = "0x" + validkey
 		self.address = "0x" + validaddr
 		self.src = src
+
+	# \todo proper nested json serialize
+	def serialize(self):
+		return	"\"key\":\"" + self.key + "\""

@@ -39,7 +39,6 @@ class TestFeedRebuild(unittest.TestCase):
 		random.seed(pss.now_int()+seedval)
 		self.privkeys = []
 
-
 		for i in range(10):
 			hx = ""
 			for j in range(32):
@@ -55,10 +54,8 @@ class TestFeedRebuild(unittest.TestCase):
 
 		self.coll = pss.FeedCollection()
 
-
 	def test_single_feed(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
-		self.feeds[0].sync()
 
 		hshfirst = self.bzz.add(zerohsh + "inky")
 		self.feeds[0].update(hshfirst)
@@ -85,6 +82,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "inky")
 
 
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_ok(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -120,6 +118,7 @@ class TestFeedRebuild(unittest.TestCase):
 			i += 1
 
 	
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_sort(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -153,6 +152,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(msgs[3].content, "0x1")
 
 
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_single_gap(self):
 		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
 

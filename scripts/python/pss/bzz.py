@@ -76,18 +76,8 @@ class Feed():
 				self.topic += feedRootTopic[i]
 
 
-	# \todo implement
-	def get_epoch(self):
-		return 1
-
-
-	
-	def sync(self):
-		(tim, level) = self.info()
-		self.lastupdate = int(tim)
-		self.lastepoch = int(level)
-
-
+	# retrieve epoch and time next update belongs to
+	# \todo client side should calculate this after initial state gotten from feed
 	def info(self):
 		q = {
 			'user': '0x' + self.account.address.encode("hex"),
@@ -100,6 +90,7 @@ class Feed():
 		return (r['epoch']['time'], r['epoch']['level'])
 			
 
+	# update the feed
 	# data is raw bytes
 	# \todo client side next epoch calc (retrieve from server is WAY too slow)
 	def update(self, data):
@@ -123,6 +114,7 @@ class Feed():
 		return r
 
 
+	# get the last update of a feed
 	def head(self):
 		q = {
 			'user': '0x' + self.account.address.encode("hex"),
@@ -134,6 +126,7 @@ class Feed():
 			
 
 
+# convenience class for handling feed aggregation (multiuser room, for instance)
 class FeedCollection:
 	feeds = {}
 	retrievals = []
