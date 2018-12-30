@@ -8,6 +8,9 @@ import random
 import copy
 import struct
 
+from pss.bzz import feedRootTopic, FeedCollection
+from pss.room import Participant
+
 privkey = "2ea3f401733d3ecc1e18b305245adc98f3ffc4c6e46bf42f37001fb18b5a70ac"
 pubkey = "b72985aa2104e41c1a2d40340c2b71a8d641bb6ac0f9fd7dc2dbbd48c0eaf172baa41456d252532db97704ea4949e1f42f66fd57de00f8f1f4514a2889f42df6"
 seedval = 13
@@ -52,7 +55,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 		seedval += 1
 
-		self.coll = pss.FeedCollection()
+		self.coll = FeedCollection()
 
 
 	#@unittest.skip("showing class skipping")
@@ -189,21 +192,20 @@ class TestFeedRebuild(unittest.TestCase):
 			self.fail("dict key in test assert fail: " + str(e))
 
 
+	#@unittest.skip("wip")	
 	def test_feed_room_name(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "foo", False))
-		r = pss.Room("\x03\x01\x01\x62\x61\x72", self.agent, self.feeds[0])
+		r = pss.Room("foo", self.agent, self.feeds[0])
 		addrhx = self.accounts[0].address.encode("hex")
-		nick = "\x65\x6e\x6e"
-		for i in range(27):
-			nick += "\x00"
-		nick += "\x7a\x7b"
 		pubkeyhx = "04"+self.accounts[0].publickeybytes.encode("hex")
-		p = pss.Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
+		nick = "bar"
+		p = Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
 		r.add(nick, p)
-
-		print r.feedcollection.feeds[p.nick]['obj'].topic.encode("hex")
-		self.assertEqual(r.feedcollection.feeds[p.nick]['obj'].topic[0:6], "foobar")
-		self.assertEqual(r.feedcollection.feeds[p.nick]['obj'].topic[15:32], "awesomepsschatszz")
+		resulttopic = r.feedcollection.feeds[p.nick]['obj'].topic
+		self.assertEqual(resulttopic[3:12], self.accounts[0].address[3:12])
+		self.assertNotEqual(resulttopic[:3], self.accounts[0].address[:3])
+		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
+		
 
 	#@unittest.skip("wip")	
 	def test_feed_room(self):
@@ -212,12 +214,12 @@ class TestFeedRebuild(unittest.TestCase):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "root", False))
 
 		nicks = [self.accounts[0].address.encode("hex")]
-		r = pss.Room("foo", self.agent, self.feeds[0])
+		r = pss.Room("abc", self.agent, self.feeds[0])
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
-			nicks.append(addrhx[:16])
+			nicks.append(str(i))
 			pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
-			p = pss.Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
+			p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
 			r.add(nicks[i], p)
 	
 		# \todo check room names are correct	

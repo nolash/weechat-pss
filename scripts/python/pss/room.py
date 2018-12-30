@@ -29,7 +29,7 @@ class Room:
 		acc.set_address(participant.address)
 		roomparticipantname = ""
 		namepad = self.name
-		nickpad = participant.nick
+		nickpad = participant.address[2:].decode("hex")
 		while len(namepad) < 32:
 			namepad += "\x00"	
 		while len(nickpad) < 32:

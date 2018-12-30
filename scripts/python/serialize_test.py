@@ -5,6 +5,8 @@ import pss
 import random
 import json
 
+from pss.room import Participant
+
 # \todo one source of keys across test files
 
 class TestSerialize(unittest.TestCase):
@@ -47,9 +49,12 @@ class TestSerialize(unittest.TestCase):
 
 
 	def test_room(self):
-		r = pss.Room("foo", None)
+		acc = pss.Account()
+		acc.set_address(self.addr[0])
+		feed = pss.Feed(None, acc, "root", False)
+		r = pss.Room("foo", None, feed)
 		for i in range(len(self.pubkey)):
-			r.add(str(i), pss.Participant(str(i), self.pubkey[i], self.addr[i], self.nodekey[i]))
+			r.add(str(i), Participant(str(i), self.pubkey[i], self.addr[i], self.nodekey[i]))
 
 		s = r.serialize()
 		try:
