@@ -96,7 +96,7 @@ class Feed():
 	def update(self, data):
 		(tim, epoch) = self.info()
 		d = compile_digest(self.topic, self.account.address, data, int(tim), int(epoch))
-		s = sign_digest(self.account.pk, d)
+		s = sign_digest(self.account.privatekey, d)
 		q = {
 			'user': "0x" + self.account.address.encode("hex"),
 			'topic': "0x" + self.topic.encode("hex"),

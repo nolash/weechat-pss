@@ -47,7 +47,7 @@ class TestSerialize(unittest.TestCase):
 
 
 	def test_room(self):
-		r = pss.Room("foo")
+		r = pss.Room("foo", None)
 		for i in range(len(self.pubkey)):
 			r.add(str(i), pss.Participant(str(i), self.pubkey[i], self.addr[i], self.nodekey[i]))
 

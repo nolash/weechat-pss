@@ -1,46 +1,13 @@
 import websocket
-import secp256k1
-from Crypto.Hash import keccak
 
 from tools import clean_address, clean_pubkey
 from error import *
 from content import rpc_call, rpc_parse
-from contact import PssContact
+from user import PssContact, Account
 
 # topic we will be using for this messenger service
 topic = "0xdeadbee2"
 
-
-
-# holds ethereum account
-# \todo move out of pss to enable sync comms even though crypto modules doesn't exist
-class Account:
-	privatekey = None
-	publickeybytes = "" 
-	address = None
-
-	# \todo check address
-	def set_address(self, address):
-		self._clear_key()
-		self.address = address
-		
-	def set_key(self, keybytes):
-		self._clear_key()
-		self.privatekey = secp256k1.PrivateKey(keybytes)
-		self.publickeybytes = self.privatekey.pubkey.serialize(False)[1:]
-		self.address = publickey_to_account(self.publickeybytes)
-
-	def _clear_key(self):
-		self.privkatekey = None
-		self.publickeybytes = ""
-		self.address = None
-
-
-def publickey_to_account(keybytes):
-	h = keccak.new(digest_bits=256)
-	h.update(keybytes)
-	return h.digest()[12:]
-	
 
 # object encapsulating pss node connection
 # \todo move to separate package

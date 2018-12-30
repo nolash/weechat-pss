@@ -1,6 +1,5 @@
-from contact import PssContact
+from user import PssContact, Account
 from bzz import FeedCollection, Feed
-from pss import Account
 
 
 class Participant(PssContact):

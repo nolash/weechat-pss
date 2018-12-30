@@ -55,7 +55,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.coll = pss.FeedCollection()
 
 
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_single_feed(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
 
@@ -84,7 +84,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "inky")
 
 
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_ok(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -120,7 +120,7 @@ class TestFeedRebuild(unittest.TestCase):
 			i += 1
 
 	
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_sort(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -154,7 +154,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(msgs[3].content, "0x1")
 
 
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_single_gap(self):
 		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
 
