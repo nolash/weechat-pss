@@ -188,19 +188,45 @@ class TestFeedRebuild(unittest.TestCase):
 		except Exception as e:
 			self.fail("dict key in test assert fail: " + str(e))
 
-	
+
+	def test_feed_room_name(self):
+		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "foo", False))
+		r = pss.Room("\x03\x01\x01\x62\x61\x72", self.agent, self.feeds[0])
+		addrhx = self.accounts[0].address.encode("hex")
+		nick = "\x65\x6e\x6e"
+		for i in range(27):
+			nick += "\x00"
+		nick += "\x7a\x7b"
+		pubkeyhx = "04"+self.accounts[0].publickeybytes.encode("hex")
+		p = pss.Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
+		r.add(nick, p)
+
+		print r.feedcollection.feeds[p.nick]['obj'].topic.encode("hex")
+		self.assertEqual(r.feedcollection.feeds[p.nick]['obj'].topic[0:6], "foobar")
+		self.assertEqual(r.feedcollection.feeds[p.nick]['obj'].topic[15:32], "awesomepsschatszz")
+
+	#@unittest.skip("wip")	
 	def test_feed_room(self):
-		nicks = []
-		r = pss.Room("foo", self.agent)
-		for i in range(len(self.accounts)):
+
+		# room ctrl feed
+		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "root", False))
+
+		nicks = [self.accounts[0].address.encode("hex")]
+		r = pss.Room("foo", self.agent, self.feeds[0])
+		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
 			nicks.append(addrhx[:16])
 			pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
 			p = pss.Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
 			r.add(nicks[i], p)
-		
+	
+		# \todo check room names are correct	
 		for k, v in r.feedcollection.feeds.iteritems():
 			print "have feed " + k + " topic: " + v['obj'].topic
+
+		roomhsh = self.bzz.add(r.serialize())
+		self.feeds[0].update(roomhsh)
+		
 
 
 	def tearDown(self):

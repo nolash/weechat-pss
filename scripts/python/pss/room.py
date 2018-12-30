@@ -1,20 +1,24 @@
 from user import PssContact, Account
 from bzz import FeedCollection, Feed
+from tools import clean_nick
 
 
 class Participant(PssContact):
 	trust = 0
 
 
+# \todo consider using feed name for room name
 class Room:
 	name = ""
 	agent = None
+	feed = None
 	participants = {} # Participant type
 	feedcollection = None
 	
-	def __init__(self, name, agent):
-		self.name = name
+	def __init__(self, name, agent, mainfeed):
+		self.name = clean_nick(name)
 		self.agent = agent
+		self.feed = mainfeed
 		self.feedcollection = FeedCollection()
 
 
@@ -23,7 +27,17 @@ class Room:
 		self.participants[nick] = participant
 		acc = Account()
 		acc.set_address(participant.address)
-		participantfeed = Feed(self.agent, acc, participant.nick, False)
+		roomparticipantname = ""
+		namepad = self.name
+		nickpad = participant.nick
+		while len(namepad) < 32:
+			namepad += "\x00"	
+		while len(nickpad) < 32:
+			nickpad += "\x00"	
+		for i in range(32):
+			roomparticipantname += chr(ord(namepad[i]) ^ ord(nickpad[i]))
+
+		participantfeed = Feed(self.agent, acc, roomparticipantname, False)
 		self.feedcollection.add(participant.nick, participantfeed)
 
 
