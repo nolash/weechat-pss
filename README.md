@@ -9,7 +9,7 @@ However there is **lots** to be explored before that. And for this exploration w
 
 ## Version
 
-0.2.4 alpha
+0.2.5 alpha
 
 
 ## Development
@@ -177,6 +177,8 @@ GPLv3
 
 ## Changelog
 
+* v0.2.5:
+    - Implement single file update format for group chat output feeds
 * v0.2.4:
     - Add framework for modular command parsing
     - Add group chat backend prerequisites (room and feed collections)

@@ -3,7 +3,7 @@ import os
 import pss # plugin package, nothing official
 
 # consts
-PSS_VERSION = "0.2.4"
+PSS_VERSION = "0.2.5"
 PSS_BUFPFX_OK = 0
 PSS_BUFPFX_ERROR = 1
 PSS_BUFPFX_WARN = 2
