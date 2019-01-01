@@ -64,3 +64,7 @@ class TestCommandIntegratio(unittest.TestCase):
 		with self.assertRaises(command.CommandException) as context:
 			command.parseCommand(argList)
 		self.assertTrue("command unknown" in context.exception)
+
+
+if __name__ == "__main__":
+	unittest.main()
