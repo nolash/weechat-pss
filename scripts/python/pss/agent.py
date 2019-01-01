@@ -4,7 +4,7 @@ import re
 import os
 import select
 
-REQUEST_TIMEOUT = 5.0
+REQUEST_TIMEOUT = 10.0
 
 regexStatusLine = re.compile("^HTTP/1.1 (\d{3}) (.+)\n", re.M)
 

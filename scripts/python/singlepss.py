@@ -202,7 +202,7 @@ def buf_get(pssName, typ, name, known):
 		return ""
 
 	if pssName in bzzs:
-		haveBzz == True
+		haveBzz = True
 	elif typ == "room":
 		raise RuntimeException("gateway needed for multiuser chats over swarm")
 	
@@ -226,6 +226,8 @@ def buf_get(pssName, typ, name, known):
 			weechat.buffer_set(buf, "display", "1")
 			plugin = weechat.buffer_get_pointer(buf, "plugin")
 			bufs[bufname] = buf
+			debugstr = "have " + repr(psses[pssName].have_account()) + " + " +  repr(haveBzz)
+			wOut(PSS_BUFPFX_DEBUG, [], "have", debugstr)
 
 			if psses[pssName].have_account() and haveBzz:
 				pubkey = ""
@@ -385,7 +387,7 @@ def sock_connect(pssName, status, tlsrc, sock, error, ip):
 		wOut(PSS_BUFPFX_ERROR, [], "???", "swarm gateway connect failed (" + str(status) + "): " + error )
 		return weechat.WEECHAT_RC_ERROR
 
-	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected, sock " + repr(sock))
+	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected on " + pssName + ", sock " + repr(sock))
 	agent = pss.Agent(psses[pssName].host, 8500, sock)
 	bzzs[pssName] = pss.Bzz(agent)
 
@@ -561,7 +563,7 @@ def buf_node_in(pssName, buf, args):
 			try:
 				currentPss.set_account(privkey.decode("hex"))
 			except ValueError as e:
-				wOut(PSS_BUFPFX_ERROR, [], "!!!", str(e))
+				wOut(PSS_BUFPFX_ERROR, [], "!!!", "set account fail: " + str(e))
 				return weechat.WEECHAT_RC_ERROR
 
 		else:

@@ -10,7 +10,11 @@ class Participant(PssContact):
 
 
 # Room represents a multi-user chat room
-# It contains the collection of feeds to post to and the collection of feeds to listen from 
+#
+# A multi-user chat room is defined solely by a 1-32 byte name, within one single name space,
+#
+# The Room object contains the collection of feeds to post to
+# and the collection of feeds to listen from 
 # in order to aggregate the activities of all participants
 # 
 # An outgoing room feed topic is xor room name xor peer addr, where the user is room owner

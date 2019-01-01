@@ -96,7 +96,13 @@ class Feed():
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
-		r = json.loads(self.agent.get(sendpath, querystring))
+		rstr = self.agent.get(sendpath, querystring)
+		r = ""
+		try:
+			r = json.loads(rstr)
+		except:
+			sys.stderr.write("ouch: " + rstr + "\n")
+			raise ValueError("json fail")
 		return (r['epoch']['time'], r['epoch']['level'])
 			
 

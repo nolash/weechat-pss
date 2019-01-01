@@ -22,7 +22,7 @@ class Pss:
 	eth = None
 	err = 0
 	errstr = ""
-	contacts = {}
+	contacts = None
 	seq = 0
 	ws = None
 	name = ""
@@ -39,6 +39,8 @@ class Pss:
 		if port != "":
 			self.port = port
 
+		self.contacts = {}
+
 
 	
 	def have_account(self):
@@ -47,7 +49,8 @@ class Pss:
 
 
 	def set_account(self, privkeybytes):
-		eth = Account(privkeybytes)
+		eth = Account()
+		eth.set_key(privkeybytes)
 		# node pubkey is prefixed with 04
 		# \todo verify that the number can't be other than 4
 		if  eth.publickeybytes.encode("hex") != self.key[2:]:
@@ -55,7 +58,7 @@ class Pss:
 			return
 
 		self.eth = eth
-	
+
 
 
 	def get_account(self):
