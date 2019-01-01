@@ -60,7 +60,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.coll = FeedCollection()
 
 
-	#@unittest.skip("showing class skipping")
+	@unittest.skip("showing class skipping")
 	def test_single_feed(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
 
@@ -89,7 +89,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "inky")
 
 
-	#@unittest.skip("showing class skipping")
+	@unittest.skip("showing class skipping")
 	def test_feed_collection_ok(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -125,7 +125,7 @@ class TestFeedRebuild(unittest.TestCase):
 			i += 1
 
 	
-	#@unittest.skip("showing class skipping")
+	@unittest.skip("showing class skipping")
 	def test_feed_collection_sort(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -159,7 +159,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(msgs[3].content, "0x1")
 
 
-	#@unittest.skip("collection single gap")
+	@unittest.skip("collection single gap")
 	def test_feed_collection_single_gap(self):
 		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
 
@@ -197,37 +197,32 @@ class TestFeedRebuild(unittest.TestCase):
 	# test that room topics are correctly generated
 	#@unittest.skip("room name")	
 	def test_feed_room_name(self):
-		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "foo", False))
-		r = pss.Room(self.agent, self.feeds[0])
-		r.set_name("foo")
+		roomname = "foo"
+		nick = "bar"
+		self.feeds.append(pss.Feed(self.agent, self.accounts[0], roomname, False))
+		r = pss.Room(self.bzz, self.feeds[0])
+		r.start(nick, roomname)
 		addrhx = self.accounts[0].address.encode("hex")
 		pubkeyhx = "04"+self.accounts[0].publickeybytes.encode("hex")
-		nick = "bar"
 		p = Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
-		r.add(nick, p)
 
 		resulttopic = r.feedcollection_in.feeds[p.nick]['obj'].topic
-		self.assertEqual(resulttopic[3:12], self.accounts[0].address[3:12])
-		self.assertNotEqual(resulttopic[:3], self.accounts[0].address[:3])
+		self.assertEqual(resulttopic[0:len(roomname)], roomname)
+		#self.assertNotEqual(resulttopic[:3], self.accounts[0].address[:3])
 		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
-
-		resulttopic = r.feedcollection_out.feeds[p.nick]['obj'].topic
-		self.assertEqual(resulttopic[3:12], self.accounts[0].address[3:12])
-		self.assertNotEqual(resulttopic[:3], self.accounts[0].address[:3])
-		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
-
+		
 		
 
 	# test that we can instantiate a room from saved state
-	##@unittest.skip("wip")	
+	#@unittest.skip("wip")	
 	def test_feed_room(self):
 
 		# room ctrl feed
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "abc", False))
 
 		nicks = [self.accounts[0].address.encode("hex")]
-		r = pss.Room(self.agent, self.feeds[0])
-		r.set_name("abc")
+		r = pss.Room(self.bzz, self.feeds[0])
+		r.start("foo", "abc")
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
 			nicks.append(str(i))
@@ -235,10 +230,12 @@ class TestFeedRebuild(unittest.TestCase):
 			p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
 			r.add(nicks[i], p)
 	
-
-		# save the room 
+		# get the serialized representation of room	
 		serializedroom = r.serialize()
 
+		# save the room 
+		savedhsh = r.save()
+	
 		# retrieve the pubkey from the saved room format	
 		# and create account with retrieved public key
 		# \todo more intuitive feed injection on load
@@ -250,11 +247,11 @@ class TestFeedRebuild(unittest.TestCase):
 		recreatedownerfeed = pss.Feed(self.agent, acc, unserializedroom['name'], False)
 
 		# instantiate room with feed recreated from saved state
-		rr = pss.Room(self.agent, recreatedownerfeed)
-		rr.load(serializedroom)
+		rr = pss.Room(self.bzz, recreatedownerfeed)
+		rr.load(savedhsh, self.accounts[0])
 
 		# check that for all in-feeds (read peer's updates) the feed user field is the address of the peer
-		matchesleft = len(self.accounts)-1	
+		matchesleft = len(self.accounts)
 		for f in rr.feedcollection_in.feeds.values():
 			matched = False
 			for a in self.accounts:
@@ -268,34 +265,8 @@ class TestFeedRebuild(unittest.TestCase):
 			self.fail("have " + str(matchesleft) + " unmatched addresses")
 
 
-		# check that for all out-feeds (write to peer) the feed user field is the publisher
-		# AND that the topic contains the peer's address (after xor'ing address, only the fed name should remain)
-		matchesaddrleft = len(self.accounts)-1
-		matchestopicleft = len(self.accounts)-1
-		for f in rr.feedcollection_out.feeds.values():
-
-			matched = False
-			if f['obj'].account.address != self.accounts[0].address:
-				self.fail("found unknown address " + f['obj'].account.address.encode("hex"))
-			else:
-				matchesaddrleft -= 1
-
-			matched = False
-			for a in self.accounts:
-				topicwithoutname = ""
-				for i in range(20):
-					topicwithoutname += chr(ord(a.address[i]) ^ord(f['obj'].topic[i]))
-				if topicwithoutname == "abc\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00":
-					matched = True
-
-			if matched:
-				matchestopicleft -= 1
-	
-		if matchesaddrleft != 0:
-			self.fail("have " + str(matchesaddrleft) + " unmatched addresses")
-
-		if matchestopicleft != 0:
-			self.fail("have " + str(matchestopicleft) + " unmatched topics")
+		# for the outfeed, check that we are owner
+		self.assertTrue(rr.feed_out.account.is_owner())
 
 
 	def tearDown(self):

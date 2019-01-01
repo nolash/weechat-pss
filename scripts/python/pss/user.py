@@ -61,9 +61,15 @@ class Account:
 
 
 	def _clear_key(self):
-		self.privkatekey = None
+		self.privatekey = None
 		self.publickeybytes = ""
 		self.address = None
+
+
+
+	def is_owner(self):
+		return self.privatekey != None
+			
 
 
 def publickey_to_account(keybytes):
