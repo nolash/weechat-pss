@@ -11,7 +11,7 @@ import json
 
 from pss.bzz import feedRootTopic, FeedCollection
 from pss.room import Participant
-from pss.tools import clean_pubkey
+from pss.tools import clean_pubkey, now_int
 
 privkey = "2ea3f401733d3ecc1e18b305245adc98f3ffc4c6e46bf42f37001fb18b5a70ac"
 pubkey = "b72985aa2104e41c1a2d40340c2b71a8d641bb6ac0f9fd7dc2dbbd48c0eaf172baa41456d252532db97704ea4949e1f42f66fd57de00f8f1f4514a2889f42df6"
@@ -195,7 +195,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# test that room topics are correctly generated
-	#@unittest.skip("room name")	
+	@unittest.skip("room name")	
 	def test_feed_room_name(self):
 		roomname = "foo"
 		nick = "bar"
@@ -208,13 +208,12 @@ class TestFeedRebuild(unittest.TestCase):
 
 		resulttopic = r.feedcollection_in.feeds[p.nick]['obj'].topic
 		self.assertEqual(resulttopic[0:len(roomname)], roomname)
-		#self.assertNotEqual(resulttopic[:3], self.accounts[0].address[:3])
 		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
 		
 		
 
 	# test that we can instantiate a room from saved state
-	#@unittest.skip("wip")	
+	@unittest.skip("feed room load save")	
 	def test_feed_room(self):
 
 		# room ctrl feed
@@ -248,7 +247,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 		# instantiate room with feed recreated from saved state
 		rr = pss.Room(self.bzz, recreatedownerfeed)
-		rr.load(savedhsh, self.accounts[0])
+		rr.load(r.hsh, self.accounts[0])
 
 		# check that for all in-feeds (read peer's updates) the feed user field is the address of the peer
 		matchesleft = len(self.accounts)
@@ -269,6 +268,48 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertTrue(rr.feed_out.account.is_owner())
 
 
+
+	# test that we can create update and that the saved update contains the expected data
+	# @unittest.skip("room send")	
+	def test_feed_room_send(self):
+
+		msg = "heyho"
+		roomname = hex(now_int())
+
+		# room ctrl feed
+		self.feeds.append(pss.Feed(self.agent, self.accounts[0], roomname, False))
+
+		nicks = [self.accounts[0].address.encode("hex")]
+		r = pss.Room(self.bzz, self.feeds[0])
+		r.start("foo", roomname)
+		for i in range(1, len(self.accounts)):
+			addrhx = self.accounts[i].address.encode("hex")
+			nicks.append(str(i))
+			pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
+			p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
+			r.add(nicks[i], p)
+
+		hsh = r.send(msg)
+
+		body = self.bzz.get(hsh)
+		self.assertEqual(body[:32], r.hsh)
+	
+		roomparticipants = json.loads(self.bzz.get(r.hsh.encode("hex")))
+		crsr = 32
+		participantcount = len(roomparticipants['participants'])
+		datathreshold = 32 + (participantcount*3)
+		for i in range(participantcount):
+			lenbytes = body[crsr:crsr+3]
+			print lenbytes.encode("hex")
+			offset = struct.unpack("<I", lenbytes + "\x00")[0]
+			self.assertEqual(offset, i*len(msg))
+			self.assertEqual(body[datathreshold+offset:datathreshold+offset+len(msg)], msg)
+			crsr += 3
+
+		self.assertEqual(len(body), datathreshold + (participantcount*len(msg)))
+			
+
+	
 	def tearDown(self):
 		self.feeds = []
 		colls = []

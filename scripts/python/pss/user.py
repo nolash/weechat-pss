@@ -28,9 +28,15 @@ class PssContact:
 		self.address = "0x" + validaddr
 		self.src = src
 
+
 	# \todo proper nested json serialize
 	def serialize(self):
 		return	"\"key\":\"" + self.key + "\""
+
+
+	# \todo implement	
+	def encrypt_to(self, s):
+		return s
 
 
 # holds ethereum account

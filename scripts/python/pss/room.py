@@ -1,8 +1,11 @@
 import json
+import copy
+import struct
 
 from user import PssContact, Account
 from bzz import FeedCollection, Feed
 from tools import clean_nick, clean_pubkey, clean_address, clean_name
+from message import is_message
 
 
 class Participant(PssContact):
@@ -64,6 +67,7 @@ class Room:
 		self.name = clean_name(roomname)
 		pubkey = "\x04"+self.feed_room.account.publickeybytes
 		self.add(nick, Participant(clean_nick(nick), pubkey.encode("hex"), self.feed_room.account.address.encode("hex"), pubkey.encode("hex")))
+		self.feed_out = Feed(self.agent, self.feed_room.account, self.name, True)
 		self.save()
 
 	
@@ -76,7 +80,7 @@ class Room:
 	# used to reinstantiate an existing room
 	# \todo avoid double encoding of account address
 	def load(self, hsh, owneraccount=None):
-		savedJson = self.bzz.get(hsh)
+		savedJson = self.bzz.get(hsh.encode("hex"))
 		print "savedj " + savedJson
 		self.hsh = hsh
 		r = json.loads(savedJson)
@@ -105,26 +109,27 @@ class Room:
 		acc = Account()
 		acc.set_address(clean_address(participant.address).decode("hex"))
 
-		# create the user/room name xor
-		# roomparticipantname = ""
-		# nickpad = participant.address[2:].decode("hex")
-		# while len(namepad) < 32:
-		#	namepad += "\x00"	
-		# while len(nickpad) < 32:
-		#	nickpad += "\x00"	
-		#for i in range(32):
-		#	roomparticipantname += chr(ord(namepad[i]) ^ ord(nickpad[i]))
-
 		# incoming feed user is peer
 		participantfeed_in = Feed(self.agent, acc, self.name, False)
 		self.feedcollection_in.add(participant.nick, participantfeed_in)
 		self.participants[nick] = participant
+		self.save()
 
 
 
+	# create new update on outfeed
+	# an update has the following format, where p is number of participants:
+	# 0 - 31		swarm hash pointing to participant list at time of the update
+	# 32 - (32+(p*3))	3 bytes data offset per participant
+	# (32+(p*3)) - 		tightly packed update data per participant, in order of offsets
 	def send(self, msg, fltrdefaultallow=True, fltr=[]):
 		if not is_message(msg):
 			raise ValueError("invalid message")
+
+		# update will hold the actual update data
+		update_header = copy.copy(self.hsh)
+		update_body = ""
+		crsr = 0
 
 		for k, v in self.participants.iteritems():
 			filtered = False
@@ -135,9 +140,15 @@ class Room:
 			if filtered:	
 				sys.stderr.write("Skipping filtered " + k) 
 				continue
-
-				
 			
+			ciphermsg = v.encrypt_to(msg)
+			update_header += struct.pack("<I", crsr)[:3]
+			update_body += ciphermsg
+			crsr += len(ciphermsg)
+
+		hsh = self.bzz.add(update_header + update_body)
+		self.feed_out.update(hsh)
+		return hsh
 
 	
 	# removes a participant from the room
@@ -146,6 +157,7 @@ class Room:
 	def remove(self, nick):
 		self.feedcollection_in.remove(nick)
 		del self.participants[nick]
+		self.save()
 
 
 
@@ -170,5 +182,5 @@ class Room:
 
 	def save(self):
 		s = self.serialize()
-		self.hsh = self.bzz.add(s)
+		self.hsh = self.bzz.add(s).decode("hex")
 		return self.hsh
