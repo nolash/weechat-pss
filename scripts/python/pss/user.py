@@ -41,6 +41,7 @@ class PssContact:
 
 # holds ethereum account
 # \todo move out of pss to enable sync comms even though crypto modules doesn't exist
+# \todo simplify representation of public key with 04 byte prefix
 class Account:
 	privatekey = None
 	publickeybytes = "" 
@@ -55,7 +56,7 @@ class Account:
 
 	def set_public_key(self, pubkey):
 		self._clear_key()
-		self.publickeybytes = pubkey
+		self.publickeybytes = pubkey[1:]
 		self.address = publickey_to_account(self.publickeybytes[1:])
 	
 	

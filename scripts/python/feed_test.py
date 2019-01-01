@@ -27,14 +27,18 @@ class TestFeedRebuild(unittest.TestCase):
 	bzz = None
 	sock = None
 	agent = None
-	accounts = []
-	feeds = []
-	privkeys = []
+	accounts = None
+	feeds = None
+	privkeys = None
 	coll = None
 
 
 	def setUp(self):
 		global seedval
+
+		self.accounts = []
+		self.feeds = []
+		self.privkeys = []
 
 		sys.stderr.write("setup\n")
 		self.sock = socket.create_connection(("127.0.0.1", "8500"), 20)
@@ -42,7 +46,6 @@ class TestFeedRebuild(unittest.TestCase):
 		self.bzz = pss.Bzz(self.agent)
 	
 		random.seed(pss.now_int()+seedval)
-		self.privkeys = []
 
 		for i in range(10):
 			hx = ""
@@ -60,8 +63,10 @@ class TestFeedRebuild(unittest.TestCase):
 		self.coll = FeedCollection()
 
 
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_single_feed(self):
+		global zerohsh
+
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
 
 		hshfirst = self.bzz.add(zerohsh + "inky")
@@ -81,15 +86,17 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "blinky")
 		
 		r = self.bzz.get(r[:64])
+		print r
 		self.assertEqual(r[:64], hshfirst)
 		self.assertEqual(r[64:], "pinky")
 
 		r = self.bzz.get(r[:64])
+		print r
 		self.assertEqual(r[:64], zerohsh)
 		self.assertEqual(r[64:], "inky")
 
 
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_ok(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -125,7 +132,7 @@ class TestFeedRebuild(unittest.TestCase):
 			i += 1
 
 	
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_sort(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -159,7 +166,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(msgs[3].content, "0x1")
 
 
-	@unittest.skip("collection single gap")
+	#@unittest.skip("collection single gap")
 	def test_feed_collection_single_gap(self):
 		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
 
@@ -195,7 +202,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# test that room topics are correctly generated
-	@unittest.skip("room name")	
+	#@unittest.skip("room name")	
 	def test_feed_room_name(self):
 		roomname = "foo"
 		nick = "bar"
@@ -213,7 +220,7 @@ class TestFeedRebuild(unittest.TestCase):
 		
 
 	# test that we can instantiate a room from saved state
-	@unittest.skip("feed room load save")	
+	##@unittest.skip("feed room load save")	
 	def test_feed_room(self):
 
 		# room ctrl feed
@@ -240,7 +247,9 @@ class TestFeedRebuild(unittest.TestCase):
 		# \todo more intuitive feed injection on load
 		unserializedroom = json.loads(serializedroom)
 		acc = pss.Account()
-		acc.set_public_key(clean_pubkey(unserializedroom['pubkey']).decode("hex"))
+		cleanpub = clean_pubkey(unserializedroom['pubkey'])
+		acc.set_public_key(cleanpub.decode("hex"))
+		return
 
 		# create feed with account from newly (re)created account
 		recreatedownerfeed = pss.Feed(self.agent, acc, unserializedroom['name'], False)
@@ -249,7 +258,7 @@ class TestFeedRebuild(unittest.TestCase):
 		rr = pss.Room(self.bzz, recreatedownerfeed)
 		rr.load(r.hsh, self.accounts[0])
 
-		# check that for all in-feeds (read peer's updates) the feed user field is the address of the peer
+		# check that for all"cleanpub: " +  in-feeds (read peer's updates) the feed user field is the address of the peer
 		matchesleft = len(self.accounts)
 		for f in rr.feedcollection_in.feeds.values():
 			matched = False
@@ -259,6 +268,7 @@ class TestFeedRebuild(unittest.TestCase):
 					matched = True
 					matchesleft -= 1
 			if not matched:
+				print "key '" + f['obj'].account.publickeybytes.encode("hex") + "'"
 				self.fail("found unknown address " + f['obj'].account.address.encode("hex"))
 		if matchesleft != 0:
 			self.fail("have " + str(matchesleft) + " unmatched addresses")
@@ -270,7 +280,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# test that we can create update and that the saved update contains the expected data
-	# @unittest.skip("room send")	
+	#@unittest.skip("room send")	
 	def test_feed_room_send(self):
 
 		msg = "heyho"
@@ -279,9 +289,9 @@ class TestFeedRebuild(unittest.TestCase):
 		# room ctrl feed
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], roomname, False))
 
-		nicks = [self.accounts[0].address.encode("hex")]
+		nicks = ["0"]
 		r = pss.Room(self.bzz, self.feeds[0])
-		r.start("foo", roomname)
+		r.start("0", roomname)
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
 			nicks.append(str(i))
@@ -304,6 +314,8 @@ class TestFeedRebuild(unittest.TestCase):
 			offset = struct.unpack("<I", lenbytes + "\x00")[0]
 			self.assertEqual(offset, i*len(msg))
 			self.assertEqual(body[datathreshold+offset:datathreshold+offset+len(msg)], msg)
+			ciphermsg = r.extract(hsh.decode("hex"), r.participants[nicks[i]])
+			self.assertEqual(ciphermsg, msg)
 			crsr += 3
 
 		self.assertEqual(len(body), datathreshold + (participantcount*len(msg)))

@@ -89,7 +89,7 @@ class Room:
 			acc = Account()
 			acc.set_public_key(clean_pubkey(pubkeyhx).decode("hex"))
 			nick = acc.address.encode("hex")
-			p = Participant(nick, acc.publickeybytes.encode("hex"), acc.address.encode("hex"), "")
+			p = Participant(nick, "04"+acc.publickeybytes.encode("hex"), acc.address.encode("hex"), "")
 			self.add(nick, p)
 
 		# outgoing feed user is room publisher
@@ -107,7 +107,7 @@ class Room:
 
 		# account reflects the peer's address / key
 		acc = Account()
-		acc.set_address(clean_address(participant.address).decode("hex"))
+		acc.set_public_key(clean_pubkey(participant.key).decode("hex"))
 
 		# incoming feed user is peer
 		participantfeed_in = Feed(self.agent, acc, self.name, False)
@@ -132,6 +132,7 @@ class Room:
 		crsr = 0
 
 		for k, v in self.participants.iteritems():
+			ciphermsg = ""
 			filtered = False
 			if k in fltr and fltrdefaultallow:
 				filtered = True
@@ -139,9 +140,9 @@ class Room:
 				filtered = True
 			if filtered:	
 				sys.stderr.write("Skipping filtered " + k) 
-				continue
-			
-			ciphermsg = v.encrypt_to(msg)
+			else:
+				ciphermsg = v.encrypt_to(msg)
+
 			update_header += struct.pack("<I", crsr)[:3]
 			update_body += ciphermsg
 			crsr += len(ciphermsg)
@@ -149,6 +150,58 @@ class Room:
 		hsh = self.bzz.add(update_header + update_body)
 		self.feed_out.update(hsh)
 		return hsh
+
+
+
+	# extracts an update message matching the recipient pubkey
+	def extract(self, hsh, contact):
+		participantcount = 0
+		payloadoffset = -1
+		payloadlength = 0
+		ciphermsg = ""
+
+		# retrieve update from swarm
+		body = self.bzz.get(hsh.encode("hex"))
+
+		# if recipient list for the update matches the one in memory
+		# we use the position of the participant in the list as the body offset index
+		matchidx = -1
+		idx = 0
+		if self.hsh == body[:32]:
+			participantcount = len(self.participants)
+			for p in self.participants.values():
+				if p.key == contact.key:
+					matchidx = idx
+				idx += 1
+		# if not we need to retrieve the one that was relevant at the time of update
+		# and match the index against that
+		else:
+			savedroom = json.loads(self.bzz.get(body[:32].encode("hex")))
+			participantcount = len(savedroom['participants'])
+			for p in savedroom['participants']:
+				if clean_hex(p) == clean_pubkey(contact.key):
+					matchidx = idx
+				idx += 1
+
+		# if no matches then this pubkey is not relevant for the room at that particular update	
+		if matchidx == -1:
+			raise ValueError("pubkey " + contact.pubkey + " not valid for this update")
+	
+		# parse the position of the update and extract it
+		payloadthreshold = 32+(participantcount*3)
+		payloadoffsetcrsr = 32+(3*matchidx)
+		payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]
+		payloadoffset = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
+		if participantcount-1 == matchidx:
+			ciphermsg = body[32+(participantcount*3)+payloadoffset:]
+		else:
+			payloadoffsetcrsr += 3
+			payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]
+			payloadstop = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
+			ciphermsg = body[payloadthreshold+payloadoffset:payloadthreshold+payloadstop]
+		
+		return ciphermsg	
+
 
 	
 	# removes a participant from the room
