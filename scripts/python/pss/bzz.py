@@ -10,7 +10,7 @@ from message import Message
 
 
 signPrefix = "\x19Ethereum Signed Message:\x0a\x20" # for 32 byte hashes
-feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06\x02\x02awesomepsschats\x00\x01"
+feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00psschats\x00\x00\x00\x01"
 zerohsh = ""
 for i in range(32):
 	zerohsh += "00"
@@ -25,6 +25,7 @@ class BzzRetrieveError(Exception):
 		
 	pass
 
+# Bzz is a convenience wrapper for making swarm store and retrieve calls over http
 # \todo pass agent to all methods instead of storing
 class Bzz():
 	agent = None
@@ -39,7 +40,7 @@ class Bzz():
 		return self.agent.get("/bzz-raw:/" + hsh + "/")
 
 
-
+# FeedUpdate encapsulates a single update to be sent on the network
 class FeedUpdate:
 	name = ""
 	data = ""
@@ -54,6 +55,15 @@ class FeedUpdate:
 
 	
 
+# Feed represents a single swarm feed
+#
+# It can represent both a consumer and publisher feed.
+#
+# To create a feed to which updates may be posted, the account passed to the constructor must contain the private key for the feed account.
+#
+# The isoutput argument sets or unsets the last bit of the feed topic, marking whether the feed is an output feed or an input feed. 
+# Note that a publisher feed may still be an input feed; in this case the client is listening to another publisher.
+#
 # \todo pass agent to all methods instead of storing
 class Feed():
 	agent = None

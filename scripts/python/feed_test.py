@@ -7,9 +7,11 @@ import sys
 import random
 import copy
 import struct
+import json
 
 from pss.bzz import feedRootTopic, FeedCollection
 from pss.room import Participant
+from pss.tools import clean_pubkey
 
 privkey = "2ea3f401733d3ecc1e18b305245adc98f3ffc4c6e46bf42f37001fb18b5a70ac"
 pubkey = "b72985aa2104e41c1a2d40340c2b71a8d641bb6ac0f9fd7dc2dbbd48c0eaf172baa41456d252532db97704ea4949e1f42f66fd57de00f8f1f4514a2889f42df6"
@@ -157,7 +159,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(msgs[3].content, "0x1")
 
 
-	#@unittest.skip("showing class skipping")
+	#@unittest.skip("collection single gap")
 	def test_feed_collection_single_gap(self):
 		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
 
@@ -192,31 +194,40 @@ class TestFeedRebuild(unittest.TestCase):
 			self.fail("dict key in test assert fail: " + str(e))
 
 
-	#@unittest.skip("wip")	
+	# test that room topics are correctly generated
+	#@unittest.skip("room name")	
 	def test_feed_room_name(self):
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "foo", False))
-		r = pss.Room(self.agent)
-		r.set("foo", self.feeds[0])
+		r = pss.Room(self.agent, self.feeds[0])
+		r.set_name("foo")
 		addrhx = self.accounts[0].address.encode("hex")
 		pubkeyhx = "04"+self.accounts[0].publickeybytes.encode("hex")
 		nick = "bar"
 		p = Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
 		r.add(nick, p)
-		resulttopic = r.feedcollection.feeds[p.nick]['obj'].topic
+
+		resulttopic = r.feedcollection_in.feeds[p.nick]['obj'].topic
 		self.assertEqual(resulttopic[3:12], self.accounts[0].address[3:12])
 		self.assertNotEqual(resulttopic[:3], self.accounts[0].address[:3])
 		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
+
+		resulttopic = r.feedcollection_out.feeds[p.nick]['obj'].topic
+		self.assertEqual(resulttopic[3:12], self.accounts[0].address[3:12])
+		self.assertNotEqual(resulttopic[:3], self.accounts[0].address[:3])
+		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
+
 		
 
+	# test that we can instantiate a room from saved state
 	##@unittest.skip("wip")	
 	def test_feed_room(self):
 
 		# room ctrl feed
-		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "root", False))
+		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "abc", False))
 
 		nicks = [self.accounts[0].address.encode("hex")]
-		r = pss.Room(self.agent)
-		r.set("abc", self.feeds[0])
+		r = pss.Room(self.agent, self.feeds[0])
+		r.set_name("abc")
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
 			nicks.append(str(i))
@@ -224,14 +235,30 @@ class TestFeedRebuild(unittest.TestCase):
 			p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
 			r.add(nicks[i], p)
 	
-		serializedRoom = r.serialize()
-		rr = pss.Room(self.agent)
-		rr.load(serializedRoom)
 
+		# save the room 
+		serializedroom = r.serialize()
+
+		# retrieve the pubkey from the saved room format	
+		# and create account with retrieved public key
+		# \todo more intuitive feed injection on load
+		unserializedroom = json.loads(serializedroom)
+		acc = pss.Account()
+		acc.set_public_key(clean_pubkey(unserializedroom['pubkey']).decode("hex"))
+
+		# create feed with account from newly (re)created account
+		recreatedownerfeed = pss.Feed(self.agent, acc, unserializedroom['name'], False)
+
+		# instantiate room with feed recreated from saved state
+		rr = pss.Room(self.agent, recreatedownerfeed)
+		rr.load(serializedroom)
+
+		# check that for all in-feeds (read peer's updates) the feed user field is the address of the peer
 		matchesleft = len(self.accounts)-1	
-		for f in rr.feedcollection.feeds.values():
+		for f in rr.feedcollection_in.feeds.values():
 			matched = False
 			for a in self.accounts:
+
 				if f['obj'].account.address == a.address:
 					matched = True
 					matchesleft -= 1
@@ -240,6 +267,35 @@ class TestFeedRebuild(unittest.TestCase):
 		if matchesleft != 0:
 			self.fail("have " + str(matchesleft) + " unmatched addresses")
 
+
+		# check that for all out-feeds (write to peer) the feed user field is the publisher
+		# AND that the topic contains the peer's address (after xor'ing address, only the fed name should remain)
+		matchesaddrleft = len(self.accounts)-1
+		matchestopicleft = len(self.accounts)-1
+		for f in rr.feedcollection_out.feeds.values():
+
+			matched = False
+			if f['obj'].account.address != self.accounts[0].address:
+				self.fail("found unknown address " + f['obj'].account.address.encode("hex"))
+			else:
+				matchesaddrleft -= 1
+
+			matched = False
+			for a in self.accounts:
+				topicwithoutname = ""
+				for i in range(20):
+					topicwithoutname += chr(ord(a.address[i]) ^ord(f['obj'].topic[i]))
+				if topicwithoutname == "abc\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00":
+					matched = True
+
+			if matched:
+				matchestopicleft -= 1
+	
+		if matchesaddrleft != 0:
+			self.fail("have " + str(matchesaddrleft) + " unmatched addresses")
+
+		if matchestopicleft != 0:
+			self.fail("have " + str(matchestopicleft) + " unmatched topics")
 
 
 	def tearDown(self):
