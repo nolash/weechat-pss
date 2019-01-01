@@ -259,7 +259,8 @@ def buf_get(pssName, typ, name, known):
 			bufs[bufname] = buf
 			
 			feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_ROOM + pss.publickey_to_account(psses[pssName].key[2:].decode("hex")))
-			rooms[name] = pss.Room(name, bzzs[pssName].agent, feeds[bufname])
+			rooms[name] = pss.Room(bzzs[pssName], feeds[bufname])
+			rooms[name].start("me", name)
 			wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex"))
 
 		else:
