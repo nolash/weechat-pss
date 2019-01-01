@@ -57,7 +57,15 @@ def clean_nick(s):
 		raise ValueError("invalid characters in nick")
 
 	return s.encode("ascii")	
-	
+
+
+
+def clean_name(s):
+	name = clean_nick(s)
+	if len(name) > 20:
+		raise ValueError("name too long")
+
+	return name	
 	
 
 

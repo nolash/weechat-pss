@@ -11,7 +11,7 @@ import json
 
 from pss.bzz import feedRootTopic, FeedCollection
 from pss.room import Participant
-from pss.tools import clean_pubkey
+from pss.tools import clean_pubkey, now_int
 
 privkey = "2ea3f401733d3ecc1e18b305245adc98f3ffc4c6e46bf42f37001fb18b5a70ac"
 pubkey = "b72985aa2104e41c1a2d40340c2b71a8d641bb6ac0f9fd7dc2dbbd48c0eaf172baa41456d252532db97704ea4949e1f42f66fd57de00f8f1f4514a2889f42df6"
@@ -27,14 +27,18 @@ class TestFeedRebuild(unittest.TestCase):
 	bzz = None
 	sock = None
 	agent = None
-	accounts = []
-	feeds = []
-	privkeys = []
+	accounts = None
+	feeds = None
+	privkeys = None
 	coll = None
 
 
 	def setUp(self):
 		global seedval
+
+		self.accounts = []
+		self.feeds = []
+		self.privkeys = []
 
 		sys.stderr.write("setup\n")
 		self.sock = socket.create_connection(("127.0.0.1", "8500"), 20)
@@ -42,7 +46,6 @@ class TestFeedRebuild(unittest.TestCase):
 		self.bzz = pss.Bzz(self.agent)
 	
 		random.seed(pss.now_int()+seedval)
-		self.privkeys = []
 
 		for i in range(10):
 			hx = ""
@@ -62,6 +65,8 @@ class TestFeedRebuild(unittest.TestCase):
 
 	#@unittest.skip("showing class skipping")
 	def test_single_feed(self):
+		global zerohsh
+
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
 
 		hshfirst = self.bzz.add(zerohsh + "inky")
@@ -81,10 +86,12 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "blinky")
 		
 		r = self.bzz.get(r[:64])
+		print r
 		self.assertEqual(r[:64], hshfirst)
 		self.assertEqual(r[64:], "pinky")
 
 		r = self.bzz.get(r[:64])
+		print r
 		self.assertEqual(r[:64], zerohsh)
 		self.assertEqual(r[64:], "inky")
 
@@ -197,37 +204,31 @@ class TestFeedRebuild(unittest.TestCase):
 	# test that room topics are correctly generated
 	#@unittest.skip("room name")	
 	def test_feed_room_name(self):
-		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "foo", False))
-		r = pss.Room(self.agent, self.feeds[0])
-		r.set_name("foo")
+		roomname = "foo"
+		nick = "bar"
+		self.feeds.append(pss.Feed(self.agent, self.accounts[0], roomname, False))
+		r = pss.Room(self.bzz, self.feeds[0])
+		r.start(nick, roomname)
 		addrhx = self.accounts[0].address.encode("hex")
 		pubkeyhx = "04"+self.accounts[0].publickeybytes.encode("hex")
-		nick = "bar"
 		p = Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
-		r.add(nick, p)
 
 		resulttopic = r.feedcollection_in.feeds[p.nick]['obj'].topic
-		self.assertEqual(resulttopic[3:12], self.accounts[0].address[3:12])
-		self.assertNotEqual(resulttopic[:3], self.accounts[0].address[:3])
+		self.assertEqual(resulttopic[0:len(roomname)], roomname)
 		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
-
-		resulttopic = r.feedcollection_out.feeds[p.nick]['obj'].topic
-		self.assertEqual(resulttopic[3:12], self.accounts[0].address[3:12])
-		self.assertNotEqual(resulttopic[:3], self.accounts[0].address[:3])
-		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
-
+		
 		
 
 	# test that we can instantiate a room from saved state
-	##@unittest.skip("wip")	
+	##@unittest.skip("feed room load save")	
 	def test_feed_room(self):
 
 		# room ctrl feed
 		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "abc", False))
 
 		nicks = [self.accounts[0].address.encode("hex")]
-		r = pss.Room(self.agent, self.feeds[0])
-		r.set_name("abc")
+		r = pss.Room(self.bzz, self.feeds[0])
+		r.start("foo", "abc")
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
 			nicks.append(str(i))
@@ -235,26 +236,30 @@ class TestFeedRebuild(unittest.TestCase):
 			p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
 			r.add(nicks[i], p)
 	
-
-		# save the room 
+		# get the serialized representation of room	
 		serializedroom = r.serialize()
 
+		# save the room 
+		savedhsh = r.save()
+	
 		# retrieve the pubkey from the saved room format	
 		# and create account with retrieved public key
 		# \todo more intuitive feed injection on load
 		unserializedroom = json.loads(serializedroom)
 		acc = pss.Account()
-		acc.set_public_key(clean_pubkey(unserializedroom['pubkey']).decode("hex"))
+		cleanpub = clean_pubkey(unserializedroom['pubkey'])
+		acc.set_public_key(cleanpub.decode("hex"))
+		return
 
 		# create feed with account from newly (re)created account
 		recreatedownerfeed = pss.Feed(self.agent, acc, unserializedroom['name'], False)
 
 		# instantiate room with feed recreated from saved state
-		rr = pss.Room(self.agent, recreatedownerfeed)
-		rr.load(serializedroom)
+		rr = pss.Room(self.bzz, recreatedownerfeed)
+		rr.load(r.hsh, self.accounts[0])
 
-		# check that for all in-feeds (read peer's updates) the feed user field is the address of the peer
-		matchesleft = len(self.accounts)-1	
+		# check that for all"cleanpub: " +  in-feeds (read peer's updates) the feed user field is the address of the peer
+		matchesleft = len(self.accounts)
 		for f in rr.feedcollection_in.feeds.values():
 			matched = False
 			for a in self.accounts:
@@ -263,41 +268,60 @@ class TestFeedRebuild(unittest.TestCase):
 					matched = True
 					matchesleft -= 1
 			if not matched:
+				print "key '" + f['obj'].account.publickeybytes.encode("hex") + "'"
 				self.fail("found unknown address " + f['obj'].account.address.encode("hex"))
 		if matchesleft != 0:
 			self.fail("have " + str(matchesleft) + " unmatched addresses")
 
 
-		# check that for all out-feeds (write to peer) the feed user field is the publisher
-		# AND that the topic contains the peer's address (after xor'ing address, only the fed name should remain)
-		matchesaddrleft = len(self.accounts)-1
-		matchestopicleft = len(self.accounts)-1
-		for f in rr.feedcollection_out.feeds.values():
+		# for the outfeed, check that we are owner
+		self.assertTrue(rr.feed_out.account.is_owner())
 
-			matched = False
-			if f['obj'].account.address != self.accounts[0].address:
-				self.fail("found unknown address " + f['obj'].account.address.encode("hex"))
-			else:
-				matchesaddrleft -= 1
 
-			matched = False
-			for a in self.accounts:
-				topicwithoutname = ""
-				for i in range(20):
-					topicwithoutname += chr(ord(a.address[i]) ^ord(f['obj'].topic[i]))
-				if topicwithoutname == "abc\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00":
-					matched = True
 
-			if matched:
-				matchestopicleft -= 1
+	# test that we can create update and that the saved update contains the expected data
+	#@unittest.skip("room send")	
+	def test_feed_room_send(self):
+
+		msg = "heyho"
+		roomname = hex(now_int())
+
+		# room ctrl feed
+		self.feeds.append(pss.Feed(self.agent, self.accounts[0], roomname, False))
+
+		nicks = ["0"]
+		r = pss.Room(self.bzz, self.feeds[0])
+		r.start("0", roomname)
+		for i in range(1, len(self.accounts)):
+			addrhx = self.accounts[i].address.encode("hex")
+			nicks.append(str(i))
+			pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
+			p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
+			r.add(nicks[i], p)
+
+		hsh = r.send(msg)
+
+		body = self.bzz.get(hsh)
+		self.assertEqual(body[:32], r.hsh)
 	
-		if matchesaddrleft != 0:
-			self.fail("have " + str(matchesaddrleft) + " unmatched addresses")
+		roomparticipants = json.loads(self.bzz.get(r.hsh.encode("hex")))
+		crsr = 32
+		participantcount = len(roomparticipants['participants'])
+		datathreshold = 32 + (participantcount*3)
+		for i in range(participantcount):
+			lenbytes = body[crsr:crsr+3]
+			print lenbytes.encode("hex")
+			offset = struct.unpack("<I", lenbytes + "\x00")[0]
+			self.assertEqual(offset, i*len(msg))
+			self.assertEqual(body[datathreshold+offset:datathreshold+offset+len(msg)], msg)
+			ciphermsg = r.extract(hsh.decode("hex"), r.participants[nicks[i]])
+			self.assertEqual(ciphermsg, msg)
+			crsr += 3
 
-		if matchestopicleft != 0:
-			self.fail("have " + str(matchestopicleft) + " unmatched topics")
+		self.assertEqual(len(body), datathreshold + (participantcount*len(msg)))
+			
 
-
+	
 	def tearDown(self):
 		self.feeds = []
 		colls = []

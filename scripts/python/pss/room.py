@@ -1,8 +1,11 @@
 import json
+import copy
+import struct
 
 from user import PssContact, Account
 from bzz import FeedCollection, Feed
-from tools import clean_nick, clean_pubkey, clean_address
+from tools import clean_nick, clean_pubkey, clean_address, clean_name
+from message import is_message
 
 
 class Participant(PssContact):
@@ -28,11 +31,20 @@ class Room:
 	# name of room, used for feed topic
 	name = ""
 
+	# swarm hsh of serialized representation of room
+	hsh = ""
+
 	# Agent object, http transport
 	agent = None
 
+	# bzz object
+	bzz = None
+
 	# room parameters feed
-	feed = None
+	feed_room = None
+
+	# Output feed 
+	feed_out = None
 
 	# Object representation of participants, Participant type
 	participants = None # Participant type
@@ -40,36 +52,52 @@ class Room:
 	# Input feed aggregator
 	feedcollection_in = None
 
-	# Output feed aggregator
-	feedcollection_out = None
-
-	def __init__(self, agent, feed):
-		self.agent = agent
+	def __init__(self, bzz, feed):
+		self.agent = feed.agent
+		self.feed_room = feed
+		self.bzz = bzz
 		self.participants = {}
-		self.feed = feed
 		self.feedcollection_in = FeedCollection()
-		self.feedcollection_out = FeedCollection()
 		
 
 	# sets the name and the room parameter feed
 	# used to instantiate a new room
-	# \todo room param feed should likely be constructed within this method
-	def set_name(self, name):
-		self.name = clean_nick(name)
+	# \todo valid src parameter
+	def start(self, nick, roomname):
+		self.name = clean_name(roomname)
+		pubkey = "\x04"+self.feed_room.account.publickeybytes
+		self.add(nick, Participant(clean_nick(nick), pubkey.encode("hex"), self.feed_room.account.address.encode("hex"), pubkey.encode("hex")))
+		self.feed_out = Feed(self.agent, self.feed_room.account, self.name, True)
+		self.save()
+
+	
+	def can_write(self):
+		return self.feed_room.account.is_owner()
+
 
 
 	# loads a room from an existing saved record
 	# used to reinstantiate an existing room
 	# \todo avoid double encoding of account address
-	def load(self, savedJson):
+	def load(self, hsh, owneraccount=None):
+		savedJson = self.bzz.get(hsh.encode("hex"))
+		print "savedj " + savedJson
+		self.hsh = hsh
 		r = json.loads(savedJson)
-		self.name = r['name']
+		self.name = clean_name(r['name'])
 		for pubkeyhx in r['participants']:
 			acc = Account()
 			acc.set_public_key(clean_pubkey(pubkeyhx).decode("hex"))
 			nick = acc.address.encode("hex")
-			p = Participant(nick, acc.publickeybytes.encode("hex"), acc.address.encode("hex"), "")
+			p = Participant(nick, "04"+acc.publickeybytes.encode("hex"), acc.address.encode("hex"), "")
 			self.add(nick, p)
+
+		# outgoing feed user is room publisher
+		if owneraccount == None:
+			owneraccount = self.feed_room.account
+
+		self.feed_out = Feed(self.agent, owneraccount, self.name, True)
+
 
 
 	# adds a new participant to the room
@@ -79,37 +107,111 @@ class Room:
 
 		# account reflects the peer's address / key
 		acc = Account()
-		acc.set_address(clean_address(participant.address).decode("hex"))
-
-		# create the user/room name xor
-		roomparticipantname = ""
-		namepad = self.name
-		nickpad = participant.address[2:].decode("hex")
-		while len(namepad) < 32:
-			namepad += "\x00"	
-		while len(nickpad) < 32:
-			nickpad += "\x00"	
-		for i in range(32):
-			roomparticipantname += chr(ord(namepad[i]) ^ ord(nickpad[i]))
+		acc.set_public_key(clean_pubkey(participant.key).decode("hex"))
 
 		# incoming feed user is peer
-		participantfeed_in = Feed(self.agent, acc, roomparticipantname, False)
+		participantfeed_in = Feed(self.agent, acc, self.name, False)
 		self.feedcollection_in.add(participant.nick, participantfeed_in)
-
-		# outgoing feed user is room publisher
-		participantfeed_out = Feed(self.agent, self.feed.account, roomparticipantname, True)
-		self.feedcollection_out.add(participant.nick, participantfeed_out)
-
 		self.participants[nick] = participant
+		self.save()
+
+
+
+	# create new update on outfeed
+	# an update has the following format, where p is number of participants:
+	# 0 - 31		swarm hash pointing to participant list at time of the update
+	# 32 - (32+(p*3))	3 bytes data offset per participant
+	# (32+(p*3)) - 		tightly packed update data per participant, in order of offsets
+	def send(self, msg, fltrdefaultallow=True, fltr=[]):
+		if not is_message(msg):
+			raise ValueError("invalid message")
+
+		# update will hold the actual update data
+		update_header = copy.copy(self.hsh)
+		update_body = ""
+		crsr = 0
+
+		for k, v in self.participants.iteritems():
+			ciphermsg = ""
+			filtered = False
+			if k in fltr and fltrdefaultallow:
+				filtered = True
+			elif not fltrdefaultallow and not k in fltr:
+				filtered = True
+			if filtered:	
+				sys.stderr.write("Skipping filtered " + k) 
+			else:
+				ciphermsg = v.encrypt_to(msg)
+
+			update_header += struct.pack("<I", crsr)[:3]
+			update_body += ciphermsg
+			crsr += len(ciphermsg)
+
+		hsh = self.bzz.add(update_header + update_body)
+		self.feed_out.update(hsh)
+		return hsh
+
+
+
+	# extracts an update message matching the recipient pubkey
+	def extract(self, hsh, contact):
+		participantcount = 0
+		payloadoffset = -1
+		payloadlength = 0
+		ciphermsg = ""
+
+		# retrieve update from swarm
+		body = self.bzz.get(hsh.encode("hex"))
+
+		# if recipient list for the update matches the one in memory
+		# we use the position of the participant in the list as the body offset index
+		matchidx = -1
+		idx = 0
+		if self.hsh == body[:32]:
+			participantcount = len(self.participants)
+			for p in self.participants.values():
+				if p.key == contact.key:
+					matchidx = idx
+				idx += 1
+		# if not we need to retrieve the one that was relevant at the time of update
+		# and match the index against that
+		else:
+			savedroom = json.loads(self.bzz.get(body[:32].encode("hex")))
+			participantcount = len(savedroom['participants'])
+			for p in savedroom['participants']:
+				if clean_hex(p) == clean_pubkey(contact.key):
+					matchidx = idx
+				idx += 1
+
+		# if no matches then this pubkey is not relevant for the room at that particular update	
+		if matchidx == -1:
+			raise ValueError("pubkey " + contact.pubkey + " not valid for this update")
+	
+		# parse the position of the update and extract it
+		payloadthreshold = 32+(participantcount*3)
+		payloadoffsetcrsr = 32+(3*matchidx)
+		payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]
+		payloadoffset = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
+		if participantcount-1 == matchidx:
+			ciphermsg = body[32+(participantcount*3)+payloadoffset:]
+		else:
+			payloadoffsetcrsr += 3
+			payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]
+			payloadstop = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
+			ciphermsg = body[payloadthreshold+payloadoffset:payloadthreshold+payloadstop]
+		
+		return ciphermsg	
+
 
 	
 	# removes a participant from the room
 	# \todo add save updated participant list to swarm
 	# \todo pass participant instead?
 	def remove(self, nick):
-		del self.participants[nick]
 		self.feedcollection_in.remove(nick)
-		self.feedcollection_out.remove(nick)
+		del self.participants[nick]
+		self.save()
+
 
 
 	# outputs the serialized format in which the room parameters are stored in swarm
@@ -117,7 +219,7 @@ class Room:
 	def serialize(self):
 		jsonStr = """{
 	"name":\"""" + self.name + """\",
-	"pubkey":\"0x04""" + self.feed.account.publickeybytes.encode("hex") + """\",
+	"pubkey":\"0x04""" + self.feed_room.account.publickeybytes.encode("hex") + """\",
 	"participants":["""
 		#participantList = ""
 		for p in self.participants.values():
@@ -127,5 +229,11 @@ class Room:
 		jsonStr += """
 	]
 }"""
-		print jsonStr
 		return jsonStr
+
+
+
+	def save(self):
+		s = self.serialize()
+		self.hsh = self.bzz.add(s).decode("hex")
+		return self.hsh

@@ -42,7 +42,7 @@ class Agent:
 		select.select([], [self.sock], [], REQUEST_TIMEOUT)
 		os.write(self.sock, requeststring)
 		select.select([self.sock], [], [], REQUEST_TIMEOUT)
-		r = os.read(self.sock, 1024)
+		r = os.read(self.sock, 4104)
 		m = regexStatusLine.match(r)
 		if m.group(1) != "200":
 			print r
