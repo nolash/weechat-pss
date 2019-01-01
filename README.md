@@ -9,7 +9,7 @@ However there is **lots** to be explored before that. And for this exploration w
 
 ## Version
 
-0.2.3 alpha
+0.2.4 alpha
 
 
 ## Development
@@ -177,6 +177,10 @@ GPLv3
 
 ## Changelog
 
+* v0.2.4:
+    - Add framework for modular command parsing
+    - Add group chat backend prerequisites (room and feed collections)
+    - Add unit tests for feeds and room
 * v0.2.3:
     - Add /pss join command
     - Add multiuser chat buffer

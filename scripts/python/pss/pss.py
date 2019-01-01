@@ -1,36 +1,13 @@
 import websocket
-import secp256k1
-from Crypto.Hash import keccak
 
 from tools import clean_address, clean_pubkey
 from error import *
 from content import rpc_call, rpc_parse
-from contact import PssContact
+from user import PssContact, Account
 
 # topic we will be using for this messenger service
 topic = "0xdeadbee2"
 
-
-
-# holds ethereum account
-# \todo move out of pss to enable sync comms even though crypto modules doesn't exist
-class Eth:
-	pk = None
-	publickeybytes = "" 
-	address = None
-
-
-	def __init__(self, keybytes):
-		self.pk = secp256k1.PrivateKey(keybytes)
-		self.publickeybytes = self.pk.pubkey.serialize(False)[1:]
-		self.address = publickey_to_account(self.publickeybytes)
-
-
-def publickey_to_account(keybytes):
-	h = keccak.new(digest_bits=256)
-	h.update(keybytes)
-	return h.digest()[12:]
-	
 
 # object encapsulating pss node connection
 # \todo move to separate package
@@ -45,7 +22,7 @@ class Pss:
 	eth = None
 	err = 0
 	errstr = ""
-	contacts = {}
+	contacts = None
 	seq = 0
 	ws = None
 	name = ""
@@ -62,6 +39,8 @@ class Pss:
 		if port != "":
 			self.port = port
 
+		self.contacts = {}
+
 
 	
 	def have_account(self):
@@ -70,7 +49,8 @@ class Pss:
 
 
 	def set_account(self, privkeybytes):
-		eth = Eth(privkeybytes)
+		eth = Account()
+		eth.set_key(privkeybytes)
 		# node pubkey is prefixed with 04
 		# \todo verify that the number can't be other than 4
 		if  eth.publickeybytes.encode("hex") != self.key[2:]:
@@ -78,7 +58,7 @@ class Pss:
 			return
 
 		self.eth = eth
-	
+
 
 
 	def get_account(self):

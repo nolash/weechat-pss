@@ -4,6 +4,8 @@ import re
 import os
 import select
 
+REQUEST_TIMEOUT = 10.0
+
 regexStatusLine = re.compile("^HTTP/1.1 (\d{3}) (.+)\n", re.M)
 
 
@@ -37,9 +39,9 @@ class Agent:
 
 	def _write(self, requeststring):
 		print requeststring
-		select.select([], [self.sock], [])
+		select.select([], [self.sock], [], REQUEST_TIMEOUT)
 		os.write(self.sock, requeststring)
-		select.select([self.sock], [], [])
+		select.select([self.sock], [], [], REQUEST_TIMEOUT)
 		r = os.read(self.sock, 1024)
 		m = regexStatusLine.match(r)
 		if m.group(1) != "200":

@@ -1,9 +1,9 @@
-from pss import Pss, Eth, publickey_to_account
-from contact import PssContact
+from pss import Pss
+from user import PssContact, Account, publickey_to_account
 from content import Stream, rpc_parse
 from tools import *
 from error import *
 from message import *
-from bzz import *
+from bzz import Feed, Bzz, FeedUpdate
 from agent import *
-from room import *
+from room import Room

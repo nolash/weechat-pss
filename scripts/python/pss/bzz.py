@@ -1,16 +1,32 @@
 import struct
 import json
+import sys
 
 from Crypto.Hash import keccak
 from urllib import urlencode
 
 from tools import now_int
+from message import Message
 
 
 signPrefix = "\x19Ethereum Signed Message:\x0a\x20" # for 32 byte hashes
-feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06\x02\x02awesomepsschats\x00\x01"
+feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00psschats\x00\x00\x00\x01"
+zerohsh = ""
+for i in range(32):
+	zerohsh += "00"
 
 
+class BzzRetrieveError(Exception):
+	hsh = ""
+
+	def __init__(self, hsh, reason):
+		super(BzzRetrieveError, self).__init__(reason)
+		self.hsh = hsh
+		
+	pass
+
+# Bzz is a convenience wrapper for making swarm store and retrieve calls over http
+# \todo pass agent to all methods instead of storing
 class Bzz():
 	agent = None
 
@@ -24,6 +40,7 @@ class Bzz():
 		return self.agent.get("/bzz-raw:/" + hsh + "/")
 
 
+# FeedUpdate encapsulates a single update to be sent on the network
 class FeedUpdate:
 	name = ""
 	data = ""
@@ -38,6 +55,16 @@ class FeedUpdate:
 
 	
 
+# Feed represents a single swarm feed
+#
+# It can represent both a consumer and publisher feed.
+#
+# To create a feed to which updates may be posted, the account passed to the constructor must contain the private key for the feed account.
+#
+# The isoutput argument sets or unsets the last bit of the feed topic, marking whether the feed is an output feed or an input feed. 
+# Note that a publisher feed may still be an input feed; in this case the client is listening to another publisher.
+#
+# \todo pass agent to all methods instead of storing
 class Feed():
 	agent = None
 	account = None
@@ -47,7 +74,6 @@ class Feed():
 	topic = ""
 
 
-	# \todo get last update from node
 	def __init__(self, httpagent, account, name, single=True):
 		self.account = account
 		self.agent = httpagent
@@ -60,17 +86,8 @@ class Feed():
 				self.topic += feedRootTopic[i]
 
 
-	# \todo implement
-	def get_epoch(self):
-		return 1
-
-
-	
-	def sync(self):
-		(tim, level) = self.info()
-		self.lastupdate = int(tim)
-		self.lastepoch = int(level)
-
+	# retrieve epoch and time next update belongs to
+	# \todo client side should calculate this after initial state gotten from feed
 	def info(self):
 		q = {
 			'user': '0x' + self.account.address.encode("hex"),
@@ -79,16 +96,23 @@ class Feed():
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
-		r = json.loads(self.agent.get(sendpath, querystring))
+		rstr = self.agent.get(sendpath, querystring)
+		r = ""
+		try:
+			r = json.loads(rstr)
+		except:
+			sys.stderr.write("ouch: " + rstr + "\n")
+			raise ValueError("json fail")
 		return (r['epoch']['time'], r['epoch']['level'])
 			
 
+	# update the feed
 	# data is raw bytes
 	# \todo client side next epoch calc (retrieve from server is WAY too slow)
 	def update(self, data):
 		(tim, epoch) = self.info()
 		d = compile_digest(self.topic, self.account.address, data, int(tim), int(epoch))
-		s = sign_digest(self.account.pk, d)
+		s = sign_digest(self.account.privatekey, d)
 		q = {
 			'user': "0x" + self.account.address.encode("hex"),
 			'topic': "0x" + self.topic.encode("hex"),
@@ -106,6 +130,7 @@ class Feed():
 		return r
 
 
+	# get the last update of a feed
 	def head(self):
 		q = {
 			'user': '0x' + self.account.address.encode("hex"),
@@ -116,6 +141,124 @@ class Feed():
 		return self.agent.get(sendpath, querystring)
 			
 
+
+# convenience class for handling feed aggregation (multiuser room, for instance)
+class FeedCollection:
+	feeds = None
+	retrievals = None
+
+	def __init__(self):
+		self.feeds = {}
+		self.retrievals = []
+
+	def add(self, name, feed):
+		if name in self.feeds:
+			raise Exception("feed already exists")
+
+		self.feeds[name] = {
+
+			# feed object
+			"obj": feed,
+
+			# head of the current retrieve
+			"headhsh": "",
+
+			# head from previous update
+			"lasthsh": zerohsh,
+	
+			# timestamp of last processed head
+			"lasttime": 0,	
+
+			"orphans": {}, # orphaned key => target key
+		}
+
+
+	def remove(self, name):
+		del self.feeds[name]
+
+
+	def get(self, idx=-1):
+
+		msgs = {}
+		msgssorted = []
+
+		if idx == -1:
+			if len(self.retrievals) == 0:
+				return []
+			idx = len(self.retrievals)-1	
+	
+		feedmsgs = self.retrievals.pop(idx)
+
+		# \todo refactor to use keys function in sorted
+		for k in feedmsgs.keys():
+			for s, m in feedmsgs[k].iteritems():
+				msgs[str(s) + k] = m
+
+		for m in sorted(msgs):
+			msgssorted.append(msgs[m])
+
+		return msgssorted
+
+
+	# \todo make sure this completes or fully abandons retrieves before returning
+	def gethead(self, bzz):
+
+		# hash map eth address => hash map serial to Message 
+		feedmsgs = {}
+
+		for name, feed in self.feeds.iteritems():
+
+			# headhsh will be empty string 
+			# between completed retrieves
+			# we then need to get the new head hash
+			# the feed is currently pointing to
+			if feed['headhsh'] == "":
+				try:
+					feed['headhsh'] = feed['obj'].head()
+				except:
+					continue
+
+			sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
+
+			if feed['headhsh'] == "":
+				continue
+				
+			# store new messages for feed
+			try:
+				feedmsgs[feed['obj'].account.address] = self._retrieve(bzz, feed['obj'].account.address, feed['headhsh'], feed['lasthsh'])
+			except BzzRetrieveError as e:
+				sys.stderr.write("retrieve fail: " + str(e))
+				feed['lasthsh'] = e.hsh
+				feed['orphans'][feed['headhsh']] = feed['lasthsh']
+
+			# set next retrieve to terminate on
+			feed['lasthsh'] = feed['headhsh']
+			feed['headhsh'] = ""
+
+		self.retrievals.append(feedmsgs)
+		return len(self.retrievals)-1
+
+	
+	def _retrieve(self, bzz, feedaddress, curhsh, targethsh):
+
+		# hash map serial (timestamp+seq) => Message
+		msgs = {}
+
+		# we break out of loop when we reach the previous head	
+		while curhsh != targethsh:
+			try:
+				r = bzz.get(curhsh)
+			except Exception as e:
+				sys.stderr.write("request fail: " + str(e) + "\n")
+				raise BzzRetrieveError(curhsh, str(e))
+			if r == "":
+				raise BzzRetrieveError(curhsh, "empty HTTP response body")
+			curhsh = r[:64]
+			serial = r[64:69] # 4 bytes time + 1 byte serial
+			content = r[69:]	
+			msgs[serial] = Message(serial, feedaddress, content)
+
+		return msgs
 
 def sign_digest(pk, digest):
 	sig = pk.ecdsa_sign_recoverable(digest, raw=True)

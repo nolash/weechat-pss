@@ -3,7 +3,7 @@ import os
 import pss # plugin package, nothing official
 
 # consts
-PSS_VERSION = "0.2.3"
+PSS_VERSION = "0.2.4"
 PSS_BUFPFX_OK = 0
 PSS_BUFPFX_ERROR = 1
 PSS_BUFPFX_WARN = 2
@@ -202,7 +202,7 @@ def buf_get(pssName, typ, name, known):
 		return ""
 
 	if pssName in bzzs:
-		haveBzz == True
+		haveBzz = True
 	elif typ == "room":
 		raise RuntimeException("gateway needed for multiuser chats over swarm")
 	
@@ -226,6 +226,8 @@ def buf_get(pssName, typ, name, known):
 			weechat.buffer_set(buf, "display", "1")
 			plugin = weechat.buffer_get_pointer(buf, "plugin")
 			bufs[bufname] = buf
+			debugstr = "have " + repr(psses[pssName].have_account()) + " + " +  repr(haveBzz)
+			wOut(PSS_BUFPFX_DEBUG, [], "have", debugstr)
 
 			if psses[pssName].have_account() and haveBzz:
 				pubkey = ""
@@ -256,8 +258,8 @@ def buf_get(pssName, typ, name, known):
 			plugin = weechat.buffer_get_pointer(buf, "plugin")
 			bufs[bufname] = buf
 			
-			rooms[name] = pss.Room(name)
 			feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_ROOM + pss.publickey_to_account(psses[pssName].key[2:].decode("hex")))
+			rooms[name] = pss.Room(name, bzzs[pssName].agent, feeds[bufname])
 			wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex"))
 
 		else:
@@ -385,7 +387,7 @@ def sock_connect(pssName, status, tlsrc, sock, error, ip):
 		wOut(PSS_BUFPFX_ERROR, [], "???", "swarm gateway connect failed (" + str(status) + "): " + error )
 		return weechat.WEECHAT_RC_ERROR
 
-	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected, sock " + repr(sock))
+	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected on " + pssName + ", sock " + repr(sock))
 	agent = pss.Agent(psses[pssName].host, 8500, sock)
 	bzzs[pssName] = pss.Bzz(agent)
 
@@ -561,7 +563,7 @@ def buf_node_in(pssName, buf, args):
 			try:
 				currentPss.set_account(privkey.decode("hex"))
 			except ValueError as e:
-				wOut(PSS_BUFPFX_ERROR, [], "!!!", str(e))
+				wOut(PSS_BUFPFX_ERROR, [], "!!!", "set account fail: " + str(e))
 				return weechat.WEECHAT_RC_ERROR
 
 		else:
