@@ -39,9 +39,9 @@ Please add an issue **both** if you successfully run the plugin and/or if someth
 
 The issue should contain the following:
 
-* One of two title prefixes:
-    - **PSS BUG** if it's a bug
-    - **PSS USE** if it's a usage report
+* One of three title prefixes:
+    - **BUG** if it's a bug
+    - **USE** if it's a usage report
 * Your version of the dependencies below (this will help identify minimum requirements).
 * Consise description of what you've observed, and what you expected to observe.
 
@@ -74,9 +74,10 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 
 * Connect to node
 * Add recipients to node's address book
-* Send message to recipient
-* Receive messages received by node while connected to it
+* Send pss message to recipient
+* Receive pss messages received by node while connected to it
 * Added recipients persist across sessions
+* Create, read and write to multiuser chat rooms using swarm feeds
 
 (if you send a message and there is noone listening on the other node, they won't get the message later on. This is regardless of whether the node even is up or not.)
 
