@@ -63,7 +63,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.coll = FeedCollection()
 
 
-	#@unittest.skip("showing class skipping")
+	@unittest.skip("showing class skipping")
 	def test_single_feed(self):
 		global zerohsh
 
@@ -96,7 +96,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "inky")
 
 
-	#@unittest.skip("showing class skipping")
+	@unittest.skip("showing class skipping")
 	def test_feed_collection_ok(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -132,7 +132,7 @@ class TestFeedRebuild(unittest.TestCase):
 			i += 1
 
 	
-	#@unittest.skip("showing class skipping")
+	@unittest.skip("showing class skipping")
 	def test_feed_collection_sort(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -166,7 +166,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(msgs[3].content, "0x1")
 
 
-	#@unittest.skip("collection single gap")
+	@unittest.skip("collection single gap")
 	def test_feed_collection_single_gap(self):
 		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
 
@@ -202,7 +202,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# test that room topics are correctly generated
-	#@unittest.skip("room name")	
+	@unittest.skip("room name")	
 	def test_feed_room_name(self):
 		roomname = "foo"
 		nick = "bar"
@@ -220,7 +220,7 @@ class TestFeedRebuild(unittest.TestCase):
 		
 
 	# test that we can instantiate a room from saved state
-	##@unittest.skip("feed room load save")	
+	#@unittest.skip("feed room load save")	
 	def test_feed_room(self):
 
 		# room ctrl feed
@@ -278,6 +278,35 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertTrue(rr.feed_out.account.is_owner())
 
 
+	# \todo add extract_message test (without fetch)
+	#@unittest.skip("room send")	
+	def test_extract(self):
+		hx = ""
+		data = ""
+		now = 0
+		r = None
+
+		now = now_int()
+
+		for i in range(32):
+			#hx += "{:02x}".format(random.randint(0, 255))
+			hx += chr(random.randint(0, 255))
+
+		data = hx
+		data += struct.pack(">I", now)
+
+		for i in range(32):
+			#data += {:02x}".format(random.randint(0, 255))
+			data += chr(random.randint(0, 255))
+		data += "\x00\x00\x00"
+
+		r = pss.Room(None, pss.Feed(None, None, "nothing"))
+
+		r_hx, r_now = r.extract_meta(data)
+		self.assertEqual(hx, r_hx)
+		self.assertEqual(now, r_now)
+				
+
 
 	# test that we can create update and that the saved update contains the expected data
 	#@unittest.skip("room send")	
@@ -302,19 +331,20 @@ class TestFeedRebuild(unittest.TestCase):
 		hsh = r.send(msg)
 
 		body = self.bzz.get(hsh)
-		self.assertEqual(body[:32], r.hsh)
+		self.assertEqual(body[36:68], r.hsh_room)
 	
-		roomparticipants = json.loads(self.bzz.get(r.hsh.encode("hex")))
-		crsr = 32
+		roomparticipants = json.loads(self.bzz.get(r.hsh_room.encode("hex")))
+		crsr = 68
 		participantcount = len(roomparticipants['participants'])
-		datathreshold = 32 + (participantcount*3)
+		datathreshold = 68 + (participantcount*3)
 		for i in range(participantcount):
 			lenbytes = body[crsr:crsr+3]
 			print lenbytes.encode("hex")
 			offset = struct.unpack("<I", lenbytes + "\x00")[0]
 			self.assertEqual(offset, i*len(msg))
 			self.assertEqual(body[datathreshold+offset:datathreshold+offset+len(msg)], msg)
-			ciphermsg = r.extract(hsh.decode("hex"), r.participants[nicks[i]])
+			body = self.bzz.get(hsh)
+			ciphermsg = r.extract_message(body, r.participants[nicks[i]])
 			self.assertEqual(ciphermsg, msg)
 			crsr += 3
 
