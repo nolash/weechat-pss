@@ -134,6 +134,8 @@ class Room:
 	# 36 - 67		swarm hash pointing to participant list at time of the update
 	# 68 - (68+(p*3))	3 bytes data offset per participant
 	# (68+(p*3)) - 		tightly packed update data per participant, in order of offsets
+	# 
+	# if filters are used, zero-length update entries will be made for the participants filtered out
 	def send(self, msg, fltrdefaultallow=True, fltr=[]):
 		if not is_message(msg):
 			raise ValueError("invalid message")
