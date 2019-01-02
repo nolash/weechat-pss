@@ -3,7 +3,7 @@ import os
 import pss # plugin package, nothing official
 
 # consts
-PSS_VERSION = "0.2.5"
+PSS_VERSION = "0.3.0"
 PSS_BUFPFX_OK = 0
 PSS_BUFPFX_ERROR = 1
 PSS_BUFPFX_WARN = 2
@@ -15,6 +15,8 @@ PSS_BUFPFX_DEBUG = 255
 PSS_BUFTYPE_NODE = "\x10"
 PSS_BUFTYPE_ROOM = "\x01"
 PSS_BUFTYPE_CHAT = "\x11"
+
+PSS_DEFAULT_NICK = "me"
 
 # pss node connections
 psses = {}
@@ -42,6 +44,7 @@ feedBoxPeriod = 1000
 
 # active multiuser chat rooms
 rooms = {}
+roomPeriod = feedBoxPeriod
 
 # buffers
 bufs = {}
@@ -49,6 +52,9 @@ bufs = {}
 # nick to PssContact mappings in memory
 nicks = {}
 remotekeys = {}
+
+# own contact objs per node
+selfs = {}
 
 # path to scripts
 scriptPath = ""
@@ -66,7 +72,7 @@ stream = pss.Stream()
 
 
 # all weechat scripts must run this as first function
-weechat.register("pss", "lash", PSS_VERSION, "GPLv3", "single-node pss chat", "pss_stop", "")
+weechat.register("pss", "lash", PSS_VERSION, "GPLv3", "single-node pss and swarm feeds chat", "pss_stop", "")
 
 
 # writes to weechat console
@@ -110,7 +116,7 @@ def processFeedBox(pssName, _):
 	while 1:
 		update = feedBox.get()
 		if update == None:
-			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "no feed updates for " + pssName)
+			#wOut(PSS_BUFPFX_DEBUG, [], ">>>", "no feed updates for " + pssName)
 			break
 
 		try:
@@ -124,6 +130,42 @@ def processFeedBox(pssName, _):
 			return weechat.WEECHAT_RC_ERROR
 
 	return weechat.WEECHAT_RC_OK
+
+
+
+# \todo conceal feed queries in room obj
+def roomRead(pssName, _):
+	for k, r in rooms.iteritems():
+		msgs = []
+		#for k, f in r.feedcollection_in.feeds.iteritems():
+		#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "getting room feed " + k + " infeed " + k + " / " + f['obj'].account.address.encode("hex"))
+		#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "room hash " + r.hsh_room.encode("hex"))
+		r.feedcollection_in.gethead(r.bzz)
+		msgs = r.feedcollection_in.get()
+
+		#buf = weechat.buffer_search("python", buf_generate_name(pssName, "room", k))
+		for m in msgs:
+			#wOut(PSS_BUFPFX_DEBUG, [], "!!!", "getting nick from key " + m.key.encode("hex"))
+			#for k in nicks.keys():
+			#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "have key " + k)
+
+			#wOut(PSS_BUFPFX_DEBUG, [], "!!!", "parsing content " + m.content.encode("hex"))
+
+			# use set nick if message sender is self
+			# \todo eliminate, move to instant feedback on send for self
+			nickuser = None
+			if psses[pssName].eth.publickeybytes == m.key:
+				nickuser = selfs[pssName]
+			# \todo use binary key repr in nicks dict
+			else:
+				nickdictkey = m.key.encode("hex")
+				nickdictkey = "0x04" + nickdictkey
+				nickuser = nicks[nickdictkey]
+
+			msg = r.extract_message(m.src, nickuser)
+			wOut(PSS_BUFPFX_IN, [buf_get(pssName, "room", r.name, True)], nickuser.nick, msg)
+
+	return weechat.WEECHAT_RC_OK	
 
 
 # perform a single read from pipe
@@ -235,6 +277,7 @@ def buf_get(pssName, typ, name, known):
 					pubkey = name.decode("hex")
 				else:
 					pubkey = remotekeys[name].decode("hex")
+					pubkey = "\x04" + pubkey
 				try:
 					feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_account(pubkey))
 					wOut(PSS_BUFPFX_DEBUG, [], "", "added feed with topic " + feeds[bufname].topic.encode("hex"))
@@ -258,10 +301,14 @@ def buf_get(pssName, typ, name, known):
 			plugin = weechat.buffer_get_pointer(buf, "plugin")
 			bufs[bufname] = buf
 			
-			feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_ROOM + pss.publickey_to_account(psses[pssName].key[2:].decode("hex")))
-			rooms[name] = pss.Room(bzzs[pssName], feeds[bufname])
-			rooms[name].start("me", name)
-			wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex"))
+			#feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_ROOM + pss.publickey_to_account(psses[pssName].key[2:].decode("hex")))
+			feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), name)
+			if len(rooms) == 0:
+				hookTimers.append(weechat.hook_timer(roomPeriod, 0, 0, "roomRead", pssName))
+			rooms[bufname] = pss.Room(bzzs[pssName], feeds[bufname])
+			# \todo test load first, only init if not found
+			rooms[bufname].start("me", name)
+			wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex") + " account " + feeds[bufname].account.address.encode("hex") + " roomfeed " + rooms[bufname].feed_out.account.address.encode("hex"))
 
 		else:
 			raise RuntimeError("invalid buffer type")
@@ -276,8 +323,8 @@ def buf_get(pssName, typ, name, known):
 def buf_in(pssName, buf, inputdata):
 	global psses
 
-	for k in feeds:
-		wOut(PSS_BUFPFX_DEBUG, [buf], "bufin feed", "k " + k)
+	#for k in feeds:
+	#	wOut(PSS_BUFPFX_DEBUG, [buf], "bufin feed", "k " + k)
 
 
 	bufname = weechat.buffer_get_string(buf, "name")
@@ -292,7 +339,9 @@ def buf_in(pssName, buf, inputdata):
 #		return weechat.WEECHAT_RC_ERROR
 
 	if ctx['t'] == PSS_BUFTYPE_ROOM: 
-		wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "sorry not handling room msgs yet")
+		#wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "posting: " + inputdata.encode("hex"))
+		rooms[bufname].send(inputdata)
+		return weechat.WEECHAT_RC_OK
 
 	# send message
 	if psses[pssName].send(ctx['h'], inputdata):
@@ -303,17 +352,8 @@ def buf_in(pssName, buf, inputdata):
 	# \todo make this asynchronous instead, we want command to print and return immediately in the ui
 	# \todo add buffering of sub-second updates (and a timer hook to send them, this solves async too)
 	if bufname in feeds:
-		typ = ""
-		if ctx['t'] == PSS_BUFTYPE_ROOM:
-			typ = "room"
-		elif ctx['t'] == PSS_BUFTYPE_CHAT:
-			typ = "chat"
-		if typ == "":
-			wOut(PSS_BUFPFX_DEBUG, [], "", "no context to send to feed! " + ctx['t'])
-			return weechat.WEECHAT_RC_OK
-
 		try:
-			feedBox.add(pss.FeedUpdate(pssName, typ, ctx['h'], inputdata))
+			feedBox.add(pss.FeedUpdate(pssName, "chat", ctx['h'], inputdata))
 		except RuntimeError as e:
 			wOut(PSS_BUFPFX_ERROR, [], "!!!", "feed add to buffer fail: " + str(e))
 			
@@ -377,9 +417,12 @@ def pss_handle(data, buf, args):
 
 
 def pss_invite(pssName, nick, room):
-	bufname = buf_generate_name(pssName, "room", nick)
-	feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_account(remotekeys[nick]))
-	wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex"))
+	#bufname = buf_generate_name(pssName, "room", nick)
+	#feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_account(remotekeys[nick]))
+	nickkey = remotekeys[nick]
+	contact = nicks[nickkey]
+	room.add(nick, contact)
+	#wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex"))
 
 
 # \todo remove unsuccessful hooks
@@ -497,6 +540,13 @@ def buf_node_in(pssName, buf, args):
 		# start processing inputs on the websocket
 		hookFds[pssName] = weechat.hook_fd(psses[pssName].get_fd(), 1, 0, 0, "msgPipeRead", pssName)
 		hookTimers.append(weechat.hook_timer(feedBoxPeriod, 0, 0, "processFeedBox", pssName))
+
+		# set own nick for this node
+		# \todo use configurable global default nick
+		# \todo clean up messy pubkey slicing (should be binary format in pss obj)
+		pubkey = psses[pssName].key[2:]
+		selfs[pssName] = pss.PssContact(PSS_DEFAULT_NICK, psses[pssName].key, pss.publickey_to_account(pubkey.decode("hex")).encode("hex"), psses[pssName].key)
+		wOut(PSS_BUFPFX_OK, [bufs[pssName]], pssName, "nick is " + selfs[pssName].nick)
 		
 		return weechat.WEECHAT_RC_OK
 
@@ -509,7 +559,7 @@ def buf_node_in(pssName, buf, args):
 	# and "oc" is set to pssName
 	# \todo consider exception for connect-command
 	ctx = buf_get_context(buf)
-	wOut(PSS_BUFPFX_DEBUG, [], "", "ctx: " + repr(ctx['t']) + " n " + ctx['n'] + " h " + ctx['h'])
+	#wOut(PSS_BUFPFX_DEBUG, [], "", "ctx: " + repr(ctx['t']) + " n " + ctx['n'] + " h " + ctx['h'])
 	shiftArg = False
 
 	# t 0 means any non-pss buffer
@@ -521,20 +571,7 @@ def buf_node_in(pssName, buf, args):
 	else:
 		pssName = ctx['n']
 
-#	if ctx['t'] == 0 and argv[0] != "connect":
-#		shiftArg = True
-#	elif ctx['t'] == PSS_BUFTYPE_NODE:
-#		shiftArg = True
-#	elif ctx['t'] == PSS_BUFTYPE_ROOM and argv[0] == "invite":
-#		shiftArg = True
-#
-#	if shiftArg:
-#		pssName = argv[0]
-#		argv = argv[1:]
-#		argc -= 1
-#	else:
-#		pssName = ctx['n']
-#
+
 	# see if we already have this node registered
 	if not pssName in psses:
 		wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown pss connection '" + pssName + "'")
@@ -555,22 +592,22 @@ def buf_node_in(pssName, buf, args):
 		# for now we handle privkeys directly
 		# we will read keystore jsons in near future instead, though
 		if k == "pk":
-			wOut(PSS_BUFPFX_DEBUG, [], "!!!", "fooo")
 			try:
 				privkey = pss.clean_privkey(v)
 			except:
 				wOut(PSS_BUFPFX_ERROR, [], "!!!", "invalid key format")
 				return weechat.WEECHAT_RC_ERROR
 			try:
-				currentPss.set_account(privkey.decode("hex"))
+				currentPss.set_account_write(privkey.decode("hex"))
 			except ValueError as e:
 				wOut(PSS_BUFPFX_ERROR, [], "!!!", "set account fail: " + str(e))
 				return weechat.WEECHAT_RC_ERROR
-
 		else:
 			wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown config key")
 			return weechat.WEECHAT_RC_ERROR
 					
+		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "set pk to " + v + " for " + pssName)
+
 		weechat.WEECHAT_RC_OK	
 	
 
@@ -604,7 +641,7 @@ def buf_node_in(pssName, buf, args):
 		# refresh the plugin memory map version of the recipient
 		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added key " + key + " to nick " + nick)
 		nicks[key] = currentPss.get_contact(nick)
-		remotekeys[nick] = key[2:]
+		remotekeys[nick] = key
 
 		# append recipient to file for reinstating across sessions
 		storeFile.write(nick + "\t" + key + "\t" + addr + "\t" + currentPss.key + "\n")
@@ -676,7 +713,7 @@ def buf_node_in(pssName, buf, args):
 		# and derive channel name from it if we can (fail if not)
 		elif argc < 3:
 			if ctx['t'] != PSS_BUFTYPE_ROOM:
-				wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", str(e))
+				wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "unknown channel '" + ctx['t'] + "'")
 				return weechat.WEECHAT_RC_ERROR
 			roomname = ctx['h']
 	
@@ -688,16 +725,18 @@ def buf_node_in(pssName, buf, args):
 		# check if room exists
 		# if it does, perform invitation
 		try:
-			room = rooms[roomname]	
+			roombufname = buf_generate_name(pssName, "room", roomname)
+			room = rooms[roombufname]	
 			pss_invite(pssName, nick, room)
 
+			wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added " + nick + " to " + roomname)
 			# if neither the previous fail, add the nick to the buffer
 			if weechat.nicklist_search_group(buf, "", "members") == "":
 				weechat.nicklist_add_group(buf, "", "members", "weechat.color.nicklist_group", 1)
 			weechat.nicklist_add_nick(buf, "members", nick, "bar_fg", "", "bar_fg", 1)
 
 		except KeyError as e: # keyerror catches both try statements
-			wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "Unknown room or nick")
+			wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "Unknown room or nick: " + str(e))
 
 
 	# output node key
@@ -710,6 +749,16 @@ def buf_node_in(pssName, buf, args):
 		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName + ".addr", currentPss.base)
 
 
+	# set nick for pss node
+	elif argv[0] == "nick":
+		try:
+			if len(argv) > 1:
+				nick = pss.clean_nick(argv[1])
+				selfs[pssName].nick = nick
+			wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName, "nick is '" + selfs[pssName].nick + "'")
+		except ValueError as e:
+			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "Invalid nick: " + argv[1])
+			
 	# stop connection
 	# \todo also kill the subprocess 
 	# \todo ensure clean shutdown so conncet can be called over
@@ -754,7 +803,7 @@ def pss_sighandler_load(data, sig, sigdata):
 	global scriptPath, storeFile, nicks
 
 	# ignore if not our load signal
-	if not os.path.basename(sigdata) == "singlepss.py":
+	if not os.path.basename(sigdata) == "swarm.py":
 		return weechat.WEECHAT_RC_OK	
 
 	# parse dir and check if websocket comms script is there
@@ -781,7 +830,7 @@ def pss_sighandler_load(data, sig, sigdata):
 			try: 
 				nicks[key] = pss.PssContact(nick, key, addr, src)
 				# \todo function to strip 0x or store no 0x only add on send
-				remotekeys[nick] = key[2:]
+				remotekeys[nick] = key
 
 			# \todo delete the record from the contact store
 			except:
@@ -813,7 +862,7 @@ def pss_sighandler_load(data, sig, sigdata):
 def pss_sighandler_unload(data, sig, sigdata):
 	global storeFile
 
-	if not os.path.basename(sigdata) == "singlepss.py":
+	if not os.path.basename(sigdata) == "swarm.py":
 		return weechat.WEECHAT_RC_OK	
 
 	storeFile.close()

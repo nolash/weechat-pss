@@ -14,7 +14,7 @@ feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0
 zerohsh = ""
 for i in range(32):
 	zerohsh += "00"
-
+zerohshbytes = zerohsh.decode("hex")
 
 class BzzRetrieveError(Exception):
 	hsh = ""
@@ -101,7 +101,7 @@ class Feed():
 		try:
 			r = json.loads(rstr)
 		except:
-			sys.stderr.write("ouch: " + rstr + "\n")
+			#sys.stderr.write("ouch: " + rstr + "\n")
 			raise ValueError("json fail")
 		return (r['epoch']['time'], r['epoch']['level'])
 			
@@ -206,7 +206,10 @@ class FeedCollection:
 		# hash map eth address => hash map serial to Message 
 		feedmsgs = {}
 
-		for name, feed in self.feeds.iteritems():
+		#for k in self.feeds:
+			#sys.stderr.write("found key: " + k + "\n")
+
+		for feed in self.feeds.values():
 
 			# headhsh will be empty string 
 			# between completed retrieves
@@ -214,20 +217,20 @@ class FeedCollection:
 			# the feed is currently pointing to
 			if feed['headhsh'] == "":
 				try:
-					feed['headhsh'] = feed['obj'].head()
+					feed['headhsh'] = feed['obj'].head().decode("hex")
 				except:
 					continue
 
-			sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
+			#sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
 
 			if feed['headhsh'] == "":
 				continue
 				
 			# store new messages for feed
 			try:
-				feedmsgs[feed['obj'].account.address] = self._retrieve(bzz, feed['obj'].account.address, feed['headhsh'], feed['lasthsh'])
+				feedmsgs[feed['obj'].account.address] = self._retrieve(bzz, feed['obj'].account, feed['headhsh'], feed['lasthsh'])
 			except BzzRetrieveError as e:
-				sys.stderr.write("retrieve fail: " + str(e))
+				#sys.stderr.write("retrieve fail: " + str(e))
 				feed['lasthsh'] = e.hsh
 				feed['orphans'][feed['headhsh']] = feed['lasthsh']
 
@@ -245,18 +248,18 @@ class FeedCollection:
 		msgs = {}
 
 		# we break out of loop when we reach the previous head	
-		while curhsh != targethsh:
+		while curhsh != targethsh and curhsh != zerohshbytes:
 			try:
-				r = bzz.get(curhsh)
+				r = bzz.get(curhsh.encode("hex"))
 			except Exception as e:
-				sys.stderr.write("request fail: " + str(e) + "\n")
+				#sys.stderr.write("request fail: " + str(e) + "\n")
 				raise BzzRetrieveError(curhsh, str(e))
 			if r == "":
 				raise BzzRetrieveError(curhsh, "empty HTTP response body")
-			curhsh = r[:64]
-			serial = r[64:69] # 4 bytes time + 1 byte serial
-			content = r[69:]	
-			msgs[serial] = Message(serial, feedaddress, content)
+			curhsh = r[:32]
+			serial = r[32:36] # 4 bytes time + 1 byte serial
+			content = r[36:]	
+			msgs[serial] = Message(serial, feedaddress, content, r)
 
 		return msgs
 

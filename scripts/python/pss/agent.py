@@ -3,6 +3,7 @@ import copy
 import re
 import os
 import select
+import sys
 
 REQUEST_TIMEOUT = 10.0
 
@@ -38,7 +39,7 @@ class Agent:
 
 
 	def _write(self, requeststring):
-		print requeststring
+		#sys.stderr.write(repr(requeststring))
 		select.select([], [self.sock], [], REQUEST_TIMEOUT)
 		os.write(self.sock, requeststring)
 		select.select([self.sock], [], [], REQUEST_TIMEOUT)
@@ -76,6 +77,6 @@ class Agent:
 		requeststring += " HTTP/1.1\nHost: " + req.get_host() + "\n"
 		for (k, v) in req.header_items():
 			requeststring += k + ": " + v + "\n"
-		requeststring += "\n" + req.get_data()	
+		requeststring += "\n" + req.get_data()
 		return self._write(requeststring)
 	

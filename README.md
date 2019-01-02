@@ -6,10 +6,12 @@ Ultimately, the idea is to create a proper shared object plugin which handles en
 
 However there is **lots** to be explored before that. And for this exploration we will use this simple prototype where you remote control a _single_ swarm node, using its public key and address.
 
+Please note that this project is meant to be something of a reference implementation of peer-to-peer communications using combinations of pss and feed. The goal is _not_ to create a production-grade application (but then, who knows where it will end up).
+
 
 ## Version
 
-0.2.5 alpha
+0.3.0 alpha
 
 
 ## Development
@@ -88,6 +90,9 @@ You need a running instance of swarm to connect to. When you run swarm, remember
 
 When swarm is running, you can continue.
 
+### PSS
+
+This pss method is for one-to-one messaging only.
 
 ```
 # Connect to a pss node
@@ -144,11 +149,55 @@ if you pardon my french...
 /buffer weechat
 /pss bar msg lash cheer up, dude
 
+```
+
+### FEEDS
+
+Group chat implementation using swarm feeds. To try it out you will have to work with two instances, as there's a bug sabotaging the second buffer if you run in the same weechat.
+
+
+```
+# if you haven't already, connect to your node
+# and add a peer with nick 'hsal' (or other name, you choose) to your address book
+# (see above section on pss for details)
+/pss connect foo 127.0.0.1 8546
+/pss add hsal <key> <address>
+
+# change to pss node buffer if you're not already in it, and "join" chatroom
+/buffer foo
+
+# for now you need to manually set your private key
+# the key is used to sign the feed updates
+# currently it must be the same private key as your pss node is running
+# (but this will change soon)
+/pss set pk <privatekey>
+
+# now you can "join" the room. 
+# This will establish an output feed you can write to
+# which are your entries in the room
+/pss join fooroom
+
+# now 'invite' someone to the room
+# currently that does nothing more than
+# make you poll the other party's feed
+# and if there are updates on it they will be displayed
+/buffer fooroom
+/pss invite hsal
+
+# now start a different instance and do the same steps
+# but with parameters according to that instance's node
+# then write something in this buffer
+# it will echo back AND it will show up in the other buffer
+
+```
+
+### RESETTING
+
+```
 # Unloading the script will kill sub-processes and disconnect from nodes
 # Currently it will also erase all settings and nicks you've added
 # It also removes the buffer and all messages in it are lost. Any logging of message is purely by accident.
 /script unload pss
-
 ```
 
 ## Security
@@ -177,6 +226,10 @@ GPLv3
 
 ## Changelog
 
+* v0.3.0:
+    - Integrate feed group chat rooms to plugin
+    - Remove debug clutter
+    - Add /pss nick command to handle self-nick per node
 * v0.2.5:
     - Implement single file update format for group chat output feeds
 * v0.2.4:
