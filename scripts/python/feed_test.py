@@ -289,23 +289,25 @@ class TestFeedRebuild(unittest.TestCase):
 		now = now_int()
 
 		for i in range(32):
-			#hx += "{:02x}".format(random.randint(0, 255))
 			hx += chr(random.randint(0, 255))
 
 		data = hx
 		data += struct.pack(">I", now)
+		data += "\x00"
 
 		for i in range(32):
-			#data += {:02x}".format(random.randint(0, 255))
 			data += chr(random.randint(0, 255))
 		data += "\x00\x00\x00"
 
 		r = pss.Room(None, pss.Feed(None, None, "nothing"))
 
-		r_hx, r_now = r.extract_meta(data)
+		r_hx, r_now, r_serial = r.extract_meta(data)
 		self.assertEqual(hx, r_hx)
 		self.assertEqual(now, r_now)
-				
+		self.assertEqual("\x00", r_serial)
+		
+
+	# \todo add test for initial feed update on start		
 
 
 	# test that we can create update and that the saved update contains the expected data
@@ -331,12 +333,12 @@ class TestFeedRebuild(unittest.TestCase):
 		hsh = r.send(msg)
 
 		body = self.bzz.get(hsh)
-		self.assertEqual(body[36:68], r.hsh_room)
+		self.assertEqual(body[37:69], r.hsh_room)
 	
 		roomparticipants = json.loads(self.bzz.get(r.hsh_room.encode("hex")))
-		crsr = 68
+		crsr = 69
 		participantcount = len(roomparticipants['participants'])
-		datathreshold = 68 + (participantcount*3)
+		datathreshold = 69 + (participantcount*3)
 		for i in range(participantcount):
 			lenbytes = body[crsr:crsr+3]
 			print lenbytes.encode("hex")

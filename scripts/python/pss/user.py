@@ -57,7 +57,7 @@ class Account:
 	def set_public_key(self, pubkey):
 		self._clear_key()
 		self.publickeybytes = pubkey[1:]
-		self.address = publickey_to_account(self.publickeybytes[1:])
+		self.address = publickey_to_account(pubkey[1:])
 	
 	
 	def set_key(self, keybytes):
