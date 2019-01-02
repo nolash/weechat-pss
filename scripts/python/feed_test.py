@@ -63,7 +63,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.coll = FeedCollection()
 
 
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_single_feed(self):
 		global zerohsh
 
@@ -96,7 +96,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "inky")
 
 
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_ok(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -132,7 +132,7 @@ class TestFeedRebuild(unittest.TestCase):
 			i += 1
 
 	
-	@unittest.skip("showing class skipping")
+	#@unittest.skip("showing class skipping")
 	def test_feed_collection_sort(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -166,7 +166,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.assertEqual(msgs[3].content, "0x1")
 
 
-	@unittest.skip("collection single gap")
+	#@unittest.skip("collection single gap")
 	def test_feed_collection_single_gap(self):
 		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
 
@@ -202,7 +202,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# test that room topics are correctly generated
-	@unittest.skip("room name")	
+	#@unittest.skip("room name")	
 	def test_feed_room_name(self):
 		roomname = "foo"
 		nick = "bar"
@@ -220,7 +220,7 @@ class TestFeedRebuild(unittest.TestCase):
 		
 
 	# test that we can instantiate a room from saved state
-	#@unittest.skip("feed room load save")	
+	##@unittest.skip("feed room load save")	
 	def test_feed_room(self):
 
 		# room ctrl feed
@@ -279,7 +279,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# \todo add extract_message test (without fetch)
-	#@unittest.skip("room send")	
+	##@unittest.skip("room send")	
 	def test_extract(self):
 		hx = ""
 		data = ""
@@ -311,7 +311,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# test that we can create update and that the saved update contains the expected data
-	#@unittest.skip("room send")	
+	##@unittest.skip("room send")	
 	def test_feed_room_send(self):
 
 		msg = "heyho"

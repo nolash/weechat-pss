@@ -293,10 +293,10 @@ def buf_get(pssName, typ, name, known):
 			feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), name)
 			if len(rooms) == 0:
 				hookTimers.append(weechat.hook_timer(roomPeriod, 0, 0, "roomRead", pssName))
-			rooms[name] = pss.Room(bzzs[pssName], feeds[bufname])
+			rooms[bufname] = pss.Room(bzzs[pssName], feeds[bufname])
 			# \todo test load first, only init if not found
-			rooms[name].start("me", name)
-			wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex") + " account " + feeds[bufname].account.address.encode("hex") + " roomfeed " + rooms[name].feed_out.account.address.encode("hex"))
+			rooms[bufname].start("me", name)
+			wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex") + " account " + feeds[bufname].account.address.encode("hex") + " roomfeed " + rooms[bufname].feed_out.account.address.encode("hex"))
 
 		else:
 			raise RuntimeError("invalid buffer type")
@@ -328,7 +328,7 @@ def buf_in(pssName, buf, inputdata):
 
 	if ctx['t'] == PSS_BUFTYPE_ROOM: 
 		wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "posting: " + inputdata.encode("hex"))
-		rooms[ctx['h']].send(inputdata)
+		rooms[bufname].send(inputdata)
 		return weechat.WEECHAT_RC_OK
 
 	# send message
@@ -706,7 +706,8 @@ def buf_node_in(pssName, buf, args):
 		# check if room exists
 		# if it does, perform invitation
 		try:
-			room = rooms[roomname]	
+			roombufname = buf_generate_name(pssName, "room", roomname)
+			room = rooms[roombufname]	
 			pss_invite(pssName, nick, room)
 
 			wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added " + nick + " to " + roomname)

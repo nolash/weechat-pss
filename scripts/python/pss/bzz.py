@@ -206,6 +206,9 @@ class FeedCollection:
 		# hash map eth address => hash map serial to Message 
 		feedmsgs = {}
 
+		for k in self.feeds:
+			sys.stderr.write("found key: " + k + "\n")
+
 		for feed in self.feeds.values():
 
 			# headhsh will be empty string 
