@@ -3,8 +3,8 @@ import copy
 import struct
 
 from user import PssContact, Account
-from bzz import FeedCollection, Feed
-from tools import clean_nick, clean_pubkey, clean_address, clean_name
+from bzz import FeedCollection, Feed, zerohsh
+from tools import clean_nick, clean_pubkey, clean_address, clean_name, now_int, clean_hex
 from message import is_message
 
 
@@ -32,7 +32,13 @@ class Room:
 	name = ""
 
 	# swarm hsh of serialized representation of room
-	hsh = ""
+	hsh_room = ""
+
+	# swarm hash of previous update
+	hsh_out = ""
+
+	# time of last send
+	lasttime = 0
 
 	# Agent object, http transport
 	agent = None
@@ -58,6 +64,7 @@ class Room:
 		self.bzz = bzz
 		self.participants = {}
 		self.feedcollection_in = FeedCollection()
+		self.hsh_out = zerohsh.decode("hex")
 		
 
 	# sets the name and the room parameter feed
@@ -79,10 +86,11 @@ class Room:
 	# loads a room from an existing saved record
 	# used to reinstantiate an existing room
 	# \todo avoid double encoding of account address
+	# \todo get output update head hash at time of load
 	def load(self, hsh, owneraccount=None):
 		savedJson = self.bzz.get(hsh.encode("hex"))
 		print "savedj " + savedJson
-		self.hsh = hsh
+		self.hsh_room = hsh
 		r = json.loads(savedJson)
 		self.name = clean_name(r['name'])
 		for pubkeyhx in r['participants']:
@@ -97,7 +105,9 @@ class Room:
 			owneraccount = self.feed_room.account
 
 		self.feed_out = Feed(self.agent, owneraccount, self.name, True)
-
+		hd = self.feed_out.head()
+		if len(hd) == 64:
+			self.hsh_out = hd.decode("hex")
 
 
 	# adds a new participant to the room
@@ -119,15 +129,23 @@ class Room:
 
 	# create new update on outfeed
 	# an update has the following format, where p is number of participants:
-	# 0 - 31		swarm hash pointing to participant list at time of the update
-	# 32 - (32+(p*3))	3 bytes data offset per participant
-	# (32+(p*3)) - 		tightly packed update data per participant, in order of offsets
+	# 0 - 31		swarm hash pointing to previous update
+	# 32 - 35		4 bytes time of update
+	# 36 - 67		swarm hash pointing to participant list at time of the update
+	# 68 - (68+(p*3))	3 bytes data offset per participant
+	# (68+(p*3)) - 		tightly packed update data per participant, in order of offsets
 	def send(self, msg, fltrdefaultallow=True, fltr=[]):
 		if not is_message(msg):
 			raise ValueError("invalid message")
 
+		# record update time
+		now = now_int()
+	
 		# update will hold the actual update data
-		update_header = copy.copy(self.hsh)
+		update_header = self.hsh_out
+		update_header += struct.pack(">I", now)
+		update_header += self.hsh_room 
+		
 		update_body = ""
 		crsr = 0
 
@@ -149,25 +167,38 @@ class Room:
 
 		hsh = self.bzz.add(update_header + update_body)
 		self.feed_out.update(hsh)
+		self.hsh_out = hsh.decode("hex")
+		self.lasttime = now
 		return hsh
 
 
+	# returns a tuple with previous update hash (in binary) and last time (8 byte int)
+	def extract_meta(self, body):
+		# two hashes, 8 byte time, 3 byte offset (and no data)
+		if len(body) < 71: 
+			raise ValueError("invalid update data")
+		
+		hsh = body[:32]
+		tim = struct.unpack(">I", body[32:36])[0]
+		return hsh, tim
+
 
 	# extracts an update message matching the recipient pubkey
-	def extract(self, hsh, contact):
+	# \todo do not use string literals of offset calcs
+	def extract_message(self, body, contact):
 		participantcount = 0
 		payloadoffset = -1
 		payloadlength = 0
 		ciphermsg = ""
 
 		# retrieve update from swarm
-		body = self.bzz.get(hsh.encode("hex"))
+		# body = self.bzz.get(hsh.encode("hex"))
 
 		# if recipient list for the update matches the one in memory
 		# we use the position of the participant in the list as the body offset index
 		matchidx = -1
 		idx = 0
-		if self.hsh == body[:32]:
+		if self.hsh_room == body[36:68]:
 			participantcount = len(self.participants)
 			for p in self.participants.values():
 				if p.key == contact.key:
@@ -176,7 +207,7 @@ class Room:
 		# if not we need to retrieve the one that was relevant at the time of update
 		# and match the index against that
 		else:
-			savedroom = json.loads(self.bzz.get(body[:32].encode("hex")))
+			savedroom = json.loads(self.bzz.get(body[36:68].encode("hex")))
 			participantcount = len(savedroom['participants'])
 			for p in savedroom['participants']:
 				if clean_hex(p) == clean_pubkey(contact.key):
@@ -188,18 +219,18 @@ class Room:
 			raise ValueError("pubkey " + contact.pubkey + " not valid for this update")
 	
 		# parse the position of the update and extract it
-		payloadthreshold = 32+(participantcount*3)
-		payloadoffsetcrsr = 32+(3*matchidx)
+		payloadthreshold = 68+(participantcount*3)
+		payloadoffsetcrsr = 68+(3*matchidx)
 		payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]
 		payloadoffset = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
 		if participantcount-1 == matchidx:
-			ciphermsg = body[32+(participantcount*3)+payloadoffset:]
+			ciphermsg = body[68+(participantcount*3)+payloadoffset:]
 		else:
 			payloadoffsetcrsr += 3
 			payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]
 			payloadstop = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
 			ciphermsg = body[payloadthreshold+payloadoffset:payloadthreshold+payloadstop]
-		
+	
 		return ciphermsg	
 
 
@@ -235,5 +266,5 @@ class Room:
 
 	def save(self):
 		s = self.serialize()
-		self.hsh = self.bzz.add(s).decode("hex")
-		return self.hsh
+		self.hsh_room = self.bzz.add(s).decode("hex")
+		return self.hsh_room
