@@ -63,9 +63,9 @@ The issue should contain the following:
 
 * Install [weechat](https://weechat.org) if you don't have it already.
 * Change directory to `scripts/python` in this source tree.
-* Copy the file `singlepss.py` and the `pss` directory along with its contents to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
+* Copy the file `swarm.py` and the `pss` directory along with its contents to the `python` subfolder in your weechat directory (normally this is `~/.weechat/python`)
 * Start weechat
-* Load the script with `/script load singlepss.py`
+* Load the script with `/script load swarm.py`
 
 This adds a command `/pss` to your weechat instance. You can confirm load with calling the help text with `/help pss`
 
@@ -76,10 +76,10 @@ This adds a command `/pss` to your weechat instance. You can confirm load with c
 * Add recipients to node's address book
 * Send pss message to recipient
 * Receive pss messages received by node while connected to it
-* Added recipients persist across sessions
+* Added recipients persist across sessions (pss only)
 * Create, read and write to multiuser chat rooms using swarm feeds
 
-(if you send a message and there is noone listening on the other node, they won't get the message later on. This is regardless of whether the node even is up or not.)
+Note: if you send a pss message and there is noone listening on the other node, they won't get the message later on. This is regardless of whether the node even is up or not. Feeds, however, will persist (to the extent that they are kept in swarm, of course).
 
 ## Usage
 
