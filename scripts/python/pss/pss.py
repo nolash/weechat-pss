@@ -48,7 +48,7 @@ class Pss:
 
 
 
-	def set_account(self, privkeybytes):
+	def set_account_write(self, privkeybytes):
 		eth = Account()
 		eth.set_key(privkeybytes)
 		# node pubkey is prefixed with 04
@@ -125,7 +125,7 @@ class Pss:
 		self.base = base
 		self.connected = True
 		self.run = True
-				
+
 		return True
 
 
