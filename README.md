@@ -11,7 +11,7 @@ Please note that this project is meant to be something of a reference implementa
 
 ## Version
 
-0.3.0 alpha
+0.3.1 alpha
 
 
 ## Development
@@ -154,7 +154,7 @@ if you pardon my french...
 
 ### FEEDS
 
-Group chat implementation using swarm feeds. To try it out you will have to work with two instances, as there's a bug sabotaging the second buffer if you run in the same weechat.
+Group chat implementation using swarm feeds. 
 
 
 ```
@@ -185,8 +185,8 @@ Group chat implementation using swarm feeds. To try it out you will have to work
 /buffer fooroom
 /pss invite hsal
 
-# now start a different instance and do the same steps
-# but with parameters according to that instance's node
+# now start a different instance / connect a different node
+# and mirror the same steps for this
 # then write something in this buffer
 # it will echo back AND it will show up in the other buffer
 
@@ -227,6 +227,8 @@ GPLv3
 
 ## Changelog
 
+* v0.3.1:
+    - Fix bug preventing group chat with different nodes in same instance
 * v0.3.0:
     - Integrate feed group chat rooms to plugin
     - Remove debug clutter
