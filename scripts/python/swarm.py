@@ -135,10 +135,11 @@ def processFeedBox(pssName, _):
 
 # \todo conceal feed queries in room obj
 def roomRead(pssName, _):
-	for k, r in rooms.iteritems():
+	outbufs = []
+	for bufname, r in rooms.iteritems():
 		msgs = []
 		#for k, f in r.feedcollection_in.feeds.iteritems():
-		#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "getting room feed " + k + " infeed " + k + " / " + f['obj'].account.address.encode("hex"))
+		#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "getting room feed " + k + " infeed " + k + " / " + f['obj'].account.address.encode("hex") + " bufname " + bufname)
 		#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "room hash " + r.hsh_room.encode("hex"))
 		r.feedcollection_in.gethead(r.bzz)
 		msgs = r.feedcollection_in.get()
@@ -163,7 +164,12 @@ def roomRead(pssName, _):
 				nickuser = nicks[nickdictkey]
 
 			msg = r.extract_message(m.src, nickuser)
-			wOut(PSS_BUFPFX_IN, [buf_get(pssName, "room", r.name, True)], nickuser.nick, msg)
+
+			buf = weechat.buffer_search("python", bufname)
+			#bufname = buf_get(pssName, "room", r.name, True)
+			wOut(PSS_BUFPFX_DEBUG, [], "!!!", "writing to room buf " + bufname + " for room " + r.name)
+			wOut(PSS_BUFPFX_IN, [buf], nickuser.nick, msg)
+
 
 	return weechat.WEECHAT_RC_OK	
 
@@ -237,6 +243,8 @@ def buf_get(pssName, typ, name, known):
 	# \todo integrity check of input data
 	bufname = buf_generate_name(pssName, typ, name)
 
+	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "generated bufname " + bufname + " for " + pssName + " / " + typ + " / " + name)
+
 	try:
 		buf = weechat.buffer_search("python", bufname)
 	# \todo re-evaluate why exception can occur here, and which one specifically
@@ -304,7 +312,7 @@ def buf_get(pssName, typ, name, known):
 			#feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_ROOM + pss.publickey_to_account(psses[pssName].key[2:].decode("hex")))
 			feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), name)
 			if len(rooms) == 0:
-				hookTimers.append(weechat.hook_timer(roomPeriod, 0, 0, "roomRead", pssName))
+				hookTimers.append(weechat.hook_timer(roomPeriod, 0, 0, "roomRead", psses[pssName].name))
 			rooms[bufname] = pss.Room(bzzs[pssName], feeds[bufname])
 			# \todo test load first, only init if not found
 			rooms[bufname].start("me", name)
@@ -443,7 +451,7 @@ def sock_connect(pssName, status, tlsrc, sock, error, ip):
 	for c in nicks:
 		if nicks[c].src == psses[pssName].key:
 			if psses[pssName].add(nicks[c].nick, nicks[c].key, nicks[c].address):
-				wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "+++", "added '" + nicks[c].nick + "' to node (key: " + pss.label(psses[pssName].key) + ", addr: " + pss.label(psses[pssName].base) + ")")
+				wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "+++", "added '" + nicks[c].nick + "' to node '" + pssName + "' (key: " + pss.label(psses[pssName].key) + ", addr: " + pss.label(psses[pssName].base) + ")")
 				# \ todo make this call more legible (public key to bytes method in pss pkg)
 				try:
 					feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_account(psses[pssName].key[2:].decode("hex")))
@@ -559,7 +567,7 @@ def buf_node_in(pssName, buf, args):
 	# and "oc" is set to pssName
 	# \todo consider exception for connect-command
 	ctx = buf_get_context(buf)
-	#wOut(PSS_BUFPFX_DEBUG, [], "", "ctx: " + repr(ctx['t']) + " n " + ctx['n'] + " h " + ctx['h'])
+	wOut(PSS_BUFPFX_DEBUG, [], "", "ctx: " + repr(ctx['t']) + " n " + ctx['n'] + " h " + ctx['h'])
 	shiftArg = False
 
 	# t 0 means any non-pss buffer
@@ -571,6 +579,7 @@ def buf_node_in(pssName, buf, args):
 	else:
 		pssName = ctx['n']
 
+	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "after ctx " + pssName)	
 
 	# see if we already have this node registered
 	if not pssName in psses:
@@ -614,7 +623,7 @@ def buf_node_in(pssName, buf, args):
 
 	# add a recipient to the address books of plugin and node
 	# \todo currently overwritten if same pubkey and different addr, should be possible to have both, maybe even one-shots special command with dark address where entry is deleted after message sent!!!
-	if argv[0] == "add":
+	elif argv[0] == "add":
 
 		nick = ""
 		key = ""
@@ -693,7 +702,8 @@ def buf_node_in(pssName, buf, args):
 			return weechat.WEECHAT_RC_ERROR
 
 		room = argv[1]
-	
+
+		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "in join " + pssName)	
 		buf = buf_get(pssName, "room", room, True)
 
 
