@@ -59,9 +59,16 @@ class Room:
 	# Input feed aggregator
 	feedcollection_in = None
 
-	def __init__(self, bzz, feed):
-		self.agent = feed.agent
-		self.feed_room = feed
+	#def __init__(self, bzz, feed):
+	def __init__(self, bzz, name, acc):
+		roomname = clean_name(name)
+		for i in range(32-len(roomname)):
+			roomname += "\x00"
+		roomnamelist = list(roomname)
+		roomnamelist[31] = "\x02"
+		roomname = "".join(roomnamelist)
+		self.feed_room = Feed(bzz.agent, acc, roomname, False)
+		self.agent = bzz.agent
 		self.bzz = bzz
 		self.participants = {}
 		self.feedcollection_in = FeedCollection()
@@ -180,8 +187,8 @@ class Room:
 			update_body += ciphermsg
 			crsr += len(ciphermsg)
 
-		sys.stderr.write("group send header: " + update_header.encode("hex"))
-		sys.stderr.write("group send body: " + update_body.encode("hex"))
+		#sys.stderr.write("group send header: " + update_header.encode("hex"))
+		#sys.stderr.write("group send body: " + update_body.encode("hex"))
 		hsh = self.bzz.add(update_header + update_body)
 		self.feed_out.update(hsh)
 		self.hsh_out = hsh.decode("hex")

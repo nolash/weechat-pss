@@ -5,7 +5,6 @@ import pss
 import socket
 import sys
 import random
-import copy
 import struct
 import json
 
@@ -96,7 +95,7 @@ class TestFeedRebuild(unittest.TestCase):
 		self.assertEqual(r[64:], "inky")
 
 
-	#@unittest.skip("showing class skipping")
+	#@unittest.skip("collection ok")
 	def test_feed_collection_ok(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -104,15 +103,16 @@ class TestFeedRebuild(unittest.TestCase):
 		timebytes = struct.pack(">I", tim)
 		outfeeds = []
 		for i in range(len(self.feeds)):
-			lasthsh = copy.copy(zerohsh)
+			lasthsh = zerohsh.decode("hex")
 			addr = self.feeds[i].account.address
 			acc = pss.Account()
 			acc.set_address(addr)
 			outfeeds.append(pss.Feed(self.agent, acc, "one", True))
-			print "set addr " +  str(i) + " " + addr
+			print "set addr " +  str(i) + " " + addr.encode("hex")
 			for j in range(3):
-				lasthsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
-				self.feeds[i].update(lasthsh)
+				hsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
+				lasthsh = hsh.decode("hex")
+				self.feeds[i].update(hsh)
 
 		self.coll.add("foo", outfeeds[0])
 		self.coll.add("bar", outfeeds[1])
@@ -122,7 +122,9 @@ class TestFeedRebuild(unittest.TestCase):
 		i = 0
 		for n in ["foo", "bar"]:
 			k = self.coll.feeds[n]['obj'].account.address
+			print "getting addr " + k.encode("hex")
 			v = msgs[k]
+			timebyteshx = timebytes.encode("hex")	
 			self.assertEqual(v[timebytes + "\x00"].content, "0x" + str(i*3))
 			self.assertEqual(v[timebytes + "\x00"].user, k)
 			self.assertEqual(v[timebytes + "\x01"].content, "0x" + str((i*3)+1))
@@ -132,7 +134,7 @@ class TestFeedRebuild(unittest.TestCase):
 			i += 1
 
 	
-	#@unittest.skip("showing class skipping")
+	#@unittest.skip("collection sort")
 	def test_feed_collection_sort(self):
 		for i in range(2):
 			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
@@ -140,15 +142,16 @@ class TestFeedRebuild(unittest.TestCase):
 		timebytes = struct.pack(">I", tim)
 		outfeeds = []
 		for i in range(len(self.feeds)):
-			lasthsh = copy.copy(zerohsh)
+			lasthsh = zerohsh.decode("hex")
 			addr = self.feeds[i].account.address
 			acc = pss.Account()
 			acc.set_address(addr)
 			outfeeds.append(pss.Feed(self.agent, acc, "one", True))
-			print "set addr " +  str(i) + " " + addr
+			print "set addr " +  str(i) + " " + addr.encode("hex")
 			for j in range(3):
-				lasthsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
-				self.feeds[i].update(lasthsh)
+				hsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
+				lasthsh = hsh.decode("hex")
+				self.feeds[i].update(hsh)
 
 		self.coll.add("foo", outfeeds[0])
 		self.coll.add("bar", outfeeds[1])
@@ -175,17 +178,17 @@ class TestFeedRebuild(unittest.TestCase):
 		bogushsh = ""
 		for i in range(32):
 			bogushsh += "01"
-		lasthsh = copy.copy(bogushsh)
-
+		lasthsh = bogushsh.decode("hex")
 
 		addr = feed.account.address
 		acc = pss.Account()
 		acc.set_address(addr)
 		outfeed = pss.Feed(self.agent, acc, "one", True)
-		print "set addr " +  str(i) + " " + addr
+		print "set addr " +  str(i) + " " + addr.encode("hex")
 		for j in range(3):
-			lasthsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
-			feed.update(lasthsh)
+			hsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
+			lasthsh = hsh.decode("hex")
+			feed.update(hsh)
 	
 		self.coll.add("foo", outfeed)
 		# \todo this is not theoretically safe on a busy node, as things may change between, but in controlled test should be ok
@@ -196,7 +199,7 @@ class TestFeedRebuild(unittest.TestCase):
 		#msgs = self.coll.retrievals.pop(ridx)
 
 		try:
-			self.assertEqual(self.coll.feeds['foo']['orphans'][headhsh], bogushsh)
+			self.assertEqual(self.coll.feeds['foo']['orphans'][headhsh.decode("hex")], bogushsh.decode("hex"))
 		except Exception as e:
 			self.fail("dict key in test assert fail: " + str(e))
 
@@ -206,8 +209,7 @@ class TestFeedRebuild(unittest.TestCase):
 	def test_feed_room_name(self):
 		roomname = "foo"
 		nick = "bar"
-		self.feeds.append(pss.Feed(self.agent, self.accounts[0], roomname, False))
-		r = pss.Room(self.bzz, self.feeds[0])
+		r = pss.Room(self.bzz, roomname, self.accounts[0])
 		r.start(nick, roomname)
 		addrhx = self.accounts[0].address.encode("hex")
 		pubkeyhx = "04"+self.accounts[0].publickeybytes.encode("hex")
@@ -220,14 +222,15 @@ class TestFeedRebuild(unittest.TestCase):
 		
 
 	# test that we can instantiate a room from saved state
-	##@unittest.skip("feed room load save")	
+	#@unittest.skip("feed room load save")	
 	def test_feed_room(self):
 
 		# room ctrl feed
-		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "abc", False))
+		# self.feeds.append(pss.Feed(self.agent, self.accounts[0], "abc", False))
 
 		nicks = [self.accounts[0].address.encode("hex")]
-		r = pss.Room(self.bzz, self.feeds[0])
+		#r = pss.Room(self.bzz, self.feeds[0])
+		r = pss.Room(self.bzz, "abc", self.accounts[0])
 		r.start("foo", "abc")
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
@@ -279,7 +282,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# \todo add extract_message test (without fetch)
-	##@unittest.skip("room send")	
+	#@unittest.skip("room send")	
 	def test_extract(self):
 		hx = ""
 		data = ""
@@ -299,7 +302,7 @@ class TestFeedRebuild(unittest.TestCase):
 			data += chr(random.randint(0, 255))
 		data += "\x00\x00\x00"
 
-		r = pss.Room(None, pss.Feed(None, None, "nothing"))
+		r = pss.Room(self.bzz, "nothing", None) 
 
 		r_hx, r_now, r_serial = r.extract_meta(data)
 		self.assertEqual(hx, r_hx)
@@ -311,17 +314,18 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# test that we can create update and that the saved update contains the expected data
-	##@unittest.skip("room send")	
+	#@unittest.skip("room send")	
 	def test_feed_room_send(self):
 
 		msg = "heyho"
 		roomname = hex(now_int())
 
 		# room ctrl feed
-		self.feeds.append(pss.Feed(self.agent, self.accounts[0], roomname, False))
+		#self.feeds.append(pss.Feed(self.agent, self.accounts[0], roomname, False))
 
 		nicks = ["0"]
-		r = pss.Room(self.bzz, self.feeds[0])
+		r = pss.Room(self.bzz, roomname, self.accounts[0])
+		#r = pss.Room(self.bzz, self.feeds[0])
 		r.start("0", roomname)
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")

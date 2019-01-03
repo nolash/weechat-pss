@@ -101,7 +101,7 @@ class Feed():
 		try:
 			r = json.loads(rstr)
 		except:
-			#sys.stderr.write("ouch: " + rstr + "\n")
+			sys.stderr.write("ouch: " + rstr + "\n")
 			raise ValueError("json fail")
 		return (r['epoch']['time'], r['epoch']['level'])
 			
@@ -221,7 +221,7 @@ class FeedCollection:
 				except:
 					continue
 
-			#sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
+			sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
 
 			if feed['headhsh'] == "":
 				continue
@@ -230,7 +230,7 @@ class FeedCollection:
 			try:
 				feedmsgs[feed['obj'].account.address] = self._retrieve(bzz, feed['obj'].account, feed['headhsh'], feed['lasthsh'])
 			except BzzRetrieveError as e:
-				#sys.stderr.write("retrieve fail: " + str(e))
+				sys.stderr.write("retrieve fail: " + str(e))
 				feed['lasthsh'] = e.hsh
 				feed['orphans'][feed['headhsh']] = feed['lasthsh']
 
@@ -252,13 +252,13 @@ class FeedCollection:
 			try:
 				r = bzz.get(curhsh.encode("hex"))
 			except Exception as e:
-				#sys.stderr.write("request fail: " + str(e) + "\n")
+				sys.stderr.write("request fail: " + str(e) + "\n")
 				raise BzzRetrieveError(curhsh, str(e))
 			if r == "":
 				raise BzzRetrieveError(curhsh, "empty HTTP response body")
 			curhsh = r[:32]
-			serial = r[32:36] # 4 bytes time + 1 byte serial
-			content = r[36:]	
+			serial = r[32:37] # 4 bytes time + 1 byte serial
+			content = r[37:]	
 			msgs[serial] = Message(serial, feedaddress, content, r)
 
 		return msgs

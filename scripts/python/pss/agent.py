@@ -39,7 +39,7 @@ class Agent:
 
 
 	def _write(self, requeststring):
-		#sys.stderr.write(repr(requeststring))
+		sys.stderr.write(repr(requeststring) + "\n")
 		select.select([], [self.sock], [], REQUEST_TIMEOUT)
 		os.write(self.sock, requeststring)
 		select.select([self.sock], [], [], REQUEST_TIMEOUT)

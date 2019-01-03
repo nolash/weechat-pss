@@ -4,6 +4,7 @@ import unittest
 import pss
 import random
 import json
+import socket
 
 from pss.room import Participant
 
@@ -13,8 +14,16 @@ class TestSerialize(unittest.TestCase):
 	pubkey = []
 	addr = []
 	nodekey = []
+	bzz = None
+	agent = None
+	sock = None
 
 	def setUp(self):
+
+		self.sock = socket.create_connection(("127.0.0.1", "8500"), 20)
+		self.agent = pss.Agent("127.0.0.1", 8500, self.sock.fileno())
+		self.bzz = pss.Bzz(self.agent)
+
 		for i in range(3):
 			random.seed(42+i)
 			addr = ""
@@ -52,8 +61,7 @@ class TestSerialize(unittest.TestCase):
 		acc = pss.Account()
 		print len(self.pubkey[0])
 		acc.set_public_key(self.pubkey[0].decode("hex"))
-		feed = pss.Feed(None, acc, "root", False)
-		r = pss.Room(None, feed)
+		r = pss.Room(self.bzz, "root", acc)
 		#r.start("bar", "foo")
 		for i in range(len(self.pubkey)):
 			r.participants[str(i)] = Participant(str(i), self.pubkey[i], self.addr[i], self.nodekey[i])
