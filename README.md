@@ -11,7 +11,7 @@ Please note that this project is meant to be something of a reference implementa
 
 ## Version
 
-0.3.1 alpha
+0.3.2 alpha
 
 
 ## Development
@@ -227,6 +227,8 @@ GPLv3
 
 ## Changelog
 
+* v0.3.2:
+    - Load room state from swarm if already exists
 * v0.3.1:
     - Fix bug preventing group chat with different nodes in same instance
 * v0.3.0:
