@@ -1,19 +1,25 @@
 class CommandException(Exception):
     pass
 
-alias_to_cmd = {
-	"connect": "connect",
-	"set": "set",
-	"add": "add",
-	"send": "send",
+cmd_list = [
+	"connect",
+	"set",
+	"add",
+	"send",
+	"msg",
+	"join",
+	"invite",
+	"key",
+	"pubkey",
+	"address",
+	"addr",
+	"stop",
+]
+
+aliases = {
 	"msg": "send",
-	"join": "join",
-	"invite": "invite",
-	"key": "key",
 	"pubkey": "key",
 	"address": "addr",
-	"addr": "addr",
-	"stop": "stop",
 }
 
 # check functions still need proper error handling
@@ -55,13 +61,13 @@ def chk_stop(pssName, command, params):
 # command string can be at position 0 or 1
 # if command is at 1, then 0 has to be the name
 def parseList(argList):
-	if alias_to_cmd.get(argList[0]) != None and alias_to_cmd.get(argList[1]) == None:
+	if argList[0] in cmd_list and argList[1] not in cmd_list:
 		argList.insert(0, None)
 
-	if alias_to_cmd.get(argList[1]) == None:
+	if argList[1] not in cmd_list:
 		raise CommandException("command unknown")
 	
-	return (argList[0], alias_to_cmd.get(argList[1]), argList[2:])
+	return (argList[0], argList[1], argList[2:])
 
 # parse args removing white spaces
 def argsToList(args):
@@ -73,7 +79,7 @@ def argsToList(args):
 def parseCommand(args):
 	argList = argsToList(args)
 	pssName, alias, params = parseList(argList)
-	command = alias_to_cmd.get(alias)
+	command = aliases.get(alias, alias)
 
 	globals()["chk_" + command](pssName, command, params)
 
