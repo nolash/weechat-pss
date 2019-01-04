@@ -62,6 +62,7 @@ class Room:
 	#def __init__(self, bzz, feed):
 	def __init__(self, bzz, name, acc):
 		roomname = clean_name(name)
+		self.name = copy.copy(roomname)
 		for i in range(32-len(roomname)):
 			roomname += "\x00"
 		roomnamelist = list(roomname)
@@ -78,8 +79,7 @@ class Room:
 	# sets the name and the room parameter feed
 	# used to instantiate a new room
 	# \todo valid src parameter
-	def start(self, nick, roomname):
-		self.name = clean_name(roomname)
+	def start(self, nick):
 		pubkey = "\x04"+self.feed_room.account.publickeybytes
 		self.add(nick, Participant(clean_nick(nick), pubkey.encode("hex"), self.feed_room.account.address.encode("hex"), pubkey.encode("hex")))
 		self.feed_out = Feed(self.agent, self.feed_room.account, self.name, True)
@@ -99,13 +99,19 @@ class Room:
 
 
 
+	def get_state_hash(self):
+		return self.feed_room.head()
+
+
+
 	# loads a room from an existing saved record
 	# used to reinstantiate an existing room
+	# hsh is binary hash
 	# \todo avoid double encoding of account address
 	# \todo get output update head hash at time of load
 	def load(self, hsh, owneraccount=None):
 		savedJson = self.bzz.get(hsh.encode("hex"))
-		print "savedj " + savedJson
+		print "savedj " + repr(savedJson)
 		self.hsh_room = hsh
 		r = json.loads(savedJson)
 		self.name = clean_name(r['name'])
@@ -278,7 +284,7 @@ class Room:
 	"pubkey":\"0x04""" + self.feed_room.account.publickeybytes.encode("hex") + """\",
 	"participants":["""
 		#participantList = ""
-		for p in self.participants.values():
+		for k, p in self.participants.iteritems():
 			jsonStr += "\"" + p.key + "\",\n"
 		#	participantList += p.serialize()
 		jsonStr = jsonStr[0:len(jsonStr)-2]
@@ -292,4 +298,5 @@ class Room:
 	def save(self):
 		s = self.serialize()
 		self.hsh_room = self.bzz.add(s).decode("hex")
+		self.feed_room.update(self.hsh_room)
 		return self.hsh_room

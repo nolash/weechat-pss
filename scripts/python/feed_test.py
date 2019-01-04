@@ -210,7 +210,7 @@ class TestFeedRebuild(unittest.TestCase):
 		roomname = "foo"
 		nick = "bar"
 		r = pss.Room(self.bzz, roomname, self.accounts[0])
-		r.start(nick, roomname)
+		r.start(nick)
 		addrhx = self.accounts[0].address.encode("hex")
 		pubkeyhx = "04"+self.accounts[0].publickeybytes.encode("hex")
 		p = Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
@@ -225,13 +225,9 @@ class TestFeedRebuild(unittest.TestCase):
 	#@unittest.skip("feed room load save")	
 	def test_feed_room(self):
 
-		# room ctrl feed
-		# self.feeds.append(pss.Feed(self.agent, self.accounts[0], "abc", False))
-
 		nicks = [self.accounts[0].address.encode("hex")]
-		#r = pss.Room(self.bzz, self.feeds[0])
 		r = pss.Room(self.bzz, "abc", self.accounts[0])
-		r.start("foo", "abc")
+		r.start("foo")
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
 			nicks.append(str(i))
@@ -326,7 +322,7 @@ class TestFeedRebuild(unittest.TestCase):
 		nicks = ["0"]
 		r = pss.Room(self.bzz, roomname, self.accounts[0])
 		#r = pss.Room(self.bzz, self.feeds[0])
-		r.start("0", roomname)
+		r.start("0")
 		for i in range(1, len(self.accounts)):
 			addrhx = self.accounts[i].address.encode("hex")
 			nicks.append(str(i))

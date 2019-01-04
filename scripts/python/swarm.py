@@ -303,21 +303,35 @@ def buf_get(pssName, typ, name, known):
 			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 			weechat.buffer_set(buf, "nicklist", "1")
 			weechat.buffer_set(buf, "display", "1")
-			weechat.nicklist_add_group(buf, "", "me", "weechat.color.nicklist_group", 1)
-			weechat.nicklist_add_nick(buf, "me", psses[pssName].name, "bar_fg", "", "bar_fg", 1)
+			#weechat.nicklist_add_group(buf, "", "me", "weechat.color.nicklist_group", 1)
+			#weechat.nicklist_add_nick(buf, "me", psses[pssName].name, "bar_fg", "", "bar_fg", 1)
 	
 			plugin = weechat.buffer_get_pointer(buf, "plugin")
 			bufs[bufname] = buf
 			
-			#feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_ROOM + pss.publickey_to_account(psses[pssName].key[2:].decode("hex")))
-			feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), name)
 			if len(rooms) == 0:
 				hookTimers.append(weechat.hook_timer(roomPeriod, 0, 0, "roomRead", psses[pssName].name))
-			rooms[bufname] = pss.Room(bzzs[pssName], feeds[bufname])
+			rooms[bufname] = pss.Room(bzzs[pssName], name, psses[pssName].get_account())
 			# \todo test load first, only init if not found
-			rooms[bufname].start("me", name)
-			wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex") + " account " + feeds[bufname].account.address.encode("hex") + " roomfeed " + rooms[bufname].feed_out.account.address.encode("hex"))
-
+			try:
+				roomhsh = rooms[bufname].get_state_hash()
+				rooms[bufname].load(roomhsh, psses[pssName].get_account())
+				wOut(PSS_BUFPFX_DEBUG, [], "", "loaded room with topic " + rooms[bufname].feed_out.topic.encode("hex") + " account " + rooms[bufname].feed_out.account.address.encode("hex") + " roomfeed " + rooms[bufname].feed_room.topic.encode("hex"))
+				for k, p in rooms[bufname].participants.iteritems():
+					nick = ""
+					if p.key == selfs[pssName].key:
+						nick = selfs[pssName].nick
+					else:
+						if not p.key in nicks:
+							nicks[p.nick] = pss.PssContact(p.nick, p.key, p.addr, p.src)
+							remotekeys[p.key] = p.nick
+						nick = nicks[p.key].nick
+					buf_room_add(buf, nick)
+			# \todo correct expect to disambiguate unexpected fails
+			except Exception as e:
+				wOut(PSS_BUFPFX_DEBUG, [], "", "fail room load: " + str(e))
+				rooms[bufname].start(PSS_DEFAULT_NICK)
+				wOut(PSS_BUFPFX_DEBUG, [], "", "added room with topic " + rooms[bufname].feed_out.topic.encode("hex") + " account " + rooms[bufname].feed_out.account.address.encode("hex") + " roomfeed " + rooms[bufname].feed_room.topic.encode("hex"))
 		else:
 			raise RuntimeError("invalid buffer type")
 
@@ -431,6 +445,11 @@ def pss_invite(pssName, nick, room):
 	contact = nicks[nickkey]
 	room.add(nick, contact)
 	#wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex"))
+
+def buf_room_add(buf, nick, groupname=""):
+	#if weechat.nicklist_search_group(buf, "", "members") == "":
+	#	weechat.nicklist_add_group(buf, "", "members", "weechat.color.nicklist_group", 1)
+	weechat.nicklist_add_nick(buf, groupname, nick, "bar_fg", "", "bar_fg", 1)
 
 
 # \todo remove unsuccessful hooks
@@ -741,9 +760,8 @@ def buf_node_in(pssName, buf, args):
 
 			wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added " + nick + " to " + roomname)
 			# if neither the previous fail, add the nick to the buffer
-			if weechat.nicklist_search_group(buf, "", "members") == "":
-				weechat.nicklist_add_group(buf, "", "members", "weechat.color.nicklist_group", 1)
-			weechat.nicklist_add_nick(buf, "members", nick, "bar_fg", "", "bar_fg", 1)
+			roombuf = weechat.buffer_search("python", roombufname)
+			buf_room_add(roombuf, nick)
 
 		except KeyError as e: # keyerror catches both try statements
 			wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "Unknown room or nick: " + str(e))
