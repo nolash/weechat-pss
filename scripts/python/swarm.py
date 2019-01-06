@@ -650,7 +650,7 @@ def buf_node_in(pssName, buf, args):
 
 		# input sanity check
 		if argc < 3:
-			wOut(PSS_BUFPFX_ERROR, [bufs[currentPssName]], "!!!", "not enough arguments for add <TODO: help output>")
+			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "not enough arguments for add <TODO: help output>")
 			return weechat.WEECHAT_RC_ERROR
 
 		# puny human varnames
