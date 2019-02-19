@@ -13,22 +13,7 @@ topic = "0xdeadbee2"
 # \todo move to separate package
 # \todo remove direct websocket comms and get node key and addr from background process
 class Pss:
-	host = "127.0.0.1"
-	port = "8546"
-	connected = False
-	inputConnected = False
-	base = ""
-	key = ""
-	eth = None
-	err = 0
-	errstr = ""
-	contacts = None
-	seq = 0
-	ws = None
-	name = ""
-	run = False
-	sub = ""
-
+	
 
 	def __init__(self, name, host="127.0.0.1", port="8546"):
 		""" set the pss instance name and create the fifo for catching msgs from subprocess
@@ -40,6 +25,18 @@ class Pss:
 			self.port = port
 
 		self.contacts = {}
+		self.connected = False
+		self.inputConnected = False
+		self.base = ""
+		self.account = Account()
+		self.eth = None
+		self.err = 0
+		self.errstr = ""
+		self.contacts = None
+		self.seq = 0
+		self.ws = None
+		self.run = False
+		self.sub = ""
 
 
 	
@@ -53,7 +50,7 @@ class Pss:
 		eth.set_key(privkeybytes)
 		# node pubkey is prefixed with 04
 		# \todo verify that the number can't be other than 4
-		if  eth.publickeybytes.encode("hex") != self.key[2:]:
+		if  eth.publickeybytes.encode("hex") != self.key:
 			raise ValueError("private key does not match pss node public key " + self.key + " " + eth.publickeybytes.encode("hex"))
 			return
 
@@ -121,13 +118,17 @@ class Pss:
 
 		# now we're in the clear
 		# finish setting up object properties
-		self.key = key
+		self.account.set_public_key(key)
 		self.base = base
 		self.connected = True
 		self.run = True
 
 		return True
 
+
+	
+	def get_public_key(self):
+		return self.account.publickeybytes
 
 	
 

@@ -10,8 +10,12 @@ from message import is_message
 
 
 class Participant(PssContact):
-	trust = 0
 
+	
+	def __init__(self, nick, key, addr, src, trusted=False):
+		self.trusted = trusted
+		#super(Participant, self).__init__(nick, key, addr, src)
+		PssContact.__init__(self, nick, key, addr, src)
 
 # Room represents a multi-user chat room
 #
@@ -29,37 +33,7 @@ class Participant(PssContact):
 # \todo consider using feed name for room name
 class Room:
 
-	# name of room, used for feed topic
-	name = ""
 
-	# swarm hsh of serialized representation of room
-	hsh_room = ""
-
-	# swarm hash of previous update
-	hsh_out = ""
-
-	# time of last send
-	lasttime = 0
-
-	# Agent object, http transport
-	agent = None
-
-	# bzz object
-	bzz = None
-
-	# room parameters feed
-	feed_room = None
-
-	# Output feed 
-	feed_out = None
-
-	# Object representation of participants, Participant type
-	participants = None # Participant type
-
-	# Input feed aggregator
-	feedcollection_in = None
-
-	#def __init__(self, bzz, feed):
 	def __init__(self, bzz, name, acc):
 		roomname = clean_name(name)
 		self.name = copy.copy(roomname)
@@ -69,18 +43,21 @@ class Room:
 		roomnamelist[31] = "\x02"
 		roomname = "".join(roomnamelist)
 		self.feed_room = Feed(bzz.agent, acc, roomname, False)
+		self.feed_out = None
 		self.agent = bzz.agent
 		self.bzz = bzz
 		self.participants = {}
 		self.feedcollection_in = FeedCollection()
 		self.hsh_out = zerohsh.decode("hex")
+		self.hsh_room = ""
+		self.lasttime = 0
 		
 
 	# sets the name and the room parameter feed
 	# used to instantiate a new room
 	# \todo valid src parameter
 	def start(self, nick):
-		pubkey = "\x04"+self.feed_room.account.publickeybytes
+		pubkey = self.feed_room.account.publickeybytes
 		self.add(nick, Participant(clean_nick(nick), pubkey.encode("hex"), self.feed_room.account.address.encode("hex"), pubkey.encode("hex")))
 		self.feed_out = Feed(self.agent, self.feed_room.account, self.name, True)
 		self.hsh_room = self.save()

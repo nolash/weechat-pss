@@ -17,7 +17,6 @@ for i in range(32):
 zerohshbytes = zerohsh.decode("hex")
 
 class BzzRetrieveError(Exception):
-	hsh = ""
 
 	def __init__(self, hsh, reason):
 		super(BzzRetrieveError, self).__init__(reason)
@@ -28,7 +27,6 @@ class BzzRetrieveError(Exception):
 # Bzz is a convenience wrapper for making swarm store and retrieve calls over http
 # \todo pass agent to all methods instead of storing
 class Bzz():
-	agent = None
 
 	def __init__(self, httpagent):
 		self.agent = httpagent
@@ -42,10 +40,6 @@ class Bzz():
 
 # FeedUpdate encapsulates a single update to be sent on the network
 class FeedUpdate:
-	name = ""
-	data = ""
-	typ = ""
-	nod = ""
 
 	def __init__(self, nod, typ, name, data):
 		self.typ = typ
@@ -66,15 +60,14 @@ class FeedUpdate:
 #
 # \todo pass agent to all methods instead of storing
 class Feed():
-	agent = None
-	account = None
-	tim = 0
-	lastepoch = 25
-	lastupdate = 0
-	topic = ""
 
 
 	def __init__(self, httpagent, account, name, single=True):
+		self.tim = 0
+		self.lastepoch = 25
+		self.lastupdate = 0
+		self.topic = ""
+
 		self.account = account
 		self.agent = httpagent
 		if len(name) > 32 or len(name) == 0:
@@ -144,17 +137,19 @@ class Feed():
 
 # convenience class for handling feed aggregation (multiuser room, for instance)
 class FeedCollection:
-	feeds = None
-	retrievals = None
+
 
 	def __init__(self):
 		self.feeds = {}
 		self.retrievals = []
 
+
 	def add(self, name, feed):
 		if name in self.feeds:
 			raise Exception("feed already exists")
 
+		# index keeping track of position of last lookup
+		# it also keeps track of broken links
 		self.feeds[name] = {
 
 			# feed object
@@ -221,23 +216,22 @@ class FeedCollection:
 				except:
 					continue
 
-			sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
+			#sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
 
 			if feed['headhsh'] == "":
 				continue
 				
 			# store new messages for feed
-			try:
-				feedmsgs[feed['obj'].account.address] = self._retrieve(bzz, feed['obj'].account, feed['headhsh'], feed['lasthsh'])
-			except BzzRetrieveError as e:
-				sys.stderr.write("retrieve fail: " + str(e))
-				feed['lasthsh'] = e.hsh
+			(feedmsgs[feed['obj'].account.address], brk) = self._retrieve(bzz, feed['obj'].account, feed['headhsh'], feed['lasthsh'])
+			if brk != None:
+				sys.stderr.write("retrieve fail on hash: " + str(brk) + "\n")
+				feed['lasthsh'] = brk
 				feed['orphans'][feed['headhsh']] = feed['lasthsh']
 
 			# set next retrieve to terminate on
 			feed['lasthsh'] = feed['headhsh']
 			feed['headhsh'] = ""
-
+	
 		self.retrievals.append(feedmsgs)
 		return len(self.retrievals)-1
 
@@ -253,15 +247,17 @@ class FeedCollection:
 				r = bzz.get(curhsh.encode("hex"))
 			except Exception as e:
 				sys.stderr.write("request fail: " + str(e) + "\n")
-				raise BzzRetrieveError(curhsh, str(e))
+				return (msgs, curhsh)
+				#raise BzzRetrieveError(curhsh, str(e))
 			if r == "":
-				raise BzzRetrieveError(curhsh, "empty HTTP response body")
+				return (msgs, curhsh)
+				#raise BzzRetrieveError(curhsh, "empty HTTP response body")
 			curhsh = r[:32]
 			serial = r[32:37] # 4 bytes time + 1 byte serial
 			content = r[37:]	
 			msgs[serial] = Message(serial, feedaddress, content, r)
 
-		return msgs
+		return (msgs, None)
 
 def sign_digest(pk, digest):
 	sig = pk.ecdsa_sign_recoverable(digest, raw=True)

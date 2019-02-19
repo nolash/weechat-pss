@@ -1,3 +1,5 @@
+# \todo WIP consistent representation of pubkeys in objects (65 bytes, binary)
+
 import weechat
 import os
 import pss # plugin package, nothing official
@@ -17,6 +19,9 @@ PSS_BUFTYPE_ROOM = "\x01"
 PSS_BUFTYPE_CHAT = "\x11"
 
 PSS_DEFAULT_NICK = "me"
+
+PSS_FEEDBOX_PERIOD = 1000
+PSS_ROOM_PERIOD = PSS_FEEDBOX_PERIOD
 
 # pss node connections
 psses = {}
@@ -40,11 +45,9 @@ feeds = {}
 # 32 is a reasonable buffer as we're talking about human input frequency
 # and flush every second
 feedBox = pss.Queue(10)
-feedBoxPeriod = 1000
 
 # active multiuser chat rooms
 rooms = {}
-roomPeriod = feedBoxPeriod
 
 # buffers
 bufs = {}
@@ -254,11 +257,13 @@ def buf_get(pssName, typ, name, known):
 	if pssName in bzzs:
 		haveBzz = True
 	elif typ == "room":
-		raise RuntimeException("gateway needed for multiuser chats over swarm")
+		raise RuntimeError("gateway needed for multiuser chats over swarm")
 	
 	if buf == "":
 
 		shortname = ""
+
+		pss_publickey_hex = "{:0130x}".format(psses[pssName].get_public_key())
 
 		# chat is DM between two parties
 		if typ == "chat":
@@ -271,7 +276,7 @@ def buf_get(pssName, typ, name, known):
 
 			buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
 			weechat.buffer_set(buf, "short_name", shortname)
-			weechat.buffer_set(buf, "title", name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(psses[pssName].key) + " | address " + pss.label(psses[pssName].base))
+			weechat.buffer_set(buf, "title", name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(psses[pssName].base))
 			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 			weechat.buffer_set(buf, "display", "1")
 			plugin = weechat.buffer_get_pointer(buf, "plugin")
@@ -299,7 +304,7 @@ def buf_get(pssName, typ, name, known):
 
 			buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
 			weechat.buffer_set(buf, "short_name", shortname)
-			weechat.buffer_set(buf, "title", "#" + name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(psses[pssName].key) + " | address " + pss.label(psses[pssName].base))
+			weechat.buffer_set(buf, "title", "#" + name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(psses[pssName].base))
 			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 			weechat.buffer_set(buf, "nicklist", "1")
 			weechat.buffer_set(buf, "display", "1")
@@ -310,7 +315,13 @@ def buf_get(pssName, typ, name, known):
 			bufs[bufname] = buf
 			
 			if len(rooms) == 0:
-				hookTimers.append(weechat.hook_timer(roomPeriod, 0, 0, "roomRead", psses[pssName].name))
+				hookTimers.append(weechat.hook_timer(PSS_ROOM_PERIOD, 0, 0, "roomRead", psses[pssName].name))
+			wOut(PSS_BUFPFX_DEBUG, [], "roomdbg", str(bufs[bufname]))
+#			bzzRoomKey = "room"+name
+#			if not bzzRoomKey in bzzs:
+#				agent = pss.Agent(psses[pssName].host, 8500)
+#				bzzs[bzzRoomKey] = pss.Bzz(agent)
+#			rooms[bufname] = pss.Room(bzzs[bzzRoomKey], name, psses[pssName].get_account())
 			rooms[bufname] = pss.Room(bzzs[pssName], name, psses[pssName].get_account())
 			# \todo test load first, only init if not found
 			try:
@@ -319,19 +330,29 @@ def buf_get(pssName, typ, name, known):
 				wOut(PSS_BUFPFX_DEBUG, [], "", "loaded room with topic " + rooms[bufname].feed_out.topic.encode("hex") + " account " + rooms[bufname].feed_out.account.address.encode("hex") + " roomfeed " + rooms[bufname].feed_room.topic.encode("hex"))
 				for k, p in rooms[bufname].participants.iteritems():
 					nick = ""
-					if p.key == selfs[pssName].key:
+					publickey = p.get_public_key()
+					if publickey == selfs[pssName].get_public_key():
+					#if p.key == selfs[pssName].key:
 						nick = selfs[pssName].nick
 					else:
-						if not p.key in nicks:
-							nicks[p.nick] = pss.PssContact(p.nick, p.key, p.addr, p.src)
-							remotekeys[p.key] = p.nick
-						nick = nicks[p.key].nick
+						#if not p.key in nicks:
+						if not publickey in nicks:
+							acc = pss.Account()
+							try:
+								acc.set_public_key(publickey, p.get_address())
+								nicks[p.nick] = pss.PssContact(p.nick, p.src)
+								remotekeys[publickey] = p.nick
+							except RuntimeError as e:
+								wOut(PSS_BUFPFX_WARN, [], "", "public key does not match address")
+								continue
+
+						nick = nicks[publickey.nick
 					buf_room_add(buf, nick)
 			# \todo correct expect to disambiguate unexpected fails
 			except Exception as e:
 				wOut(PSS_BUFPFX_DEBUG, [], "", "fail room load: " + str(e))
 				rooms[bufname].start(PSS_DEFAULT_NICK)
-				wOut(PSS_BUFPFX_DEBUG, [], "", "added room with topic " + rooms[bufname].feed_out.topic.encode("hex") + " account " + rooms[bufname].feed_out.account.address.encode("hex") + " roomfeed " + rooms[bufname].feed_room.topic.encode("hex"))
+				wOut(PSS_BUFPFX_DEBUG, [], "", "added room with topic " + rooms[bufname].feed_out.topic.encode("hex") + " account " + rooms[bufname].feed_out.account.get_address().encode("hex") + " roomfeed " + rooms[bufname].feed_room.topic.encode("hex"))
 		else:
 			raise RuntimeError("invalid buffer type")
 
@@ -468,12 +489,13 @@ def sock_connect(pssName, status, tlsrc, sock, error, ip):
 	# \todo use execption instead of if/else/error
 	# \todo adding the nicks from a node should be separate proedure, and maybe even split up for feeds and pss
 	for c in nicks:
-		if nicks[c].src == psses[pssName].key:
-			if psses[pssName].add(nicks[c].nick, nicks[c].key, nicks[c].address):
-				wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "+++", "added '" + nicks[c].nick + "' to node '" + pssName + "' (key: " + pss.label(psses[pssName].key) + ", addr: " + pss.label(psses[pssName].base) + ")")
+		publickey = psses[pssName].get_public_key:
+		if nicks[c].src == publickey
+			if psses[pssName].add(nicks[c].nick, nicks[c].get_public_key, nicks[c].get_address()):
+				wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "+++", "added '" + nicks[c].nick + "' to node '" + pssName + "' (key: " + pss.label(publickey) + ", addr: " + pss.label(psses[pssName].base) + ")")
 				# \ todo make this call more legible (public key to bytes method in pss pkg)
 				try:
-					feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_account(psses[pssName].key[2:].decode("hex")))
+					feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_account(publickey.decode("hex")))
 				except:
 					wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "bzz gateway for not active")
 			else:
@@ -566,13 +588,15 @@ def buf_node_in(pssName, buf, args):
 
 		# start processing inputs on the websocket
 		hookFds[pssName] = weechat.hook_fd(psses[pssName].get_fd(), 1, 0, 0, "msgPipeRead", pssName)
-		hookTimers.append(weechat.hook_timer(feedBoxPeriod, 0, 0, "processFeedBox", pssName))
+		hookTimers.append(weechat.hook_timer(PSS_FEEDBOX_PERIOD, 0, 0, "processFeedBox", pssName))
 
 		# set own nick for this node
 		# \todo use configurable global default nick
 		# \todo clean up messy pubkey slicing (should be binary format in pss obj)
-		pubkey = psses[pssName].key[2:]
-		selfs[pssName] = pss.PssContact(PSS_DEFAULT_NICK, psses[pssName].key, pss.publickey_to_account(pubkey.decode("hex")).encode("hex"), psses[pssName].key)
+		accout = pss.Account()
+		publickey = psses[pssName].get_public_key()
+		acc.set_public_key(publickey)
+		selfs[pssName] = pss.PssContact(PSS_DEFAULT_NICK, account, publickey)
 		wOut(PSS_BUFPFX_OK, [bufs[pssName]], pssName, "nick is " + selfs[pssName].nick)
 		
 		return weechat.WEECHAT_RC_OK
@@ -672,7 +696,7 @@ def buf_node_in(pssName, buf, args):
 		remotekeys[nick] = key
 
 		# append recipient to file for reinstating across sessions
-		storeFile.write(nick + "\t" + key + "\t" + addr + "\t" + currentPss.key + "\n")
+		storeFile.write(nick + "\t" + key + "\t" + addr + "\t" + currentPss.get_public_key() + "\n")
 
 		# open the buffer if it doesn't exist
 		buf_get(pssName, "chat", nick, True)	
@@ -769,7 +793,7 @@ def buf_node_in(pssName, buf, args):
 
 	# output node key
 	elif argv[0] == "key" or argv[0] == "pubkey":
-		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName + ".key", currentPss.key)
+		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName + ".key", currentPss.get_public_key())
 
 
 	# output node base address
@@ -892,6 +916,9 @@ def pss_sighandler_unload(data, sig, sigdata):
 
 	if not os.path.basename(sigdata) == "swarm.py":
 		return weechat.WEECHAT_RC_OK	
+
+	for s in socks:
+		s.close()
 
 	storeFile.close()
 	return weechat.WEECHAT_RC_OK_EAT

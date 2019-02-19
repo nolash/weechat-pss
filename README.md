@@ -170,7 +170,7 @@ Group chat implementation using swarm feeds.
 # for now you need to manually set your private key
 # the key is used to sign the feed updates
 # currently it must be the same private key as your pss node is running
-# (but this will change soon)
+# (but this will change)
 /pss set pk <privatekey>
 
 # now you can "join" the room. 

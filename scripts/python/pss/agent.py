@@ -4,6 +4,8 @@ import re
 import os
 import select
 import sys
+import socket
+import time
 
 REQUEST_TIMEOUT = 10.0
 
@@ -11,18 +13,16 @@ regexStatusLine = re.compile("^HTTP/1.1 (\d{3}) (.+)\n", re.M)
 
 
 class Agent:
-	sock = None
-	up = False
-	basereq = None
-	host = "localhost"
-	port = "8546"	
 
-	
-	def __init__(self, host, port, sock):
+	def __init__(self, host="127.0.0.1", port=8500, sock=None):
 		# common request params
+		if sock == None:
+			self._sock = socket.create_connection((host,port))
+			sock = self._sock.fileno()
 		self.sock = sock	
 		self.host = host
 		self.port = str(port)
+		self.up = False
 
 		self.basereq = urllib2.Request("http://" + host + ":" + str(port) + "/")
 		self.basereq.add_header("Connection", "keep-alive")
@@ -38,10 +38,16 @@ class Agent:
 		return req
 
 
+	# \todo add retries on select
 	def _write(self, requeststring):
-		sys.stderr.write(repr(requeststring) + "\n")
+		#sys.stderr.write("request: " + repr(requeststring) + "\n" + "len: " + str(len(requeststring)))
+		#sys.stderr.write("write sock " + repr(self.sock))
 		select.select([], [self.sock], [], REQUEST_TIMEOUT)
-		os.write(self.sock, requeststring)
+		towrite = len(requeststring)
+		while towrite > 0:
+			written = os.write(self.sock, requeststring)
+			#sys.stderr.write("wrote: " + str(written))
+			towrite -= written
 		select.select([self.sock], [], [], REQUEST_TIMEOUT)
 		r = os.read(self.sock, 4104)
 		m = regexStatusLine.match(r)
@@ -62,7 +68,7 @@ class Agent:
 		requeststring = req.get_method() + " " + path
 		if querystring != "":
 			requeststring += "?" + querystring
-		requeststring += " HTTP/1.1\nHost: " + req.get_host() + "\n\n"
+		requeststring += " HTTP/1.1\nHost: " + req.get_host() + "\r\n\r\n"
 		return self._write(requeststring)
 
 
@@ -74,9 +80,11 @@ class Agent:
 		requeststring = req.get_method() + " " + path
 		if querystring != "":
 			requeststring += "?" + querystring
-		requeststring += " HTTP/1.1\nHost: " + req.get_host() + "\n"
+		requeststring += " HTTP/1.1\nHost: " + req.get_host() + "\r\n"
 		for (k, v) in req.header_items():
-			requeststring += k + ": " + v + "\n"
-		requeststring += "\n" + req.get_data()
+			requeststring += k + ": " + v + "\r\n"
+		requeststring += "\r\n" + req.get_data()
 		return self._write(requeststring)
-	
+
+	def close():
+		self._sock.close()
