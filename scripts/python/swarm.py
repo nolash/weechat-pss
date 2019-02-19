@@ -2,6 +2,7 @@
 
 import weechat
 import os
+import sys
 import pss # plugin package, nothing official
 
 # consts
@@ -346,7 +347,7 @@ def buf_get(pssName, typ, name, known):
 								wOut(PSS_BUFPFX_WARN, [], "", "public key does not match address")
 								continue
 
-						nick = nicks[publickey.nick
+						nick = nicks[publickey]
 					buf_room_add(buf, nick)
 			# \todo correct expect to disambiguate unexpected fails
 			except Exception as e:
@@ -489,8 +490,8 @@ def sock_connect(pssName, status, tlsrc, sock, error, ip):
 	# \todo use execption instead of if/else/error
 	# \todo adding the nicks from a node should be separate proedure, and maybe even split up for feeds and pss
 	for c in nicks:
-		publickey = psses[pssName].get_public_key:
-		if nicks[c].src == publickey
+		publickey = psses[pssName].get_public_key()
+		if nicks[c].src == publickey:
 			if psses[pssName].add(nicks[c].nick, nicks[c].get_public_key, nicks[c].get_address()):
 				wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "+++", "added '" + nicks[c].nick + "' to node '" + pssName + "' (key: " + pss.label(publickey) + ", addr: " + pss.label(psses[pssName].base) + ")")
 				# \ todo make this call more legible (public key to bytes method in pss pkg)
@@ -880,13 +881,16 @@ def pss_sighandler_load(data, sig, sigdata):
 
 			# add it to the map and report
 			try: 
-				nicks[key] = pss.PssContact(nick, key, addr, src)
+				pubkey = pss.clean_pubkey(key)
+				nicks[key] = pss.PssContact(nick, src)
+				nicks[key].set_public_key(pubkey.decode("hex"))
+				nicks[key].set_overlay(pss.clean_overlay(addr).decode("hex"))
 				# \todo function to strip 0x or store no 0x only add on send
-				remotekeys[nick] = key
+				remotekeys[nick] = pubkey
 
 			# \todo delete the record from the contact store
-			except:
-				wOut(PSS_BUFPFX_ERROR, [], "!!!", "stored contact '" + nick + "' has invalid data, skipping")
+			except Exception as e:
+				wOut(PSS_BUFPFX_ERROR, [], "!!!", "stored contact '" + nick + "' has invalid data, skipping (" + repr(e) + ")")
 				continue
 
 			wOut(PSS_BUFPFX_INFO, [], "+++", "pss contact loaded from db '" + nick + "' (0x" + key[2:10] + ")")

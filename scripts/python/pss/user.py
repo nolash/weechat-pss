@@ -24,10 +24,10 @@ class Account:
 
 	def set_public_key(self, pubkey, address=None):
 		self._clear_key()
-		self.publickeybytes = pubkey[1:]
+		self.publickeybytes = pubkey
 		self.address = publickey_to_account(pubkey[1:])
 		if address != None and self.address != address:
-			raise RuntimeError("pubkey address and control address do not match")
+			raise RuntimeError("pubkey address and control address do not match: " + repr(self.address).encode("hex") + " != " + repr(address))
 	
 	
 	def set_key(self, keybytes):
@@ -66,19 +66,13 @@ class PssContact(Account):
 	# src is the public key of the pss node used when adding the contact
 	def __init__(self, nick, src):
 		Account.__init__(self)
-		validnick = ""
-		validkey = ""
-		validaddr = ""
 
+		validnick = ""
 		validnick = clean_nick(nick)
-		#validkey = clean_pubkey(key)
-		#if len(addr) > 0:
-		#	validaddr = clean_address(addr)
 
 		self.nick = validnick
-		#self.key = "0x" + validkey
-		#self.address = "0x" + validaddr
 		self.src = src
+		self.overlay = ""
 
 
 	# \todo proper nested json serialize
@@ -95,6 +89,11 @@ class PssContact(Account):
 	def set_from_account(self, account):
 		self.publickeybytes = account.get_public_key()
 		self.address = account.get_address()
+
+
+
+	def set_overlay(self, overlay):
+		self.overlay = overlay
 
 
 

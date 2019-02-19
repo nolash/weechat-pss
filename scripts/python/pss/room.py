@@ -5,7 +5,7 @@ import sys
 
 from user import PssContact, Account
 from bzz import FeedCollection, Feed, zerohsh
-from tools import clean_nick, clean_pubkey, clean_address, clean_name, now_int, clean_hex
+from tools import clean_pubkey, clean_name, now_int, clean_hex
 from message import is_message
 
 

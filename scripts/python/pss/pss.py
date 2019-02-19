@@ -1,6 +1,6 @@
 import websocket
 
-from tools import clean_address, clean_pubkey
+from tools import clean_pubkey, clean_overlay
 from error import *
 from content import rpc_call, rpc_parse
 from user import PssContact, Account
@@ -91,7 +91,7 @@ class Pss:
 
 		# verify address
 		try:
-			base = clean_address(resp['result'])
+			base = clean_overlay(resp['result'])
 		except ValueError as e:
 			self.err = PSS_EREMOTEINVAL
 			self.errstr = "received bogus base address " + resp['result']
