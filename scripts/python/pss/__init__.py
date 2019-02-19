@@ -1,5 +1,5 @@
 from pss import Pss
-from user import PssContact, Account, publickey_to_account
+from user import PssContact, Account, publickey_to_address
 from content import Stream, rpc_parse
 from tools import *
 from error import *

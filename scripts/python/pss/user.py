@@ -25,7 +25,7 @@ class Account:
 	def set_public_key(self, pubkey, address=None):
 		self._clear_key()
 		self.publickeybytes = pubkey
-		self.address = publickey_to_account(pubkey[1:])
+		self.address = publickey_to_address(pubkey[1:])
 		if address != None and self.address != address:
 			raise RuntimeError("pubkey address and control address do not match: " + repr(self.address).encode("hex") + " != " + repr(address))
 	
@@ -34,7 +34,7 @@ class Account:
 		self._clear_key()
 		self.privatekey = secp256k1.PrivateKey(keybytes)
 		self.publickeybytes = self.privatekey.pubkey.serialize(False)
-		self.address = publickey_to_account(self.publickeybytes)
+		self.address = publickey_to_address(self.publickeybytes)
 
 
 	def _clear_key(self):
@@ -102,7 +102,7 @@ class PssContact(Account):
 
 
 
-def publickey_to_account(keybytes):
+def publickey_to_address(keybytes):
 	h = keccak.new(digest_bits=256)
 	h.update(keybytes[1:])
 	return h.digest()[12:]

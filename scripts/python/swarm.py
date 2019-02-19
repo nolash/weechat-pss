@@ -164,7 +164,6 @@ def roomRead(pssName, _):
 			# \todo use binary key repr in nicks dict
 			else:
 				nickdictkey = m.key.encode("hex")
-				nickdictkey = "0x04" + nickdictkey
 				nickuser = nicks[nickdictkey]
 
 			msg = r.extract_message(m.src, nickuser)
@@ -264,7 +263,9 @@ def buf_get(pssName, typ, name, known):
 
 		shortname = ""
 
+		# for debug only
 		pss_publickey_hex = pss.rpchex(psses[pssName].get_public_key())
+		pss_overlay_hex = pss.rpchex(psses[pssName].get_overlay())
 
 		# chat is DM between two parties
 		if typ == "chat":
@@ -277,7 +278,7 @@ def buf_get(pssName, typ, name, known):
 
 			buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
 			weechat.buffer_set(buf, "short_name", shortname)
-			weechat.buffer_set(buf, "title", name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(psses[pssName].base))
+			weechat.buffer_set(buf, "title", name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(pss_overlay_hex))
 			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 			weechat.buffer_set(buf, "display", "1")
 			plugin = weechat.buffer_get_pointer(buf, "plugin")
@@ -288,12 +289,11 @@ def buf_get(pssName, typ, name, known):
 			if psses[pssName].have_account() and haveBzz:
 				pubkey = ""
 				if ispubkey:
-					pubkey = name.decode("hex")
+					pubkey = name
 				else:
-					pubkey = remotekeys[name].decode("hex")
-					pubkey = "\x04" + pubkey
+					pubkey = remotekeys[name]
 				try:
-					feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_account(pubkey))
+					feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(pubkey))
 					wOut(PSS_BUFPFX_DEBUG, [], "", "added feed with topic " + feeds[bufname].topic.encode("hex"))
 				except ValueError as e:
 					wOut(PSS_BUFPFX_ERROR, [], "???", "could not set up feed: " + str(e))
@@ -305,7 +305,7 @@ def buf_get(pssName, typ, name, known):
 
 			buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
 			weechat.buffer_set(buf, "short_name", shortname)
-			weechat.buffer_set(buf, "title", "#" + name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(psses[pssName].base))
+			weechat.buffer_set(buf, "title", "#" + name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(pss_overlay_hex))
 			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 			weechat.buffer_set(buf, "nicklist", "1")
 			weechat.buffer_set(buf, "display", "1")
@@ -387,6 +387,9 @@ def buf_in(pssName, buf, inputdata):
 		rooms[bufname].send(inputdata)
 		return weechat.WEECHAT_RC_OK
 
+	for n in psses[pssName].contacts.keys():
+		wOut(PSS_BUFPFX_DEBUG, [], "nickkey", repr(n))
+
 	# send message
 	if psses[pssName].send(ctx['h'], inputdata):
 		wOut(PSS_BUFPFX_OUT, [buf], "you", inputdata)
@@ -462,7 +465,7 @@ def pss_handle(data, buf, args):
 
 def pss_invite(pssName, nick, room):
 	#bufname = buf_generate_name(pssName, "room", nick)
-	#feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_account(remotekeys[nick]))
+	#feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_address(remotekeys[nick]))
 	nickkey = remotekeys[nick]
 	contact = nicks[nickkey]
 	room.add(nick, contact)
@@ -490,13 +493,15 @@ def sock_connect(pssName, status, tlsrc, sock, error, ip):
 	# \todo use execption instead of if/else/error
 	# \todo adding the nicks from a node should be separate proedure, and maybe even split up for feeds and pss
 	for c in nicks:
-		publickey = psses[pssName].get_public_key()
-		if nicks[c].src == publickey:
+		# debug only
+		pss_publickey_hx = psses[pssName].get_public_key().encode("hex")
+		pss_overlay_hx = psses[pssName].get_overlay().encode("hex")
+		if nicks[c].src == pss_publickey_hx:
 			if psses[pssName].add(nicks[c].nick, nicks[c].get_public_key, nicks[c].get_address()):
-				wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "+++", "added '" + nicks[c].nick + "' to node '" + pssName + "' (key: " + pss.label(publickey) + ", addr: " + pss.label(psses[pssName].base) + ")")
+				wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "+++", "added '" + nicks[c].nick + "' to node '" + pssName + "' (key: " + pss.label(pss_publickey_hx) + ", addr: " + pss.label(oss_overlay_hx) + ")")
 				# \ todo make this call more legible (public key to bytes method in pss pkg)
 				try:
-					feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_account(publickey.decode("hex")))
+					feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(psses[pssName].get_public_key()))
 				except:
 					wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "bzz gateway for not active")
 			else:
@@ -694,8 +699,8 @@ def buf_node_in(pssName, buf, args):
 
 		# refresh the plugin memory map version of the recipient
 		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added key " + pubkeyhx + " to nick " + nick)
-		nicks[pubkey] = currentPss.get_contact(nick)
-		remotekeys[nick] = pubkey
+		nicks[pubkeyhx] = currentPss.get_contact(nick)
+		remotekeys[nick] = pubkeyhx
 
 		# append recipient to file for reinstating across sessions
 		storeFile.write(nick + "\t" + pubkeyhx + "\t" + overlayhx + "\t" + pss.rpchex(currentPss.get_public_key()) + "\n")
@@ -795,12 +800,12 @@ def buf_node_in(pssName, buf, args):
 
 	# output node key
 	elif argv[0] == "key" or argv[0] == "pubkey":
-		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName + ".key", currentPss.get_public_key())
+		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName + ".key", currentPss.get_public_key().encode("hex"))
 
 
 	# output node base address
 	elif argv[0] == "addr" or argv[0] == "address":
-		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName + ".addr", currentPss.base)
+		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName + ".addr", currentPss.get_overlay().encode("hex"))
 
 
 	# set nick for pss node

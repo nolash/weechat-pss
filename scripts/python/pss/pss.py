@@ -10,9 +10,7 @@ topic = "0xdeadbee2"
 
 
 # object encapsulating pss node connection
-# \todo move to separate package
 # \todo remove direct websocket comms and get node key and addr from background process
-# \todo self.eth and self.account are the same thing, get rid of one
 class Pss:
 	
 
@@ -28,9 +26,8 @@ class Pss:
 		self.contacts = {}
 		self.connected = False
 		self.inputConnected = False
-		self.base = ""
 		self.account = Account()
-		self.eth = None
+		self.overlay = ""
 		self.err = 0
 		self.errstr = ""
 		self.seq = 0
@@ -41,25 +38,25 @@ class Pss:
 
 	
 	def have_account(self):
-		return self.eth != None
+		return self.account != None
 
 
 
 	def set_account_write(self, privkeybytes):
-		eth = Account()
-		eth.set_key(privkeybytes)
+		acc = Account()
+		acc.set_key(privkeybytes)
 		# node pubkey is prefixed with 04
 		# \todo verify that the number can't be other than 4
-		if eth.publickeybytes.encode("hex") != self.get_public_key():
-			raise ValueError("private key does not match pss node public key " + self.key + " " + eth.publickeybytes.encode("hex"))
-			return
+		currentpubkey = self.account.get_public_key()
+		if len(currentpubkey) > 0 and acc.get_public_key() != self.account.get_public_key():
+			raise ValueError("private key does not match pss node public key " + rpchex(acc.get_public_key()) + " != " + rpchex(self.account.get_public_key()))
 
-		self.eth = eth
+		self.account.set_key(privkeybytes)
 
 
 
 	def get_account(self):
-		return self.eth
+		return self.account
 
 
 
@@ -74,7 +71,7 @@ class Pss:
 	# open sockets and get initial data
 	def connect(self):
 
-		base = ""
+		overlay = ""
 		key = ""
 
 		self.ws = None
@@ -92,7 +89,7 @@ class Pss:
 
 		# verify address
 		try:
-			base = clean_overlay(resp['result'])
+			overlay = clean_overlay(resp['result']).decode("hex")
 		except ValueError as e:
 			self.err = PSS_EREMOTEINVAL
 			self.errstr = "received bogus base address " + resp['result']
@@ -105,7 +102,7 @@ class Pss:
 	
 		# verify key
 		try: 
-			key = clean_pubkey(resp['result'])
+			key = clean_pubkey(resp['result']).decode("hex")
 		except ValueError as e:
 			self.err = PSS_EREMOTEINVAL
 			self.errstr = "received bogus pubkey " + resp['result']
@@ -120,7 +117,7 @@ class Pss:
 		# now we're in the clear
 		# finish setting up object properties
 		self.account.set_public_key(key)
-		self.base = base
+		self.overlay = overlay
 		self.connected = True
 		self.run = True
 
@@ -130,6 +127,11 @@ class Pss:
 	
 	def get_public_key(self):
 		return self.account.publickeybytes
+
+
+
+	def get_overlay(self):
+		return self.overlay
 
 	
 
