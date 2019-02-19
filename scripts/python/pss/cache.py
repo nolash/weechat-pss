@@ -94,8 +94,8 @@ class Cache:
 
 	
 
-	def get_node_by_name(self, name):
-		return (self.psses[name], self.get_active_bzz())
+	def get_pss(self, name):
+		return self.psses[name]
 
 
 

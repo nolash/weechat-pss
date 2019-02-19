@@ -83,7 +83,7 @@ ctxstore = EventContextStore()
 # context is a common object for keeping track of context of an incoming event 
 class EventContext:
 	
-	def __init__(self, name):
+	def __init__(self):
 		self.type = 0
 		self.node = ""
 		self.name = ""
@@ -97,12 +97,14 @@ class EventContext:
 		return self.type == 0
 
 
+	def set_name(self, name):
+		self.name = name
+
 
 	def set_pss(self, pss):
 		self.pss = pss
 
 
-	
 	def set_bzz(self, bzz):
 		self.bzz = bzz
 
@@ -138,6 +140,7 @@ class EventContext:
 		elif flds[1] == "node":
 			self.type = PSS_BUFTYPE_NODE
 			self.node = flds[2]
+			self.name = flds[2]	
 		elif flds[2] == "chat":
 			self.type = PSS_BUFTYPE_CHAT
 			self.node = flds[1]
@@ -582,7 +585,7 @@ def sock_connect(ctxid, status, tlsrc, sock, error, ip):
 def buf_node_in(pssName, buf, args):
 
 	# context is only used for acvie nodes
-	ctx = EventContext(buf)
+	ctx = EventContext()
 
 	# parse cmd input 
 	# \todo remove consecutive whitespace
@@ -592,7 +595,7 @@ def buf_node_in(pssName, buf, args):
 	# first we handle commands that are node independent	
 
 	# the connect command is the same for any context
-	# \todo rollback on fail
+	# \todo rollback on connect fail
 	if argv[0] == "connect":
 
 		host = "127.0.0.1"
@@ -652,16 +655,15 @@ def buf_node_in(pssName, buf, args):
 			"connecting to '" + pssName + "'"
 		)
 	
-		(currentPss, _) = cache.get_node_by_name(pssName)
-		if not currentPss.connect():
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "0-x 0", "connect to '" + pssName + "' failed: " + currentPss.error()['description'])
+		if not cache.get_pss(pssName).connect():
+			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "0-x 0", "connect to '" + pssName + "' failed: " + cache.get_pss(pssName).error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 		wOut(PSS_BUFPFX_OK, [bufs[pssName]], "0---0", "connected to '" + pssName + "'")
 
 		
 		# save what we've accomplished so far in the context, to be passed to the hook
 		ctx.parse_buffer(bufs[pssName])
-		ctx.set_pss(currentPss)
+		ctx.set_pss(cache.get_pss(pssName))
 		# \todo temporary solution, swarm gateway should be set explicitly or at least we need to be able to choose port
 		ctxid = ctxstore.put(ctx)
 		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "sock_connect", ctxid))
@@ -669,21 +671,16 @@ def buf_node_in(pssName, buf, args):
 
 
 		# start processing inputs on the websocket
-		hookFds[pssName] = weechat.hook_fd(currentPss.get_fd(), 1, 0, 0, "msgPipeRead", pssName)
+		hookFds[pssName] = weechat.hook_fd(cache.get_pss(pssName).get_fd(), 1, 0, 0, "msgPipeRead", pssName)
 		hookTimers.append(weechat.hook_timer(PSS_FEEDBOX_PERIOD, 0, 0, "processFeedOutQueue", pssName))
 
 		# set own nick for this node
 		# \todo use configurable global default nick
 		# \todo clean up messy pubkey slicing (should be binary format in pss obj)
 		cache.add_self(PSS_DEFAULT_NICK, pssName)
-#		wOut(
-#			PSS_BUFPFX_OK,
-#			[bufs[pssName]],
-#			pssName,
-#			"nick is " + str(cache.get_nodeself(pssName))
-#		)
 		
 		return weechat.WEECHAT_RC_OK
+
 
 	# get the context we're getting the command in
 	# if we are not in pss context, 
@@ -693,27 +690,18 @@ def buf_node_in(pssName, buf, args):
 	# /pss add someone key addr
 	# and "oc" is set to pssName
 	# \todo consider exception for connect-command
-	ctx = buf_get_context(buf)
-	wOut(PSS_BUFPFX_DEBUG, [], "", "ctx: " + repr(ctx['t']) + " n " + ctx['n'] + " h " + ctx['h'])
-	shiftArg = False
 
-	# t 0 means any non-pss buffer
-
-	if ctx['t'] == 0 and argv[0] != "connect":
-		pssName = argv[0]
+	ctx.parse_buffer(buf)
+	if ctx.is_root():
+		ctx.set_name(argv[0])
 		argv = argv[1:]
 		argc -= 1
-	else:
-		pssName = ctx['n']
 
-	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "after ctx " + pssName)	
 
 	# see if we already have this node registered
-	if not pssName in psses:
+	if not cache.have_node_name(ctx.get_name()):
 		wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown pss connection '" + pssName + "'")
 		return weechat.WEECHAT_RC_ERROR
-	currentPss = psses[pssName]
-
 
 
 	# set configuation values
@@ -734,7 +722,7 @@ def buf_node_in(pssName, buf, args):
 				wOut(PSS_BUFPFX_ERROR, [], "!!!", "invalid key format")
 				return weechat.WEECHAT_RC_ERROR
 			try:
-				currentPss.set_account_write(privkey.decode("hex"))
+				cache.get_pss(ctx.get_name()).set_account_write(privkey.decode("hex"))
 			except ValueError as e:
 				wOut(PSS_BUFPFX_ERROR, [], "!!!", "set account fail: " + str(e))
 				return weechat.WEECHAT_RC_ERROR
@@ -742,7 +730,7 @@ def buf_node_in(pssName, buf, args):
 			wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown config key")
 			return weechat.WEECHAT_RC_ERROR
 					
-		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "set pk to " + v + " for " + pssName)
+		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "set pk to " + v + " for " + ctx.get_name())
 
 		weechat.WEECHAT_RC_OK	
 	
