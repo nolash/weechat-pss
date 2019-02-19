@@ -102,6 +102,11 @@ class PssContact(Account):
 
 
 
+	def get_nick(self):
+		return self.nick
+
+
+
 def publickey_to_address(keybytes):
 	h = keccak.new(digest_bits=256)
 	h.update(keybytes[1:])

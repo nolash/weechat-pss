@@ -6,6 +6,7 @@ from user import PssContact
 
 CACHE_CONTACT_STOREFILE = ".pss-contacts"
 
+
 class Cache:
 	
 	def __init__(self, path=".", queuelength=10):
@@ -13,28 +14,36 @@ class Cache:
 		self.psses = {}
 		self.selfs = {}	
 
+		# address book members
 		self.contacts = []
-		self.idx_pubkey_nick = {}
-		self.idx_nick_pubkey = {}
+		self.idx_publickey_contact = {}
+		self.idx_nick_contact = {}
+		self.idx_src_contacts = {}
 
 		self.feeds = {}
 
 		# index nicks to chat rooms
 		self.rooms = {}
-		self.idx_room_nicks = {}
-		self.idx_nick_rooms = {}
+		self.idx_room_contacts = {}
+		self.idx_contact_rooms = {}
 
 		# verify path and handle trailing slash
 		self.path = path
 		self.file = None
 
 	
-	def add_node(self, pssobj, name):
-		if name in self.psses.keys():
-			raise AttributeError("pss key " + str(name) + " already in use")
+	def add_node(self, pssobj, nodename):
+		if nodename in self.psses.keys():
+			raise AttributeError("pss key " + str(nodename) + " already in use")
 
-		self.psses[name] = pssobj
+		self.psses[nodename] = pssobj
 		return True
+
+
+
+	def add_self(self, nick, nodename):
+		self.selfs[nodename] = nick
+	
 
 
 	def add_bzz(self, bzzobj, name):
@@ -45,10 +54,11 @@ class Cache:
 		return True
 
 
-	
-	def add_contact(self, name, contact):
 
-		if name in self.idx_nick_pubkey.keys():
+	# \todo handle source param, must be supplied	
+	def add_contact(self, name, contact, src=None):
+
+		if name in self.idx_nick_contact.keys():
 			raise KeyError("contact name '" + str(name) + "' already in use")
 
 		if contact.get_public_key() == "":
@@ -56,13 +66,18 @@ class Cache:
 
 		# take over the reference of contact, caller can drop var
 		self.contacts.append(contact)
-		self.idx_pubkey_nick[contact.get_public_key()] = name
-		self.idx_nick_pubkey[name] = contact.get_public_key()
+		self.idx_publickey_contact[contact.get_public_key()] = contact
+		self.idx_nick_contact[name] = contact
 		return True
 
 
 	def remove_contact(self):
 		pass
+
+
+
+	def get_nodeself(self, nodename):
+		return self.selfs[nodename]
 
 
 
@@ -82,10 +97,20 @@ class Cache:
 	def get_node_by_name(self, name):
 		return (self.psses[name], self.get_active_bzz())
 
-	
+
+
+	# check all sources and add as recipients in node
+	# returns array of contacts added
+	def update_node(self, name):
+		contacts = []
+		for c in self.idx_src_contacts:
+			self.psses[name].add(n, c.get_public_key(), c.get_overlay())
+			contacts.append(c)
+		return contacts
+					
 	
 	def get_contact_by_nick(self, name):
-		contact = self.ids_nick_pubkey[name]
+		contact = self.ids_nick_publickey[name]
 		if contact == None:
 			raise AttributeError("no cached contact with name '" + str(name) + "'")
 		return publickey
@@ -93,7 +118,7 @@ class Cache:
 
 
 	def get_contact_by_public_key(self, publickey):
-		contact = self.ids_pubkey_nick[publickey]
+		contact = self.ids_publickey_nick[publickey]
 		if contact == None:
 			raise AttributeError("no cached contact with public key'" + str(name) + "'")
 		return contact
@@ -126,10 +151,14 @@ class Cache:
 				(nick, pubkeyhx, overlayhx, srckeyhx) = record.split("\t")
 				if ord(srckeyhx[len(srckeyhx)-1]) == 0x0a:
 					srckeyhx = srckeyhx[:len(srckeyhx)-1]
+				srckey = clean_pubkey(srckeyhx)
 				pubkey = clean_pubkey(pubkeyhx)
 				contact = PssContact(nick, srckeyhx)
 				contact.set_public_key(pubkeyhx.decode("hex"))
 				contact.set_overlay(clean_overlay(overlayhx).decode("hex"))
+				self.idx_src_contacts[srckey].append(contact)
+				self.idx_nick_contact[nick] = contact
+				self.idx_publickey_contact[pubkey] = contact
 
 			# \todo delete the record from the contact store
 			except Exception as e:

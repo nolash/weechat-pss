@@ -124,6 +124,9 @@ class Pss:
 		return True
 
 
+	def get_host(self):
+		return self.host	
+
 	
 	def get_public_key(self):
 		return self.account.publickeybytes

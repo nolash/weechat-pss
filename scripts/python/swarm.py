@@ -61,13 +61,32 @@ storeFile = None
 stream = pss.Stream()
 
 
+# singleton store of context information to use across hook calls
+class EventContextStore:
+	store = {}
+
+	def put(self, ctx):
+		k = str(id(ctx))
+		self.store[k] = ctx
+		return k
+
+
+	def get(self, idstr):
+		ctx = self.store[idstr]
+		del self.store[idstr]
+		return ctx
+
+
+ctxstore = EventContextStore()
+
+	
 # context is a common object for keeping track of context of an incoming event 
 class EventContext:
 	
 	def __init__(self, name):
 		self.type = 0
 		self.node = ""
-		self.nick = ""
+		self.name = ""
 		self.pss = None
 		self.bzz = None
 		self.buf = None
@@ -79,11 +98,32 @@ class EventContext:
 
 
 
+	def set_pss(self, pss):
+		self.pss = pss
+
+
+	
+	def set_bzz(self, bzz):
+		self.bzz = bzz
+
+
+	def get_name(self):
+		return self.name
+
+
+	def get_bzz(self):
+		return self.bzz
+
+
+	def get_pss(self):
+		return self.pss
+
+
 	def parse_buffer(self, buf):
 		self.buf = buf
 		self.bufname = weechat.buffer_get_string(buf, "name")
 
-		flds = bufname.split(".")
+		flds = self.bufname.split(".")
 		for f in flds:
 			wOut(
 				PSS_BUFPFX_DEBUG,
@@ -101,11 +141,11 @@ class EventContext:
 		elif flds[2] == "chat":
 			self.type = PSS_BUFTYPE_CHAT
 			self.node = flds[1]
-			self.nick = flds[3]	
+			self.name = flds[3]	
 		elif flds[2] == "room":
 			self.type = PSS_BUFTYPE_ROOM
 			self.node = flds[1]
-			self.handle = flds[3]	
+			self.name = flds[3]	
 
 		return True
 
@@ -503,34 +543,36 @@ def buf_room_add(buf, nick, groupname=""):
 
 
 # \todo remove unsuccessful hooks
-def sock_connect(pssName, status, tlsrc, sock, error, ip):
+def sock_connect(ctxid, status, tlsrc, sock, error, ip):
+
+	ctx = ctxstore.get(ctxid)
+
 	if status != weechat.WEECHAT_HOOK_CONNECT_OK:
 		wOut(PSS_BUFPFX_ERROR, [], "???", "swarm gateway connect failed (" + str(status) + "): " + error )
 		return weechat.WEECHAT_RC_ERROR
 
-	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected on " + pssName + ", sock " + repr(sock))
-	agent = pss.Agent(psses[pssName].host, 8500, sock)
-	bzzs[pssName] = pss.Bzz(agent)
+	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected on " + ctx.get_name() + ", sock " + repr(sock))
+	agent = pss.Agent(ctx.get_pss().get_host(), 8500, sock)
+
+	bzz = pss.Bzz(agent)
+	cache.add_bzz(bzz, ctx.get_name())
+	ctx.set_bzz(bzz)
 
 	# provided the connection went ok
 	# add all nicks in the plugin's memory nick map
 	# that match the pubkey of the node to the node's recipient address book
-	# \todo use execption instead of if/else/error
-	# \todo adding the nicks from a node should be separate proedure, and maybe even split up for feeds and pss
-	for c in nicks:
-		# debug only
-		pss_publickey_hx = psses[pssName].get_public_key().encode("hex")
-		pss_overlay_hx = psses[pssName].get_overlay().encode("hex")
-		if nicks[c].src == pss_publickey_hx:
-			if psses[pssName].add(nicks[c].nick, nicks[c].get_public_key, nicks[c].get_address()):
-				wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "+++", "added '" + nicks[c].nick + "' to node '" + pssName + "' (key: " + pss.label(pss_publickey_hx) + ", addr: " + pss.label(oss_overlay_hx) + ")")
-				# \ todo make this call more legible (public key to bytes method in pss pkg)
-				try:
-					feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(psses[pssName].get_public_key()))
-				except:
-					wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "bzz gateway for not active")
-			else:
-				wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "nick " + c + " not added: " + psses[pssName].error()['description'])
+	for c in cache.update_node(ctx.get_name()):
+		wOut(
+			PSS_BUFPFX_INFO,
+			[bufs[pssName]],
+			"+++",
+			"added '" + c.get_nick()
+		)
+		# \ todo make this call more legible (public key to bytes method in pss pkg)
+#		try:
+#			feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(psses[pssName].get_public_key()))
+#		except:
+#			wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "bzz gateway for not active")
 
 	return weechat.WEECHAT_RC_OK
 
@@ -550,6 +592,7 @@ def buf_node_in(pssName, buf, args):
 	# first we handle commands that are node independent	
 
 	# the connect command is the same for any context
+	# \todo rollback on fail
 	if argv[0] == "connect":
 
 		host = "127.0.0.1"
@@ -581,7 +624,7 @@ def buf_node_in(pssName, buf, args):
 	
 			wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + pssName + " already exists")
 		else:
-			
+				
 			cache.add_node(pss.Pss(pssName, host, port), pssName)
 			wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + pssName)
 
@@ -615,22 +658,30 @@ def buf_node_in(pssName, buf, args):
 			return weechat.WEECHAT_RC_ERROR
 		wOut(PSS_BUFPFX_OK, [bufs[pssName]], "0---0", "connected to '" + pssName + "'")
 
+		
+		# save what we've accomplished so far in the context, to be passed to the hook
+		ctx.parse_buffer(bufs[pssName])
+		ctx.set_pss(currentPss)
 		# \todo temporary solution, swarm gateway should be set explicitly or at least we need to be able to choose port
-		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "sock_connect", pssName))
+		ctxid = ctxstore.put(ctx)
+		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "sock_connect", ctxid))
 		
 
 
 		# start processing inputs on the websocket
-		hookFds[pssName] = weechat.hook_fd(psses[pssName].get_fd(), 1, 0, 0, "msgPipeRead", pssName)
+		hookFds[pssName] = weechat.hook_fd(currentPss.get_fd(), 1, 0, 0, "msgPipeRead", pssName)
 		hookTimers.append(weechat.hook_timer(PSS_FEEDBOX_PERIOD, 0, 0, "processFeedOutQueue", pssName))
 
 		# set own nick for this node
 		# \todo use configurable global default nick
 		# \todo clean up messy pubkey slicing (should be binary format in pss obj)
-		publickey = psses[pssName].get_public_key()
-		selfs[pssName] = pss.PssContact(PSS_DEFAULT_NICK, publickey)
-		selfs[pssName].set_public_key(publickey)
-		wOut(PSS_BUFPFX_OK, [bufs[pssName]], pssName, "nick is " + selfs[pssName].nick)
+		cache.add_self(PSS_DEFAULT_NICK, pssName)
+#		wOut(
+#			PSS_BUFPFX_OK,
+#			[bufs[pssName]],
+#			pssName,
+#			"nick is " + str(cache.get_nodeself(pssName))
+#		)
 		
 		return weechat.WEECHAT_RC_OK
 
