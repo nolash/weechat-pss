@@ -7,3 +7,4 @@ from message import *
 from bzz import Feed, Bzz, FeedUpdate
 from agent import *
 from room import Room
+from cache import Cache

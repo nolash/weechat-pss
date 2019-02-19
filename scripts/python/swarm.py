@@ -22,10 +22,12 @@ PSS_BUFTYPE_CHAT = "\x11"
 PSS_DEFAULT_NICK = "me"
 
 PSS_FEEDBOX_PERIOD = 1000
+PSS_FEEDQUEUE_SIZE = 10
 PSS_ROOM_PERIOD = PSS_FEEDBOX_PERIOD
 
-# pss node connections
-psses = {}
+# cache handles in-memory representations
+# of contacts, feeds, rooms and swarm nodes
+cache = None
 
 # hook for ws read fd
 hookFds = {}
@@ -36,29 +38,13 @@ hookSocks = []
 # hook for feed queue processing timers
 hookTimers = []
 
-# bzz gateway agents
-bzzs = {}
-
-# active swarm feeds
-feeds = {}
-
 # feed outbox
 # 32 is a reasonable buffer as we're talking about human input frequency
 # and flush every second
-feedBox = pss.Queue(10)
-
-# active multiuser chat rooms
-rooms = {}
+feedOutQueue = pss.Queue(10)
 
 # buffers
 bufs = {}
-
-# nick to PssContact mappings in memory
-nicks = {}
-remotekeys = {}
-
-# own contact objs per node
-selfs = {}
 
 # path to scripts
 scriptPath = ""
@@ -73,6 +59,64 @@ storeFile = None
 
 # stream processor
 stream = pss.Stream()
+
+
+# context is a common object for keeping track of context of an incoming event 
+class EventContext:
+	
+	def __init__(self, name):
+		self.type = 0
+		self.node = ""
+		self.nick = ""
+		self.pss = None
+		self.bzz = None
+		self.buf = None
+		self.bufname = ""
+
+
+	def is_root(self):
+		return self.type == 0
+
+
+
+	def parse_buffer(self, buf):
+		self.buf = buf
+		self.bufname = weechat.buffer_get_string(buf, "name")
+
+		flds = bufname.split(".")
+		for f in flds:
+			wOut(
+				PSS_BUFPFX_DEBUG,
+				[],
+				"",
+				"bufname parse fld: " + str(f)
+			)
+		
+		# all pss context nodes have pss as the first field
+		if flds[0] != "pss":
+			return False
+		elif flds[1] == "node":
+			self.type = PSS_BUFTYPE_NODE
+			self.node = flds[2]
+		elif flds[2] == "chat":
+			self.type = PSS_BUFTYPE_CHAT
+			self.node = flds[1]
+			self.nick = flds[3]	
+		elif flds[2] == "room":
+			self.type = PSS_BUFTYPE_ROOM
+			self.node = flds[1]
+			self.handle = flds[3]	
+
+		return True
+
+
+###########################
+# PLUGIN REQUISITES
+###########################
+
+# top level teardown of plugin and thus all connections
+def pss_stop():
+	return weechat.WEECHAT_RC_OK
 
 
 # all weechat scripts must run this as first function
@@ -116,9 +160,15 @@ def wOut(level, oBufs, prefix, content):
 		weechat.prnt(b, pfxString + "\t" + content)
 
 
-def processFeedBox(pssName, _):
+
+
+##########################
+# SOCKET IO
+##########################
+
+def processFeedOutQueue(pssName, _):
 	while 1:
-		update = feedBox.get()
+		update = feedOutQueue.get()
 		if update == None:
 			#wOut(PSS_BUFPFX_DEBUG, [], ">>>", "no feed updates for " + pssName)
 			break
@@ -236,6 +286,10 @@ def msgPipeRead(pssName, fd):
 	return weechat.WEECHAT_RC_OK
 
 
+
+#############################
+# BUFFER EVENT OPERATIONS
+#############################
 
 # gets the buffer matching the type and the name given
 # creates if it doesn't exists
@@ -400,7 +454,7 @@ def buf_in(pssName, buf, inputdata):
 	# \todo add buffering of sub-second updates (and a timer hook to send them, this solves async too)
 	if bufname in feeds:
 		try:
-			feedBox.add(pss.FeedUpdate(pssName, "chat", ctx['h'], inputdata))
+			feedOutQueue.add(pss.FeedUpdate(pssName, "chat", ctx['h'], inputdata))
 		except RuntimeError as e:
 			wOut(PSS_BUFPFX_ERROR, [], "!!!", "feed add to buffer fail: " + str(e))
 			
@@ -415,43 +469,14 @@ def buf_generate_name(pssName, typ, name):
 
 # when buffer is closed, node should also close down
 def buf_close(pssName, buf):
-
+	cache.close_node(pssName)
 	return weechat.WEECHAT_RC_OK
 
-
-# node buffer close
-def buf_node_close(pssName, buf):
-	wOut(PSS_BUFPFX_DEBUG, [buf], "", "(noop node buf close)")
-	return weechat.WEECHAT_RC_OK
 
 
 # given a buffer, returns dict describing which context this buffer represents
 def buf_get_context(buf):
-	r = {
-		"t": 0, # type
-		"n": "", # node
-		"h": "", # remote handle
-	}
-	bufname = weechat.buffer_get_string(buf, "name")
-	flds = bufname.split(".")
-
-	#for f in flds:
-	#	wOut(PSS_BUFPFX_DEBUG, [], "", "bufname parse fld: " + str(f))
 	
-	# all pss context nodes have pss as the first field
-	if flds[0] != "pss":
-		return r
-	elif flds[1] == "node":
-		r['t'] = PSS_BUFTYPE_NODE
-		r['n'] = flds[2]
-	elif flds[2] == "chat":
-		r['t'] = PSS_BUFTYPE_CHAT
-		r['n'] = flds[1]
-		r['h'] = flds[3]	
-	elif flds[2] == "room":
-		r['t'] = PSS_BUFTYPE_ROOM
-		r['n'] = flds[1]
-		r['h'] = flds[3]	
 
 	return r
 
@@ -514,13 +539,8 @@ def sock_connect(pssName, status, tlsrc, sock, error, ip):
 # handle node inputs	
 def buf_node_in(pssName, buf, args):
 
-	global psses
-
-	ctx = {}
-	currentPss = None
-	argv = ""
-	argc = 0
-	bufname = ""
+	# context is only used for acvie nodes
+	ctx = EventContext(buf)
 
 	# parse cmd input 
 	# \todo remove consecutive whitespace
@@ -545,8 +565,8 @@ def buf_node_in(pssName, buf, args):
 		
 		if argc > 3:
 			port = argv[3]	
-			
-		if pssName in psses:
+
+		if cache.have_node_name(pssName):	
 			existingBuf = weechat.buffer_search("python", "pss.node." + pssName)
 			if existingBuf != "":
 				wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + pssName + " already exists, changing to that buffer")
@@ -561,7 +581,8 @@ def buf_node_in(pssName, buf, args):
 	
 			wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + pssName + " already exists")
 		else:
-			psses[pssName] = pss.Pss(pssName, host, port)
+			
+			cache.add_node(pss.Pss(pssName, host, port), pssName)
 			wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + pssName)
 
 
@@ -572,7 +593,7 @@ def buf_node_in(pssName, buf, args):
 	
 		# if we made it here we don't have a buffer for this node already
 		# so create it and merge the node buffer with core so we can do the neat ctrl-x trick
-		bufs[pssName] = weechat.buffer_new("pss.node." + pssName, "buf_node_in", pssName, "buf_node_close", pssName)
+		bufs[pssName] = weechat.buffer_new("pss.node." + pssName, "buf_node_in", pssName, "buf_close", pssName)
 		weechat.buffer_set(bufs[pssName], "short_name", "pss."+ pssName)
 		weechat.buffer_set(bufs[pssName], "title", "PSS '" + pssName + "' | not connected")
 		weechat.buffer_merge(bufs[pssName], weechat.buffer_search_main())
@@ -581,9 +602,16 @@ def buf_node_in(pssName, buf, args):
 
 		# now that we have the buffer up we have somewhere to write output relevant to this connection
 		# we can proceed with connection in the pss instance
-		wOut(PSS_BUFPFX_WARN, [bufs[pssName]], "0-> 0", "connecting to '" + pssName + "'")
-		if not psses[pssName].connect():
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "0-x 0", "connect to '" + pssName + "' failed: " + psses[pssName].error()['description'])
+		wOut(
+			PSS_BUFPFX_WARN,
+			[bufs[pssName]],
+			"0-> 0",
+			"connecting to '" + pssName + "'"
+		)
+	
+		(currentPss, _) = cache.get_node_by_name(pssName)
+		if not currentPss.connect():
+			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "0-x 0", "connect to '" + pssName + "' failed: " + currentPss.error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 		wOut(PSS_BUFPFX_OK, [bufs[pssName]], "0---0", "connected to '" + pssName + "'")
 
@@ -594,7 +622,7 @@ def buf_node_in(pssName, buf, args):
 
 		# start processing inputs on the websocket
 		hookFds[pssName] = weechat.hook_fd(psses[pssName].get_fd(), 1, 0, 0, "msgPipeRead", pssName)
-		hookTimers.append(weechat.hook_timer(PSS_FEEDBOX_PERIOD, 0, 0, "processFeedBox", pssName))
+		hookTimers.append(weechat.hook_timer(PSS_FEEDBOX_PERIOD, 0, 0, "processFeedOutQueue", pssName))
 
 		# set own nick for this node
 		# \todo use configurable global default nick
@@ -838,28 +866,19 @@ def buf_node_in(pssName, buf, args):
 
 
 
-# top level teardown of plugin and thus all connections
-def pss_stop():
-	for name in psses:
-		psses[name].close()
-		wOut(PSS_BUFPFX_INFO, [], "!!!", "pss '" + name + "' websocket connection closed")
-
-	return weechat.WEECHAT_RC_OK
 
 
-
-# check validity of an option key
-# \todo implement
-def pss_check_option(name, value):
-	return True
-
-
+###################
+# SIGNAL HANDLERS
+###################
 
 # signal handler for load
-
 # catches the script path used to locate other required resources
 def pss_sighandler_load(data, sig, sigdata):
-	global scriptPath, storeFile, nicks
+	global cache
+
+	entrycount = 0
+	okcount = 0
 
 	# ignore if not our load signal
 	if not os.path.basename(sigdata) == "swarm.py":
@@ -868,52 +887,30 @@ def pss_sighandler_load(data, sig, sigdata):
 	# parse dir and check if websocket comms script is there
 	# bail if it's not 
 	# \todo UNLOAD plugin on fail
-	scriptPath = os.path.dirname(sigdata)
+	cache = pss.Cache(os.path.dirname(sigdata), PSS_FEEDQUEUE_SIZE)
 	
 	# read the contacts database and populate the nicks plugin memory map 
 	# by applying them sequentially
 	# if it can't be found, we simply skip it, but telle the user
 	try:
-		f = open(scriptPath + "/.pss-contacts", "r", 0600)
-		while 1:
-			# if there is a record
-			# split fields on tab and chop newline
-			record = f.readline()
-			if len(record) == 0:
-				break	
-			(nick, key, addr, src) = record.split("\t")
-			if ord(src[len(src)-1]) == 0x0a:
-				src = src[:len(src)-1]
-
-			# add it to the map and report
-			try: 
-				pubkey = pss.clean_pubkey(key)
-				nicks[key] = pss.PssContact(nick, src)
-				nicks[key].set_public_key(pubkey.decode("hex"))
-				nicks[key].set_overlay(pss.clean_overlay(addr).decode("hex"))
-				# \todo function to strip 0x or store no 0x only add on send
-				remotekeys[nick] = pubkey
-
-			# \todo delete the record from the contact store
-			except Exception as e:
-				wOut(PSS_BUFPFX_ERROR, [], "!!!", "stored contact '" + nick + "' has invalid data, skipping (" + repr(e) + ")")
-				continue
-
-			wOut(PSS_BUFPFX_INFO, [], "+++", "pss contact loaded from db '" + nick + "' (0x" + key[2:10] + ")")
-
-		f.close()
+		(entrycount, okcount) = cache.load_store()
+		
 	except IOError as e:
-		wOut(PSS_BUFPFX_WARN, [], "!!!", "could not open contact store " + scriptPath + "/.pss-contacts: " + repr(e))
-			
+		wOut(
+			PSS_BUFPFX_WARN,
+			[],
+			"!!!",
+			"could not open contact store " + scriptPath + "/.pss-contacts: " + repr(e)
+		)
+		return weechat.WEECHAT_RC_ERROR
+
+	wOut(
+		PSS_BUFPFX_DEBUG,
+		[],
+		"<<<",
+		"successfully imported " + str(okcount) + " of " + str(entrycount) + " store entries"
+	)
 	
-	# debug output confirming receive signal
-	wOut(PSS_BUFPFX_DEBUG, [], "", "(" + repr(sig) + ") using scriptpath " + scriptPath)
-
-	# open file for append (and create if not exist)
-	# \todo postfix db name with username
-	# \todo catch no write access
-	storeFile = open(scriptPath + "/.pss-contacts", "a", 0600)
-
 	# signal is not needed anymore now, unhook and stop it from propagating
 	weechat.unhook(loadSigHook)
 	return weechat.WEECHAT_RC_OK_EAT
@@ -922,15 +919,11 @@ def pss_sighandler_load(data, sig, sigdata):
 
 # unload cleanly
 def pss_sighandler_unload(data, sig, sigdata):
-	global storeFile
-
-	if not os.path.basename(sigdata) == "swarm.py":
-		return weechat.WEECHAT_RC_OK	
 
 	for s in socks:
 		s.close()
 
-	storeFile.close()
+	cache.close()
 	return weechat.WEECHAT_RC_OK_EAT
 
 
