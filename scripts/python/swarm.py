@@ -87,14 +87,40 @@ class EventContext:
 		self.type = 0
 		self.node = ""
 		self.name = ""
+		self.reset(0, "", "")
 		self.pss = None
 		self.bzz = None
 		self.buf = None
-		self.bufname = ""
+
+
+	def reset(self, typ, node, name):
+		self.type = typ
+		self.node = node
+		self.name = name
+		self.bufname = self.to_buffer_name()
+		
+
+	def to_buffer_name(self):
+		if self.type == PSS_BUFTYPE_CHAT:
+			self.bufname = "pss." + self.node + ".chat." + self.name
+		elif self.type == PSS_BUFTYPE_ROOM:
+			self.bufname = "pss." + self.node + ".room." + self.name
+		else:
+			self.bufname = "pss." + self.node
+
+		return self.bufname
 
 
 	def is_root(self):
 		return self.type == 0
+
+
+	def is_room(self):
+		return self.type == PSS_BUFTYPE_ROOM
+
+
+	def is_chat(self):
+		return self.type == PSS_BUFTYPE_CHAT
 
 
 	def set_name(self, name):
@@ -109,9 +135,17 @@ class EventContext:
 		self.bzz = bzz
 
 
+	def set_buffer(self, buf, bufname):
+		self.buf = buf
+		self.bufname = bufname
+
+
 	def get_name(self):
 		return self.name
 
+
+	def get_node(self):
+		return self.pss.get_name()
 
 	def get_bzz(self):
 		return self.bzz
@@ -119,6 +153,10 @@ class EventContext:
 
 	def get_pss(self):
 		return self.pss
+
+
+	def get_buffer(self):
+		return self.buf
 
 
 	def parse_buffer(self, buf):
@@ -151,6 +189,10 @@ class EventContext:
 			self.name = flds[3]	
 
 		return True
+
+
+	def __str__(self):
+		return str(self.type) + "|" + self.node + "|" + self.name + "|" + repr(self.pss)
 
 
 ###########################
@@ -208,6 +250,41 @@ def wOut(level, oBufs, prefix, content):
 ##########################
 # SOCKET IO
 ##########################
+
+# \todo remove unsuccessful hooks
+def pss_connect(ctxid, status, tlsrc, sock, error, ip):
+
+	ctx = ctxstore.get(ctxid)
+
+	if status != weechat.WEECHAT_HOOK_CONNECT_OK:
+		wOut(PSS_BUFPFX_ERROR, [], "???", "swarm gateway connect failed (" + str(status) + "): " + error )
+		return weechat.WEECHAT_RC_ERROR
+
+	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected on " + ctx.get_name() + ", sock " + repr(sock))
+	agent = pss.Agent(ctx.get_pss().get_host(), 8500, sock)
+
+	bzz = pss.Bzz(agent)
+	cache.add_bzz(bzz, ctx.get_name())
+	ctx.set_bzz(bzz)
+
+	# provided the connection went ok
+	# add all nicks in the plugin's memory nick map
+	# that match the pubkey of the node to the node's recipient address book
+	for c in cache.update_node(ctx.get_name()):
+		wOut(
+			PSS_BUFPFX_INFO,
+			[bufs[pssName]],
+			"+++",
+			"added '" + c.get_nick()
+		)
+		# \ todo make this call more legible (public key to bytes method in pss pkg)
+#		try:
+#			feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(psses[pssName].get_public_key()))
+#		except:
+#			wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "bzz gateway for not active")
+
+	return weechat.WEECHAT_RC_OK
+
 
 def processFeedOutQueue(pssName, _):
 	while 1:
@@ -318,139 +395,145 @@ def msgPipeRead(pssName, fd):
 
 		# resolve the nick if it exists
 		fromKey = r['params']['result']['Key']
+
+		# \todo add pss name and sender nick name to ctx
+		ctx = Context()
 		if fromKey in nicks:
 			displayFrom = nicks[fromKey].nick
-			wOut(PSS_BUFPFX_IN, [buf_get(pssName, "chat", displayFrom, True)], displayFrom, msgSrc)
+			wOut(PSS_BUFPFX_IN, [buf_get(ctx, True)], displayFrom, msgSrc)
 		else:
 			displayFrom = pss.label(fromKey, 8)
-			buf = buf_get(pssName, "chat", pss.label(fromKey, 16), False)
+			buf = buf_get(ctx, "chat", pss.label(fromKey, 16), False)
 			wOut(PSS_BUFPFX_IN, [buf], displayFrom, msgSrc)
 
 	return weechat.WEECHAT_RC_OK
 
 
 
+
 #############################
-# BUFFER EVENT OPERATIONS
+# WEECHAT BUFFER HANDLING
 #############################
 
 # gets the buffer matching the type and the name given
 # creates if it doesn't exists
 # \todo rename bufname to more precise term
-def buf_get(pssName, typ, name, known):
+def buf_get(ctx, known):
 
 	haveBzz = False
 	# \todo integrity check of input data
-	bufname = buf_generate_name(pssName, typ, name)
+	bufname = ctx.to_buffer_name()
 
-	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "generated bufname " + bufname + " for " + pssName + " / " + typ + " / " + name)
+	wOut(
+		PSS_BUFPFX_DEBUG,
+		[],
+		"!!!",
+		"generated bufname " + bufname
+	)
 
-	try:
-		buf = weechat.buffer_search("python", bufname)
-	# \todo re-evaluate why exception can occur here, and which one specifically
-	except Exception as e:
-		return ""
+	buf = weechat.buffer_search("python", bufname)
 
-	if pssName in bzzs:
-		haveBzz = True
-	elif typ == "room":
+	if ctx.is_room() and ctx.get_bzz() == None:
 		raise RuntimeError("gateway needed for multiuser chats over swarm")
+
 	
 	if buf == "":
 
 		shortname = ""
 
 		# for debug only
-		pss_publickey_hex = pss.rpchex(psses[pssName].get_public_key())
-		pss_overlay_hex = pss.rpchex(psses[pssName].get_overlay())
+		pss_publickey_hex = pss.rpchex(ctx.get_pss().get_public_key())
+		pss_overlay_hex = pss.rpchex(ctx.get_pss().get_overlay())
 
 		# chat is DM between two parties
-		if typ == "chat":
+		if ctx.is_chat():
 			ispubkey = False
 			if known:
-				shortname = "pss:" + name
+				shortname = "pss:" + ctx.get_name()
 			else:
-				shortname = "pss:" + name[:8]
+				shortname = "pss:" + ctx.get_name()[:8]
 				ispubkey = True
 
-			buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
-			weechat.buffer_set(buf, "short_name", shortname)
-			weechat.buffer_set(buf, "title", name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(pss_overlay_hex))
-			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
-			weechat.buffer_set(buf, "display", "1")
-			plugin = weechat.buffer_get_pointer(buf, "plugin")
+			# set up the buffer
+			ctx.set_buffer(weechat.buffer_new(bufname, "buf_in", ctx.get_node(), "buf_close", ctx.get_node()), bufname)
+			weechat.buffer_set(ctx.get_buffer(), "short_name", shortname)
+			weechat.buffer_set(ctx.get_buffer(), "title", ctx.get_name() + " @ PSS '" + ctx.get_node() + "' | node: " + weechat.config_get_plugin(ctx.get_pss().get_host() + "_url") + ":" + weechat.config_get_plugin(ctx.get_pss().get_port() + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(pss_overlay_hex))
+			weechat.buffer_set(ctx.get_buffer(), "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
+			weechat.buffer_set(ctx.get_buffer(), "display", "1")
+			plugin = weechat.buffer_get_pointer(ctx.get_buffer(), "plugin")
 			bufs[bufname] = buf
-			debugstr = "have " + repr(psses[pssName].have_account()) + " + " +  repr(haveBzz)
-			wOut(PSS_BUFPFX_DEBUG, [], "have", debugstr)
 
-			if psses[pssName].have_account() and haveBzz:
-				pubkey = ""
-				if ispubkey:
-					pubkey = name
-				else:
-					pubkey = remotekeys[name]
-				try:
-					feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(pubkey))
-					wOut(PSS_BUFPFX_DEBUG, [], "", "added feed with topic " + feeds[bufname].topic.encode("hex"))
-				except ValueError as e:
-					wOut(PSS_BUFPFX_ERROR, [], "???", "could not set up feed: " + str(e))
+#			debugstr = "have " + repr(ctx.get_pss().have_account()) + " + " +  repr(ctx.get_bzz() != None)
+#			wOut(PSS_BUFPFX_DEBUG, [], "have", debugstr)
+#
+#			if psses[pssName].have_account() and haveBzz:
+#				pubkey = ""
+#				if ispubkey:
+#					pubkey = name
+#				else:
+#					pubkey = remotekeys[name]
+#				try:
+#					feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(pubkey))
+#					wOut(PSS_BUFPFX_DEBUG, [], "", "added feed with topic " + feeds[bufname].topic.encode("hex"))
+#				except ValueError as e:
+#					wOut(PSS_BUFPFX_ERROR, [], "???", "could not set up feed: " + str(e))
 
 		# room is multiuser conversation
-		elif typ == "room":
-	
-			shortname = "pss#" + name
-
-			buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
-			weechat.buffer_set(buf, "short_name", shortname)
-			weechat.buffer_set(buf, "title", "#" + name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(pss_overlay_hex))
-			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
-			weechat.buffer_set(buf, "nicklist", "1")
-			weechat.buffer_set(buf, "display", "1")
-			#weechat.nicklist_add_group(buf, "", "me", "weechat.color.nicklist_group", 1)
-			#weechat.nicklist_add_nick(buf, "me", psses[pssName].name, "bar_fg", "", "bar_fg", 1)
-	
-			plugin = weechat.buffer_get_pointer(buf, "plugin")
-			bufs[bufname] = buf
-			
-			if len(rooms) == 0:
-				hookTimers.append(weechat.hook_timer(PSS_ROOM_PERIOD, 0, 0, "roomRead", psses[pssName].name))
-			wOut(PSS_BUFPFX_DEBUG, [], "roomdbg", str(bufs[bufname]))
-#			bzzRoomKey = "room"+name
-#			if not bzzRoomKey in bzzs:
-#				agent = pss.Agent(psses[pssName].host, 8500)
-#				bzzs[bzzRoomKey] = pss.Bzz(agent)
-#			rooms[bufname] = pss.Room(bzzs[bzzRoomKey], name, psses[pssName].get_account())
-			rooms[bufname] = pss.Room(bzzs[pssName], name, psses[pssName].get_account())
-			# \todo test load first, only init if not found
-			try:
-				roomhsh = rooms[bufname].get_state_hash()
-				rooms[bufname].load(roomhsh, psses[pssName].get_account())
-				wOut(PSS_BUFPFX_DEBUG, [], "", "loaded room with topic " + rooms[bufname].feed_out.topic.encode("hex") + " account " + rooms[bufname].feed_out.account.address.encode("hex") + " roomfeed " + rooms[bufname].feed_room.topic.encode("hex"))
-				for k, p in rooms[bufname].participants.iteritems():
-					nick = ""
-					publickey = p.get_public_key()
-					if publickey == selfs[pssName].get_public_key():
-					#if p.key == selfs[pssName].key:
-						nick = selfs[pssName].nick
-					else:
-						#if not p.key in nicks:
-						if not publickey in nicks:
-							acc = pss.Account()
-							try:
-								acc.set_public_key(publickey, p.get_address())
-								nicks[p.nick] = pss.PssContact(p.nick, p.src)
-								remotekeys[publickey] = p.nick
-							except RuntimeError as e:
-								wOut(PSS_BUFPFX_WARN, [], "", "public key does not match address")
-								continue
-
-						nick = nicks[publickey]
-					buf_room_add(buf, nick)
-			# \todo correct expect to disambiguate unexpected fails
-			except Exception as e:
-				wOut(PSS_BUFPFX_DEBUG, [], "", "fail room load: " + str(e))
-				rooms[bufname].start(PSS_DEFAULT_NICK)
-				wOut(PSS_BUFPFX_DEBUG, [], "", "added room with topic " + rooms[bufname].feed_out.topic.encode("hex") + " account " + rooms[bufname].feed_out.account.get_address().encode("hex") + " roomfeed " + rooms[bufname].feed_room.topic.encode("hex"))
+#		elif typ == "room":
+#	
+#			shortname = "pss#" + name
+#
+#			buf = weechat.buffer_new(bufname, "buf_in", pssName, "buf_close", pssName)
+#			weechat.buffer_set(buf, "short_name", shortname)
+#			weechat.buffer_set(buf, "title", "#" + name + " @ PSS '" + pssName + "' | node: " + weechat.config_get_plugin(psses[pssName].host + "_url") + ":" + weechat.config_get_plugin(psses[pssName].port + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(pss_overlay_hex))
+#			weechat.buffer_set(buf, "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
+#			weechat.buffer_set(buf, "nicklist", "1")
+#			weechat.buffer_set(buf, "display", "1")
+#			#weechat.nicklist_add_group(buf, "", "me", "weechat.color.nicklist_group", 1)
+#			#weechat.nicklist_add_nick(buf, "me", psses[pssName].name, "bar_fg", "", "bar_fg", 1)
+#	
+#			plugin = weechat.buffer_get_pointer(buf, "plugin")
+#			bufs[bufname] = buf
+#			
+#			if len(rooms) == 0:
+#				hookTimers.append(weechat.hook_timer(PSS_ROOM_PERIOD, 0, 0, "roomRead", psses[pssName].name))
+#			wOut(PSS_BUFPFX_DEBUG, [], "roomdbg", str(bufs[bufname]))
+##			bzzRoomKey = "room"+name
+##			if not bzzRoomKey in bzzs:
+##				agent = pss.Agent(psses[pssName].host, 8500)
+##				bzzs[bzzRoomKey] = pss.Bzz(agent)
+##			rooms[bufname] = pss.Room(bzzs[bzzRoomKey], name, psses[pssName].get_account())
+#			rooms[bufname] = pss.Room(bzzs[pssName], name, psses[pssName].get_account())
+#			# \todo test load first, only init if not found
+#			try:
+#				roomhsh = rooms[bufname].get_state_hash()
+#				rooms[bufname].load(roomhsh, psses[pssName].get_account())
+#				wOut(PSS_BUFPFX_DEBUG, [], "", "loaded room with topic " + rooms[bufname].feed_out.topic.encode("hex") + " account " + rooms[bufname].feed_out.account.address.encode("hex") + " roomfeed " + rooms[bufname].feed_room.topic.encode("hex"))
+#				for k, p in rooms[bufname].participants.iteritems():
+#					nick = ""
+#					publickey = p.get_public_key()
+#					if publickey == selfs[pssName].get_public_key():
+#					#if p.key == selfs[pssName].key:
+#						nick = selfs[pssName].nick
+#					else:
+#						#if not p.key in nicks:
+#						if not publickey in nicks:
+#							acc = pss.Account()
+#							try:
+#								acc.set_public_key(publickey, p.get_address())
+#								nicks[p.nick] = pss.PssContact(p.nick, p.src)
+#								remotekeys[publickey] = p.nick
+#							except RuntimeError as e:
+#								wOut(PSS_BUFPFX_WARN, [], "", "public key does not match address")
+#								continue
+#
+#						nick = nicks[publickey]
+#					buf_room_add(buf, nick)
+#			# \todo correct expect to disambiguate unexpected fails
+#			except Exception as e:
+#				wOut(PSS_BUFPFX_DEBUG, [], "", "fail room load: " + str(e))
+#				rooms[bufname].start(PSS_DEFAULT_NICK)
+#				wOut(PSS_BUFPFX_DEBUG, [], "", "added room with topic " + rooms[bufname].feed_out.topic.encode("hex") + " account " + rooms[bufname].feed_out.account.get_address().encode("hex") + " roomfeed " + rooms[bufname].feed_room.topic.encode("hex"))
 		else:
 			raise RuntimeError("invalid buffer type")
 
@@ -504,30 +587,11 @@ def buf_in(pssName, buf, inputdata):
 	return weechat.WEECHAT_RC_OK
 
 
-# create a buffer name from given parameters
-# \todo should be inverse of buf_get_context
-def buf_generate_name(pssName, typ, name):
-	return "pss." + pssName + "." + typ + "." + name
-
 
 # when buffer is closed, node should also close down
 def buf_close(pssName, buf):
 	cache.close_node(pssName)
 	return weechat.WEECHAT_RC_OK
-
-
-
-# given a buffer, returns dict describing which context this buffer represents
-def buf_get_context(buf):
-	
-
-	return r
-
-
-
-# handle slash command inputs
-def pss_handle(data, buf, args):
-	return buf_node_in(data, buf, args)
 
 
 
@@ -539,50 +603,22 @@ def pss_invite(pssName, nick, room):
 	room.add(nick, contact)
 	#wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex"))
 
+
 def buf_room_add(buf, nick, groupname=""):
 	#if weechat.nicklist_search_group(buf, "", "members") == "":
 	#	weechat.nicklist_add_group(buf, "", "members", "weechat.color.nicklist_group", 1)
 	weechat.nicklist_add_nick(buf, groupname, nick, "bar_fg", "", "bar_fg", 1)
 
 
-# \todo remove unsuccessful hooks
-def sock_connect(ctxid, status, tlsrc, sock, error, ip):
 
-	ctx = ctxstore.get(ctxid)
 
-	if status != weechat.WEECHAT_HOOK_CONNECT_OK:
-		wOut(PSS_BUFPFX_ERROR, [], "???", "swarm gateway connect failed (" + str(status) + "): " + error )
-		return weechat.WEECHAT_RC_ERROR
-
-	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected on " + ctx.get_name() + ", sock " + repr(sock))
-	agent = pss.Agent(ctx.get_pss().get_host(), 8500, sock)
-
-	bzz = pss.Bzz(agent)
-	cache.add_bzz(bzz, ctx.get_name())
-	ctx.set_bzz(bzz)
-
-	# provided the connection went ok
-	# add all nicks in the plugin's memory nick map
-	# that match the pubkey of the node to the node's recipient address book
-	for c in cache.update_node(ctx.get_name()):
-		wOut(
-			PSS_BUFPFX_INFO,
-			[bufs[pssName]],
-			"+++",
-			"added '" + c.get_nick()
-		)
-		# \ todo make this call more legible (public key to bytes method in pss pkg)
-#		try:
-#			feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(psses[pssName].get_public_key()))
-#		except:
-#			wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "bzz gateway for not active")
-
-	return weechat.WEECHAT_RC_OK
-
+############################
+# COMMANDS HANDLING
+############################
 
 
 # handle node inputs	
-def buf_node_in(pssName, buf, args):
+def pss_handle(pssName, buf, args):
 
 	# context is only used for acvie nodes
 	ctx = EventContext()
@@ -666,7 +702,7 @@ def buf_node_in(pssName, buf, args):
 		ctx.set_pss(cache.get_pss(pssName))
 		# \todo temporary solution, swarm gateway should be set explicitly or at least we need to be able to choose port
 		ctxid = ctxstore.put(ctx)
-		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "sock_connect", ctxid))
+		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "pss_connect", ctxid))
 		
 
 
@@ -696,6 +732,8 @@ def buf_node_in(pssName, buf, args):
 		ctx.set_name(argv[0])
 		argv = argv[1:]
 		argc -= 1
+
+	ctx.set_pss(cache.get_pss(ctx.get_name()))
 
 
 	# see if we already have this node registered
@@ -746,7 +784,12 @@ def buf_node_in(pssName, buf, args):
 
 		# input sanity check
 		if argc < 3:
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "not enough arguments for add <TODO: help output>")
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"not enough arguments for add <TODO: help output>"
+			)
 			return weechat.WEECHAT_RC_ERROR
 
 		# puny human varnames
@@ -760,22 +803,43 @@ def buf_node_in(pssName, buf, args):
 		# backend add recipient call	
 		pubkey = pss.clean_pubkey(pubkeyhx).decode("hex")
 		overlay = pss.clean_overlay(overlayhx).decode("hex")
-		if not currentPss.add(nick, pubkey, overlay):
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "add contact error: " + currentPss.error()['description'])
+		newcontact = None
+		try:
+			newcontact =  ctx.get_pss().add(nick, pubkey, overlay)
+			cache.add_contact(ctx.get_name(), newcontact, ctx.get_pss().get_public_key())
+		except Exception as e:
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"add contact error: " + repr(e)
+			)
 			return weechat.WEECHAT_RC_ERROR
 
+		ctx.reset(PSS_BUFTYPE_CHAT, ctx.get_node(), nick)
+
 		# refresh the plugin memory map version of the recipient
-		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added key " + pubkeyhx + " to nick " + nick)
-		nicks[pubkeyhx] = currentPss.get_contact(nick)
-		remotekeys[nick] = pubkeyhx
+		wOut(
+			PSS_BUFPFX_DEBUG,
+			[],
+			"!!!",
+			"added key " + pubkeyhx + " to nick " + nick
+		)
 
 		# append recipient to file for reinstating across sessions
-		storeFile.write(nick + "\t" + pubkeyhx + "\t" + overlayhx + "\t" + pss.rpchex(currentPss.get_public_key()) + "\n")
+		# \todo move to cache object
+		# storeFile.write(nick + "\t" + pubkeyhx + "\t" + overlayhx + "\t" + pss.rpchex(currentPss.get_public_key()) + "\n")
 
 		# open the buffer if it doesn't exist
-		buf_get(pssName, "chat", nick, True)	
+		#buf_get(ctxstore.put(ctx), "chat", nick, True)	
+		buf_get(ctx, True)	
 
-		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "!!!", "added contact '" + nicks[pubkey].nick + "' to '" + pssName + "' (key: " + pss.label(pubkeyhx) + ", addr: " + pss.label(overlayhx) + ")")
+		wOut(
+			PSS_BUFPFX_INFO,
+			[ctx.get_buffer()],
+			"!!!",
+			"added contact '" + ctx.get_name() + "' to '" + ctx.get_node() + "' (key: " + pss.label(pubkeyhx) + ", addr: " + pss.label(overlayhx) + ")"
+		)
 
 
 	# send a message to a recipient
@@ -821,7 +885,7 @@ def buf_node_in(pssName, buf, args):
 		room = argv[1]
 
 		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "in join " + pssName)	
-		buf = buf_get(pssName, "room", room, True)
+		buf = buf_get(pssName, True)
 
 
 	# invite works in context of chat rooms, and translates in swarm terms to

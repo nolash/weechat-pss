@@ -124,8 +124,16 @@ class Pss:
 		return True
 
 
+	def get_name(self):
+		return self.name
+
+
 	def get_host(self):
 		return self.host	
+
+	
+	def get_port(self):
+		return self.port
 
 	
 	def get_public_key(self):
@@ -148,19 +156,12 @@ class Pss:
 		# no use if we're not connected
 		# \todo use exception instead
 		if self.ws == None or not self.connected:
-			self.err = PSS_ESTATE
-			self.errstr = "pss " + self.name + " not connected"
-			return False
+			raise IOError("not connected")
 
 		# create the contact object	
-		try:
-			contact = PssContact(nick, self.account.get_public_key())
-			contact.set_public_key(pubkey)
-			contact.set_overlay(overlay)
-		except ValueError as e:
-			self.err = PSS_ELOCALINVAL
-			self.errstr = "invalid input for add: " + repr(e)
-			return False
+		contact = PssContact(nick, self.account.get_public_key())
+		contact.set_public_key(pubkey)
+		contact.set_overlay(overlay)
 
 		# add to node and object cache
 		pubkeyhx = rpchex(contact.get_public_key())
@@ -170,7 +171,7 @@ class Pss:
 		self.seq += 1
 		self.contacts[nick] = contact
 
-		return True
+		return contact
 
 
 
