@@ -12,10 +12,9 @@ from message import is_message
 class Participant(PssContact):
 
 	
-	def __init__(self, nick, key, addr, src, trusted=False):
+	def __init__(self, nick, src, trusted=False):
 		self.trusted = trusted
-		#super(Participant, self).__init__(nick, key, addr, src)
-		PssContact.__init__(self, nick, key, addr, src)
+		PssContact.__init__(self, nick, src)
 
 # Room represents a multi-user chat room
 #
@@ -56,9 +55,10 @@ class Room:
 	# sets the name and the room parameter feed
 	# used to instantiate a new room
 	# \todo valid src parameter
-	def start(self, nick):
-		pubkey = self.feed_room.account.publickeybytes
-		self.add(nick, Participant(clean_nick(nick), pubkey.encode("hex"), self.feed_room.account.address.encode("hex"), pubkey.encode("hex")))
+	def start(self, nick, srckey=None):
+		participant = Participant(nick, srckey)
+		participant.set_from_account(self.feed_room.account)
+		self.add(nick, participant)
 		self.feed_out = Feed(self.agent, self.feed_room.account, self.name, True)
 		self.hsh_room = self.save()
 
@@ -114,13 +114,8 @@ class Room:
 	# \todo add save updated participant list to swarm
 	def add(self, nick, participant):
 
-		# account reflects the peer's address / key
-		acc = Account()
-		# \todo fix this 04 prefix ambiguity bullshit
-		acc.set_public_key(clean_pubkey(participant.key).decode("hex"))
-
 		# incoming feed user is peer
-		participantfeed_in = Feed(self.agent, acc, self.name, False)
+		participantfeed_in = Feed(self.agent, participant, self.name, False)
 		self.feedcollection_in.add(participant.nick, participantfeed_in)
 		self.participants[nick] = participant
 		self.hsh_room = self.save()
@@ -209,7 +204,7 @@ class Room:
 		if self.hsh_room == body[37:69]:
 			participantcount = len(self.participants)
 			for p in self.participants.values():
-				if p.key == contact.key:
+				if p.get_public_key() == contact.get_public_key():
 					matchidx = idx
 				idx += 1
 		# if not we need to retrieve the one that was relevant at the time of update
@@ -218,7 +213,7 @@ class Room:
 			savedroom = json.loads(self.bzz.get(body[37:69].encode("hex")))
 			participantcount = len(savedroom['participants'])
 			for p in savedroom['participants']:
-				if clean_hex(p) == clean_pubkey(contact.key):
+				if clean_hex(p) == clean_pubkey(contact.get_public_key()):
 					matchidx = idx
 				idx += 1
 
@@ -258,11 +253,11 @@ class Room:
 	def serialize(self):
 		jsonStr = """{
 	"name":\"""" + self.name + """\",
-	"pubkey":\"0x04""" + self.feed_room.account.publickeybytes.encode("hex") + """\",
+	"pubkey":\"0x""" + self.feed_room.account.publickeybytes.encode("hex") + """\",
 	"participants":["""
 		#participantList = ""
 		for k, p in self.participants.iteritems():
-			jsonStr += "\"" + p.key + "\",\n"
+			jsonStr += "\"" + p.get_public_key().encode("hex") + "\",\n"
 		#	participantList += p.serialize()
 		jsonStr = jsonStr[0:len(jsonStr)-2]
 		jsonStr += """

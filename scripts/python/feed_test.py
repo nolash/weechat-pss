@@ -48,7 +48,7 @@ class TestFeedRebuild(unittest.TestCase):
 			acc = pss.Account()
 			acc.set_key(pss.clean_privkey(self.privkeys[i]).decode("hex"))
 			self.accounts.append(acc)
-			#sys.stderr.write("added random (seed " + str(seedval) + " key " + self.privkeys[i] + " account " + self.accounts[i].address.encode("hex") + " pubkey " + self.accounts[i].publickeybytes.encode("hex") + "\n")
+			#sys.stderr.write("added random (seed " + str(seedval) + " key " + self.privkeys[i] + " account " + self.accounts[i].get_address().encode("hex") + " pubkey " + self.accounts[i].publickeybytes.encode("hex") + "\n")
 
 		seedval += 1
 
@@ -56,7 +56,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# create a linked list of three elements, retrieve in order and compare hashes
-	@unittest.skip("skipping test_single_feed")
+	#@unittest.skip("skipping test_single_feed")
 	def test_single_feed(self):
 		global zerohsh
 
@@ -91,7 +91,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 	# create a collection of two feeds. 
 	# test that updates are available in the collection after gethead()
-	@unittest.skip("skipping test_feed_collection_ok")
+	#@unittest.skip("skipping test_feed_collection_ok")
 	def test_feed_collection_ok(self):
 
 		for i in range(2):
@@ -109,7 +109,7 @@ class TestFeedRebuild(unittest.TestCase):
 			lasthsh = zerohsh.decode("hex")
 
 			# create new feed with address only (no private key) for read
-			addr = self.feeds[i].account.address
+			addr = self.feeds[i].account.get_address()
 			acc = pss.Account()
 			acc.set_address(addr)
 			outfeeds.append(pss.Feed(self.agent, acc, "one", True))
@@ -143,7 +143,7 @@ class TestFeedRebuild(unittest.TestCase):
 		# compare the results
 		i = 0
 		for n in ["foo", "bar"]:
-			k = self.coll.feeds[n]['obj'].account.address
+			k = self.coll.feeds[n]['obj'].account.get_address()
 			#print "getting addr " + k.encode("hex")
 
 			# feed updates are indexed on user address, then time and index
@@ -159,7 +159,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 	# create a feed collection
 	# and test that the get() method returns chronologically sorted entries	
-	@unittest.skip("collection sort")
+	#@unittest.skip("collection sort")
 	def test_feed_collection_sort(self):
 
 		# same setup as previous test
@@ -172,7 +172,7 @@ class TestFeedRebuild(unittest.TestCase):
 		outfeeds = []
 		for i in range(len(self.feeds)):
 			lasthsh = zerohsh.decode("hex")
-			addr = self.feeds[i].account.address
+			addr = self.feeds[i].account.get_address()
 			acc = pss.Account()
 			acc.set_address(addr)
 			outfeeds.append(pss.Feed(self.agent, acc, "one", True))
@@ -209,7 +209,7 @@ class TestFeedRebuild(unittest.TestCase):
 	# test that broken links (swarm content hashes that do not resolve)
 	# and content until break
 	# are correctly recorded in the collection object
-	@unittest.skip("collection single gap")
+	#@unittest.skip("collection single gap")
 	def test_feed_collection_single_gap(self):
 
 		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
@@ -225,7 +225,7 @@ class TestFeedRebuild(unittest.TestCase):
 		lasthsh = bogushsh.decode("hex")
 
 		# set up similar as previous collection tests, but only one feed
-		addr = feed.account.address
+		addr = feed.account.get_address()
 		acc = pss.Account()
 		acc.set_address(addr)
 		outfeed = pss.Feed(self.agent, acc, "one", True)
@@ -251,7 +251,7 @@ class TestFeedRebuild(unittest.TestCase):
 			self.fail("dict key in test assert fail: " + str(e))
 
 		# check that we still got all the updates that we could	
-		k = self.coll.feeds['foo']['obj'].account.address
+		k = self.coll.feeds['foo']['obj'].account.get_address()
 		msgs = upd[k]
 		self.assertEqual(msgs[timebytes + "\x00"].content, "0x0")
 		self.assertEqual(msgs[timebytes + "\x01"].content, "0x1")
@@ -268,11 +268,13 @@ class TestFeedRebuild(unittest.TestCase):
 		nick = "bar"
 		r = pss.Room(self.bzz, roomname, self.accounts[0])
 		r.start(nick)
-		addrhx = self.accounts[0].address.encode("hex")
-		pubkeyhx = self.accounts[0].publickeybytes.encode("hex")
+		#addrhx = self.accounts[0].get_address().encode("hex")
+		#pubkeyhx = self.accounts[0].publickeybytes.encode("hex")
 
 		# create participant object to ensure correct representation of nick
-		p = Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
+		#p = Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
+		p = Participant(nick, pubkey)
+		p.set_public_key(self.accounts[0].get_public_key())
 
 		resulttopic = r.feedcollection_in.feeds[p.nick]['obj'].topic
 
@@ -286,17 +288,19 @@ class TestFeedRebuild(unittest.TestCase):
 		
 
 	# test that we can instantiate a room from saved state
-	@unittest.skip("feed room load save")	
+	#@unittest.skip("feed room load save")	
 	def test_feed_room(self):
 
-		nicks = [self.accounts[0].address.encode("hex")]
+		nicks = [self.accounts[0].get_address().encode("hex")]
 		r = pss.Room(self.bzz, "abc", self.accounts[0])
 		r.start("foo")
 		for i in range(1, len(self.accounts)):
-			addrhx = self.accounts[i].address.encode("hex")
+			#addrhx = self.accounts[i].get_address().encode("hex")
 			nicks.append(str(i))
-			pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
-			p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
+			#pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
+			p = Participant(nicks[i], pubkey)
+			p.set_public_key(self.accounts[i].get_public_key())	
+			#p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
 			r.add(nicks[i], p)
 	
 		# get the serialized representation of room	
@@ -327,12 +331,12 @@ class TestFeedRebuild(unittest.TestCase):
 			matched = False
 			for a in self.accounts:
 
-				if f['obj'].account.address == a.address:
+				if f['obj'].account.get_address() == a.get_address():
 					matched = True
 					matchesleft -= 1
 			if not matched:
 				print "key '" + f['obj'].account.publickeybytes.encode("hex") + "'"
-				self.fail("found unknown address " + f['obj'].account.address.encode("hex"))
+				self.fail("found unknown address " + f['obj'].account.get_address().encode("hex"))
 		if matchesleft != 0:
 			self.fail("have " + str(matchesleft) + " unmatched addresses")
 
@@ -342,7 +346,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# \todo add extract_message test (without fetch)
-	@unittest.skip("room send")	
+	#@unittest.skip("room send")	
 	def test_extract(self):
 		hx = ""
 		data = ""
@@ -374,7 +378,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# test that we can create update and that the saved update contains the expected data
-	@unittest.skip("room send")	
+	#@unittest.skip("room send")	
 	def test_feed_room_send(self):
 
 		msg = "heyho"
@@ -388,10 +392,12 @@ class TestFeedRebuild(unittest.TestCase):
 		#r = pss.Room(self.bzz, self.feeds[0])
 		r.start("0")
 		for i in range(1, len(self.accounts)):
-			addrhx = self.accounts[i].address.encode("hex")
+			#addrhx = self.accounts[i].get_address().encode("hex")
 			nicks.append(str(i))
-			pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
-			p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
+			#pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
+			#p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
+			p = Participant(nicks[i], pubkey)
+			p.set_public_key(self.accounts[i].get_public_key())
 			r.add(nicks[i], p)
 
 		hsh = r.send(msg)
