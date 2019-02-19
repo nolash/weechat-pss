@@ -1,6 +1,6 @@
 import websocket
 
-from tools import clean_pubkey, clean_overlay
+from tools import clean_pubkey, clean_overlay, rpchex
 from error import *
 from content import rpc_call, rpc_parse
 from user import PssContact, Account
@@ -32,7 +32,6 @@ class Pss:
 		self.eth = None
 		self.err = 0
 		self.errstr = ""
-		self.contacts = None
 		self.seq = 0
 		self.ws = None
 		self.run = False
@@ -133,15 +132,12 @@ class Pss:
 	
 
 	# adds recipient to node
-	def add(self, nick, pubkey, address):
+	def add(self, nick, pubkey, overlay):
 
 		# holds the newly created contact object
 		contact = None
 
-		# brief address and key for display in buffer
-		addrLabel = ""
-		keyLabel = ""
-
+		# 
 		# no use if we're not connected
 		# \todo use exception instead
 		if self.ws == None or not self.connected:
@@ -151,14 +147,18 @@ class Pss:
 
 		# create the contact object	
 		try:
-			contact = PssContact(nick, pubkey, address, self.key)
+			contact = PssContact(nick, self.account.get_public_key())
+			contact.set_public_key(pubkey)
+			contact.set_overlay(overlay)
 		except ValueError as e:
 			self.err = PSS_ELOCALINVAL
 			self.errstr = "invalid input for add: " + repr(e)
 			return False
 
 		# add to node and object cache
-		self.ws.send(rpc_call(self.seq, "setPeerPublicKey", [contact.key, topic, contact.address]))
+		pubkeyhx = rpchex(contact.get_public_key())
+		overlayhx = rpchex(contact.get_overlay())
+		self.ws.send(rpc_call(self.seq, "setPeerPublicKey", [pubkeyhx, topic, overlayhx]))
 		#self.ws.recv()
 		self.seq += 1
 		self.contacts[nick] = contact
@@ -184,7 +184,7 @@ class Pss:
 			return False
 
 		# send the message
-		self.ws.send(rpc_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, "0x" + msg.encode("hex")]))
+		self.ws.send(rpc_call(self.seq, "sendAsym", [rpchex(self.contacts[nick].get_public_key()), topic, "0x" + msg.encode("hex")]))
 		self.seq += 1
 
 		return True
@@ -221,3 +221,7 @@ class Pss:
 	# check if nick is registered in node
 	def have_nick(self, nick):
 		return nick in self.contacts
+
+
+
+

@@ -264,7 +264,7 @@ def buf_get(pssName, typ, name, known):
 
 		shortname = ""
 
-		pss_publickey_hex = "{:0130x}".format(psses[pssName].get_public_key())
+		pss_publickey_hex = pss.rpchex(psses[pssName].get_public_key())
 
 		# chat is DM between two parties
 		if typ == "chat":
@@ -594,10 +594,9 @@ def buf_node_in(pssName, buf, args):
 		# set own nick for this node
 		# \todo use configurable global default nick
 		# \todo clean up messy pubkey slicing (should be binary format in pss obj)
-		accout = pss.Account()
 		publickey = psses[pssName].get_public_key()
-		acc.set_public_key(publickey)
-		selfs[pssName] = pss.PssContact(PSS_DEFAULT_NICK, account, publickey)
+		selfs[pssName] = pss.PssContact(PSS_DEFAULT_NICK, publickey)
+		selfs[pssName].set_public_key(publickey)
 		wOut(PSS_BUFPFX_OK, [bufs[pssName]], pssName, "nick is " + selfs[pssName].nick)
 		
 		return weechat.WEECHAT_RC_OK
@@ -670,8 +669,8 @@ def buf_node_in(pssName, buf, args):
 	elif argv[0] == "add":
 
 		nick = ""
-		key = ""
-		addr = ""
+		pubkeyhx = ""
+		overlayhx = ""
 
 		# input sanity check
 		if argc < 3:
@@ -680,29 +679,31 @@ def buf_node_in(pssName, buf, args):
 
 		# puny human varnames
 		nick = argv[1]
-		key = argv[2]
+		pubkeyhx = argv[2]
 		if argc == 4:
-			addr = argv[3]
+			overlayhx = argv[3]
 		else:
-			addr = "0x"
+			overlayhx = "0x"
 		
 		# backend add recipient call	
-		if not currentPss.add(nick, key, addr):
+		pubkey = pss.clean_pubkey(pubkeyhx).decode("hex")
+		overlay = pss.clean_overlay(overlayhx).decode("hex")
+		if not currentPss.add(nick, pubkey, overlay):
 			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "add contact error: " + currentPss.error()['description'])
 			return weechat.WEECHAT_RC_ERROR
 
 		# refresh the plugin memory map version of the recipient
-		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added key " + key + " to nick " + nick)
-		nicks[key] = currentPss.get_contact(nick)
-		remotekeys[nick] = key
+		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added key " + pubkeyhx + " to nick " + nick)
+		nicks[pubkey] = currentPss.get_contact(nick)
+		remotekeys[nick] = pubkey
 
 		# append recipient to file for reinstating across sessions
-		storeFile.write(nick + "\t" + key + "\t" + addr + "\t" + currentPss.get_public_key() + "\n")
+		storeFile.write(nick + "\t" + pubkeyhx + "\t" + overlayhx + "\t" + pss.rpchex(currentPss.get_public_key()) + "\n")
 
 		# open the buffer if it doesn't exist
 		buf_get(pssName, "chat", nick, True)	
 
-		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "!!!", "added contact '" + nicks[key].nick + "' to '" + pssName + "' (key: " + pss.label(key) + ", addr: " + pss.label(addr) + ")")
+		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "!!!", "added contact '" + nicks[pubkey].nick + "' to '" + pssName + "' (key: " + pss.label(pubkeyhx) + ", addr: " + pss.label(overlayhx) + ")")
 
 
 	# send a message to a recipient

@@ -97,6 +97,11 @@ class PssContact(Account):
 
 
 
+	def get_overlay(self):
+		return self.overlay
+
+
+
 def publickey_to_account(keybytes):
 	h = keccak.new(digest_bits=256)
 	h.update(keybytes[1:])

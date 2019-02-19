@@ -169,3 +169,6 @@ class Queue:
 		return nxt
 
 
+
+def rpchex(b):
+	return "0x" + b.encode("hex")	
