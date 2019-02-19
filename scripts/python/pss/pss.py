@@ -12,6 +12,7 @@ topic = "0xdeadbee2"
 # object encapsulating pss node connection
 # \todo move to separate package
 # \todo remove direct websocket comms and get node key and addr from background process
+# \todo self.eth and self.account are the same thing, get rid of one
 class Pss:
 	
 
@@ -49,7 +50,7 @@ class Pss:
 		eth.set_key(privkeybytes)
 		# node pubkey is prefixed with 04
 		# \todo verify that the number can't be other than 4
-		if  eth.publickeybytes.encode("hex") != self.key:
+		if eth.publickeybytes.encode("hex") != self.get_public_key():
 			raise ValueError("private key does not match pss node public key " + self.key + " " + eth.publickeybytes.encode("hex"))
 			return
 
@@ -59,6 +60,7 @@ class Pss:
 
 	def get_account(self):
 		return self.eth
+
 
 
 	# get underlying file descriptor of websocket
