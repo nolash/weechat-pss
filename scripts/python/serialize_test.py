@@ -28,7 +28,7 @@ class TestSerialize(unittest.TestCase):
 			random.seed(42+i)
 			addr = ""
 			nodekey = ""
-			pubkey = ""
+			pubkey = "04"
 			for j in range(32):
 				addr += "{:02x}".format(random.randint(0, 255))
 				nodekey += "{:02x}".format(random.randint(0, 255))
@@ -36,7 +36,7 @@ class TestSerialize(unittest.TestCase):
 				pubkey += "{:02x}".format(random.randint(0, 255))
 			self.addr.append(addr)
 			self.nodekey.append(nodekey)
-			self.pubkey.append("04"+pubkey)
+			self.pubkey.append(pubkey.decode("hex"))
 			pass
 
 
@@ -59,12 +59,12 @@ class TestSerialize(unittest.TestCase):
 
 	def test_room(self):
 		acc = pss.Account()
-		print len(self.pubkey[0])
-		acc.set_public_key(self.pubkey[0].decode("hex"))
+		acc.set_public_key(self.pubkey[0])
 		r = pss.Room(self.bzz, "root", acc)
 		#r.start("bar", "foo")
 		for i in range(len(self.pubkey)):
-			r.participants[str(i)] = Participant(str(i), self.pubkey[i], self.addr[i], self.nodekey[i])
+			r.participants[str(i)] = Participant(str(i), self.nodekey[i])
+			r.participants[str(i)].set_public_key(self.pubkey[i])
 
 		s = r.serialize()
 		try:
