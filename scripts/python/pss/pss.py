@@ -35,10 +35,9 @@ class Pss:
 		self.sub = ""
 
 
-	
-	def have_account(self):
-		return self.account != None
 
+	def can_write(self):
+		return self.account.privatekey != None
 
 
 	def set_account_write(self, privkeybytes):

@@ -503,21 +503,25 @@ def buf_get(ctx, known):
 
 			bufs[bufname] = buf
 
-#			debugstr = "have " + repr(ctx.get_pss().have_account()) + " + " +  repr(ctx.get_bzz() != None)
-#			wOut(PSS_BUFPFX_DEBUG, [], "have", debugstr)
-#
-#			if psses[pssName].have_account() and haveBzz:
-#				pubkey = ""
-#				if !known
-##				if ispubkey:
-#					pubkey = name
-#				else:
-#					pubkey = remotekeys[name]
-#				try:
-#					feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(pubkey))
-#					wOut(PSS_BUFPFX_DEBUG, [], "", "added feed with topic " + feeds[bufname].topic.encode("hex"))
-#				except ValueError as e:
-#					wOut(PSS_BUFPFX_ERROR, [], "???", "could not set up feed: " + str(e))
+			# if we have private key to write to feed
+			# open a feed to the peer publickey
+			if cache.can_feed(ctx.get_node()):
+				try:
+					feed = cache.add_feed(ctx.get_name())	
+					if feed != None:
+						wOut(
+							PSS_BUFPFX_DEBUG,
+							[],
+							"",
+							"added feed with topic " + feed.topic.encode("hex")
+					)
+				except ValueError as e:
+					wOut(
+						PSS_BUFPFX_ERROR,
+						[],
+						"???",
+						"could not set up feed: " + str(e)
+					)
 
 		# room is multiuser conversation
 #		elif typ == "room":
@@ -815,7 +819,7 @@ def pss_handle(pssName, buf, args):
 				wOut(PSS_BUFPFX_ERROR, [], "!!!", "invalid key format")
 				return weechat.WEECHAT_RC_ERROR
 			try:
-				cache.get_pss(ctx.get_name()).set_account_write(privkey.decode("hex"))
+				cache.get_pss(ctx.get_node()).set_account_write(privkey.decode("hex"))
 			except ValueError as e:
 				wOut(PSS_BUFPFX_ERROR, [], "!!!", "set account fail: " + str(e))
 				return weechat.WEECHAT_RC_ERROR

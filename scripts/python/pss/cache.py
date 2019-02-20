@@ -3,6 +3,7 @@ import sys
 
 from tools import clean_pubkey, clean_overlay
 from user import PssContact
+from bzz import Feed
 
 CACHE_CONTACT_STOREFILE = ".pss-contacts"
 
@@ -44,6 +45,25 @@ class Cache:
 		self.psses[nodename] = pssobj
 		return True
 
+
+	def add_feed(self, name, topicseed=""):
+		contact = self.idx_nick_contact[name]
+		publickey = contact.get_public_key()
+
+		# return if we have it already
+		if publickey in self.feeds:
+			return None
+
+		if topicseed == "":
+			topicseed = contact.get_address()
+		
+		self.feeds[publickey] = Feed(
+			self.get_active_bzz(),
+			contact,
+			topicseed
+		)
+
+		return self.feeds[publickey]
 
 
 	def set_nodeself(self, nodename, nick):
@@ -106,6 +126,9 @@ class Cache:
 	def have_node_name(self, name):
 		return name in self.psses
 
+
+	def can_feed(self, nodename):
+		return self.get_active_bzz() != None and self.psses[nodename].can_write()
 	
 
 	def get_pss(self, name):
