@@ -420,7 +420,7 @@ def msgPipeRead(pssName, fd):
 			sys.stderr.write("exception in get  contact: " + repr(e) + "\n")
 			displayFrom = pss.label(fromKeyHex, 8)
 			# \todo without metadata we have no way of knowing the overlay, so it has to be empty
-			ctx.get_pss().add(displayFrom, fromKey, "")
+			cache.add_contact(displayFrom, ctx.get_pss().add(displayFrom, fromKey, ""), ctx.get_pss().get_public_key())
 
 		ctx.reset(PSS_BUFTYPE_CHAT, pssName, displayFrom)
 		# write the message to the buffer

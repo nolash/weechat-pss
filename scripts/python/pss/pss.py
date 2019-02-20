@@ -11,6 +11,7 @@ topic = "0xdeadbee2"
 
 # object encapsulating pss node connection
 # \todo remove direct websocket comms and get node key and addr from background process
+# \todo remove contact store, should be handled through cache only
 class Pss:
 	
 
