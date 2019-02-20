@@ -1,13 +1,14 @@
 import os
 import sys
 
-from tools import clean_pubkey, clean_overlay
+from tools import clean_pubkey, clean_overlay, Queue
 from user import PssContact
 from bzz import Feed
 
 CACHE_CONTACT_STOREFILE = ".pss-contacts"
 
 
+# \todo abstract NODE to create a more intuitive structure of feeds under it
 class Cache:
 	
 	def __init__(self, path=".", queuelength=10):
@@ -23,6 +24,7 @@ class Cache:
 		self.idx_nick_contact = {}
 		self.idx_src_contacts = {}
 
+		# pss chat history feeds
 		self.feeds = {}
 
 		# index nicks to chat rooms
@@ -34,7 +36,7 @@ class Cache:
 		self.path = path
 		self.file = None
 
-	
+
 	def add_node(self, pssobj, nodename):
 		if nodename in self.psses.keys():
 			raise AttributeError("pss key " + str(nodename) + " already in use")
@@ -45,25 +47,31 @@ class Cache:
 		self.psses[nodename] = pssobj
 		return True
 
+	
+	def get_feed(self, name, nodename):
+		account = self.psses[nodename].get_account()
+		return self.feeds[account.get_public_key()][name]
 
-	def add_feed(self, name, topicseed=""):
+
+	def add_feed(self, name, nodename, topicseed=""):
+	
 		contact = self.idx_nick_contact[name]
-		publickey = contact.get_public_key()
-
-		# return if we have it already
+		publickey = self.psses[nodename].get_account().get_public_key()
 		if publickey in self.feeds:
 			return None
 
 		if topicseed == "":
 			topicseed = contact.get_address()
-		
-		self.feeds[publickey] = Feed(
-			self.get_active_bzz(),
-			contact,
+	
+		if not publickey in self.feeds:
+			self.feeds[publickey] = {}
+		self.feeds[publickey][name] = Feed(
+			self.get_active_bzz().agent,
+			self.psses[nodename].get_account(),
 			topicseed
 		)
 
-		return self.feeds[publickey]
+		return self.feeds[publickey][name]
 
 
 	def set_nodeself(self, nodename, nick):

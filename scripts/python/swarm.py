@@ -41,7 +41,7 @@ hookTimers = []
 # feed outbox
 # 32 is a reasonable buffer as we're talking about human input frequency
 # and flush every second
-feedOutQueue = pss.Queue(10)
+feedOutQueue = pss.Queue(PSS_FEEDQUEUE_SIZE)
 
 # buffers
 # \todo deprecate this global, always use EventContext instead
@@ -60,6 +60,15 @@ storeFile = None
 
 # stream processor
 stream = pss.Stream()
+
+
+# FeedUpdate encapsulates a single update to be sent on the network
+class FeedUpdate:
+
+	def __init__(self, ctx, data):
+		self.ctx = ctx
+		self.data = data
+
 
 
 # singleton store of context information to use across hook calls
@@ -305,28 +314,62 @@ def pss_connect(ctxid, status, tlsrc, sock, error, ip):
 	return weechat.WEECHAT_RC_OK
 
 
+# handles all outgoing feed sends
+# \todo run in separate process with ipc
 def processFeedOutQueue(pssName, _):
+
 	while 1:
 		update = feedOutQueue.get()
 		if update == None:
-			#wOut(PSS_BUFPFX_DEBUG, [], ">>>", "no feed updates for " + pssName)
 			break
 
 		try:
-			hsh = bzzs[pssName].add(update.data)
-			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "bzz sent for " + pssName + "." + update.name + ": " + hsh)
-			feedKey = buf_generate_name(update.nod, update.typ, update.name)
-			r = feeds[feedKey].update(hsh)
-			wOut(PSS_BUFPFX_DEBUG, [], ">>>", "feed sent for " + pssName + "." + update.name + ": " + r)
+			hsh = cache.get_active_bzz().add(update.data)
+			wOut(
+				PSS_BUFPFX_DEBUG,
+				[],
+				">>>",
+				"bzz sent for " + update.ctx.get_node() + "." + update.ctx.get_name() + ": " + hsh
+			)
+
+			result = ""
+			if update.ctx.is_room():
+				pass
+			else:
+				feed = cache.get_feed(update.ctx.get_name(), update.ctx.get_node())
+				result = feed.update(hsh)
+				
+			wOut(
+				PSS_BUFPFX_DEBUG,
+				[],
+				">>>",
+				"feed sent for " + update.ctx.get_node() + "." + update.ctx.get_name() + ": " + result
+			)
+
 		except IOError as e:
-			wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "add feed for " + pssName + "." + update.name + " fail: " + psses[pssName].error()['description'])
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[],
+				"!!!",
+				"send feed for " + update.ctx.get_node() + "." + update.ctx.get_name() + " fail: " + repr(e)
+			)
 			return weechat.WEECHAT_RC_ERROR
+		except KeyError as e:
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[],
+				"!!!",
+				"unknown feed for " + update.ctx.get_node() + "." + update.ctx.get_name()
+			)
+			return weechat.WEECHAT_RC_ERROR
+
 
 	return weechat.WEECHAT_RC_OK
 
 
 
 # \todo conceal feed queries in room obj
+# \todo broken
 def roomRead(pssName, _):
 	outbufs = []
 	for bufname, r in rooms.iteritems():
@@ -366,7 +409,7 @@ def roomRead(pssName, _):
 	return weechat.WEECHAT_RC_OK	
 
 
-# perform a single read from pipe
+# perform a single read from incoming pss websocket file descriptor
 # \todo move this to a method of Pss object, so we can evaluate rpc replies to commands (such as setPeerPublicKey
 def msgPipeRead(pssName, fd):
 
@@ -507,13 +550,13 @@ def buf_get(ctx, known):
 			# open a feed to the peer publickey
 			if cache.can_feed(ctx.get_node()):
 				try:
-					feed = cache.add_feed(ctx.get_name())	
+					feed = cache.add_feed(ctx.get_name(), ctx.get_node())
 					if feed != None:
 						wOut(
 							PSS_BUFPFX_DEBUG,
 							[],
 							"",
-							"added feed with topic " + feed.topic.encode("hex")
+							"added feed with topic " + feed.topic.encode("hex") + " name " + ctx.get_name() + " node " + ctx.get_node()
 					)
 				except ValueError as e:
 					wOut(
@@ -606,12 +649,6 @@ def buf_in(pssName, buf, inputdata):
 		"input in " + ctx.get_name()
 	)
 
-	# check if the recipient is registered
-#	nick = inputdata[0:sepIndex]
-#	if not nick in psses[pssName].contacts:
-#		wOut(PSS_BUFPFX_ERROR, [], "???", "unknown contact '" % weechat.color("red") + nick + "'" ) 
-#		return weechat.WEECHAT_RC_ERROR
-
 	if ctx.is_room():
 		cache.get_room(ctx.get_name()).send(inputdata)
 
@@ -633,14 +670,17 @@ def buf_in(pssName, buf, inputdata):
 				"send fail: " + repr(e)
 			)
 
-	# \todo make this asynchronous instead, we want command to print and return immediately in the ui
-	# \todo add buffering of sub-second updates (and a timer hook to send them, this solves async too)
-#	if bufname in feeds:
-#		try:
-#			feedOutQueue.add(pss.FeedUpdate(pssName, "chat", ctx['h'], inputdata))
-#		except RuntimeError as e:
-#			wOut(PSS_BUFPFX_ERROR, [], "!!!", "feed add to buffer fail: " + str(e))
-			
+	if cache.can_feed(ctx.get_node()):
+		try:
+			feedOutQueue.add(FeedUpdate(ctx, inputdata))
+		except RuntimeError as e:
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[],
+				"!!!",
+				"feed add to buffer fail: " + str(e)
+			)
+
 	return weechat.WEECHAT_RC_OK
 
 
@@ -827,7 +867,7 @@ def pss_handle(pssName, buf, args):
 			wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown config key")
 			return weechat.WEECHAT_RC_ERROR
 					
-		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "set pk to " + v + " for " + ctx.get_name())
+		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "set pk to " + v + " for " + ctx.get_node())
 
 		weechat.WEECHAT_RC_OK	
 	

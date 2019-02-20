@@ -40,16 +40,6 @@ class Bzz():
 
 	def close(self):
 		pass
-
-# FeedUpdate encapsulates a single update to be sent on the network
-class FeedUpdate:
-
-	def __init__(self, nod, typ, name, data):
-		self.typ = typ
-		self.name = name
-		self.data = data
-		self.nod = nod
-
 	
 
 # Feed represents a single swarm feed
@@ -96,9 +86,9 @@ class Feed():
 		r = ""
 		try:
 			r = json.loads(rstr)
-		except:
-			sys.stderr.write("ouch: " + rstr + "\n")
-			raise ValueError("json fail")
+		except Exception as e:
+			sys.stderr.write("ouch: '" + rstr + "'\n")
+			raise ValueError("json fail: " + repr(e))
 		return (r['epoch']['time'], r['epoch']['level'])
 			
 
