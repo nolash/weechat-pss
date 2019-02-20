@@ -180,22 +180,16 @@ class Pss:
 
 		# recipient must already be added
 		if not nick in self.contacts:
-			self.err = PSS_ELOCALINVAL
-			self.errstr = "no such nick " + nick
-			return False
+			raise IndexError("no such nick " + nick)
 
 		# check if we have connection
 		# \todo store outgoing messages until online on temporary network loss
 		if not self.connected:
-			self.err = PSS_ESOCK
-			self.errstr = "not connected"
-			return False
+			raise IOError("not connected")
 
 		# send the message
 		self.ws.send(rpc_call(self.seq, "sendAsym", [rpchex(self.contacts[nick].get_public_key()), topic, "0x" + msg.encode("hex")]))
 		self.seq += 1
-
-		return True
 
 
 	# retrieve last error from object

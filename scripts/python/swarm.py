@@ -129,6 +129,7 @@ class EventContext:
 
 	def set_pss(self, pss):
 		self.pss = pss
+		self.node = pss.get_name()
 
 
 	def set_bzz(self, bzz):
@@ -145,7 +146,8 @@ class EventContext:
 
 
 	def get_node(self):
-		return self.pss.get_name()
+		return self.node
+
 
 	def get_bzz(self):
 		return self.bzz
@@ -545,16 +547,16 @@ def buf_get(ctx, known):
 # where the string before the first whitespace is taken as the nick of the recipient
 # the recipient must have been previously added to the node
 def buf_in(pssName, buf, inputdata):
-	global psses
 
 	#for k in feeds:
 	#	wOut(PSS_BUFPFX_DEBUG, [buf], "bufin feed", "k " + k)
 
 
-	bufname = weechat.buffer_get_string(buf, "name")
-	wOut(PSS_BUFPFX_DEBUG, [], "<<<" , "input in " + bufname)
-
-	ctx = buf_get_context(buf)
+	ctx = EventContext()
+	ctx.parse_buffer(buf)
+	sys.stderr.write("parsed ctx: " + str(ctx))
+	ctx.set_pss(cache.get_pss(ctx.get_node()))
+	wOut(PSS_BUFPFX_DEBUG, [], "<<<" , "input in " + ctx.get_name())
 
 	# check if the recipient is registered
 #	nick = inputdata[0:sepIndex]
@@ -562,27 +564,34 @@ def buf_in(pssName, buf, inputdata):
 #		wOut(PSS_BUFPFX_ERROR, [], "???", "unknown contact '" % weechat.color("red") + nick + "'" ) 
 #		return weechat.WEECHAT_RC_ERROR
 
-	if ctx['t'] == PSS_BUFTYPE_ROOM: 
-		#wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "posting: " + inputdata.encode("hex"))
-		rooms[bufname].send(inputdata)
+	if ctx.is_room():
+		cache.get_room(ctx.get_name()).send(inputdata)
 		return weechat.WEECHAT_RC_OK
 
-	for n in psses[pssName].contacts.keys():
-		wOut(PSS_BUFPFX_DEBUG, [], "nickkey", repr(n))
-
 	# send message
-	if psses[pssName].send(ctx['h'], inputdata):
-		wOut(PSS_BUFPFX_OUT, [buf], "you", inputdata)
-	else:
-		wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "send fail: " + psses[pssName].error()['description'])
+	try:
+		ctx.get_pss().send(ctx.get_name(), inputdata)
+		wOut(
+			PSS_BUFPFX_OUT,
+			[ctx.get_buffer()],
+			"you",
+			inputdata
+		)
+	except Exception as e:
+		wOut(
+			PSS_BUFPFX_ERROR,
+			[buf],
+			"!!!",
+			"send fail: " + repr(e)
+		)
 
 	# \todo make this asynchronous instead, we want command to print and return immediately in the ui
 	# \todo add buffering of sub-second updates (and a timer hook to send them, this solves async too)
-	if bufname in feeds:
-		try:
-			feedOutQueue.add(pss.FeedUpdate(pssName, "chat", ctx['h'], inputdata))
-		except RuntimeError as e:
-			wOut(PSS_BUFPFX_ERROR, [], "!!!", "feed add to buffer fail: " + str(e))
+#	if bufname in feeds:
+#		try:
+#			feedOutQueue.add(pss.FeedUpdate(pssName, "chat", ctx['h'], inputdata))
+#		except RuntimeError as e:
+#			wOut(PSS_BUFPFX_ERROR, [], "!!!", "feed add to buffer fail: " + str(e))
 			
 	return weechat.WEECHAT_RC_OK
 
