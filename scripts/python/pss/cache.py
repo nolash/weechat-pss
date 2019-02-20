@@ -110,15 +110,16 @@ class Cache:
 					
 	
 	def get_contact_by_nick(self, name):
-		contact = self.ids_nick_publickey[name]
-		if contact == None:
-			raise AttributeError("no cached contact with name '" + str(name) + "'")
-		return publickey
+		try:
+			contact = self.idx_nick_contact[name]
+		except KeyError as e:
+			raise KeyError("no cached contact with name '" + str(name) + "'")
+		return contact
 
 
 
 	def get_contact_by_public_key(self, publickey):
-		contact = self.ids_publickey_nick[publickey]
+		contact = self.idx_publickey_contact[publickey]
 		if contact == None:
 			raise AttributeError("no cached contact with public key'" + str(name) + "'")
 		return contact

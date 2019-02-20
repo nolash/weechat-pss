@@ -176,11 +176,7 @@ class Pss:
 
 
 	# send message to registered recipient
-	def send(self, nick, msg):
-
-		# recipient must already be added
-		if not nick in self.contacts:
-			raise IndexError("no such nick " + nick)
+	def send(self, contact, msg):
 
 		# check if we have connection
 		# \todo store outgoing messages until online on temporary network loss
@@ -188,7 +184,7 @@ class Pss:
 			raise IOError("not connected")
 
 		# send the message
-		self.ws.send(rpc_call(self.seq, "sendAsym", [rpchex(self.contacts[nick].get_public_key()), topic, "0x" + msg.encode("hex")]))
+		self.ws.send(rpc_call(self.seq, "sendAsym", [rpchex(contact.get_public_key()), topic, "0x" + msg.encode("hex")]))
 		self.seq += 1
 
 

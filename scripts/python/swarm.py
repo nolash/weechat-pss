@@ -361,6 +361,11 @@ def msgPipeRead(pssName, fd):
 
 	# holds sender key
 	fromKey = ""
+	fromKeyHex = ""
+
+	# whether or not this is a nick already registered in cache
+	# \todo possibly redundant, should be able to tell from cache directly
+	known = False
 
 	# on disconnect we have invalid fd(?)
 	if fd < 0:
@@ -389,24 +394,42 @@ def msgPipeRead(pssName, fd):
 			r = pss.rpc_parse(o)
 			_ = r['params']['result']
 		except Exception as e:
-			wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "skipping invalid receive: " + repr(o))
+			wOut(
+				PSS_BUFPFX_DEBUG,
+				[bufs[pssName]],
+				"",
+				"skipping invalid receive: " + repr(o)
+			)
 			return weechat.WEECHAT_RC_OK
 	
 		# decode contents and display in buffer
 		msgSrc = r['params']['result']['Msg'][2:].decode("hex")
 
 		# resolve the nick if it exists
-		fromKey = r['params']['result']['Key']
+		fromKeyHex = pss.clean_pubkey(r['params']['result']['Key'])
+		fromKey = fromKeyHex.decode("hex")
 
 		# \todo add pss name and sender nick name to ctx
-		ctx = Context()
-		if fromKey in nicks:
-			displayFrom = nicks[fromKey].nick
-			wOut(PSS_BUFPFX_IN, [buf_get(ctx, True)], displayFrom, msgSrc)
-		else:
-			displayFrom = pss.label(fromKey, 8)
-			buf = buf_get(ctx, "chat", pss.label(fromKey, 16), False)
-			wOut(PSS_BUFPFX_IN, [buf], displayFrom, msgSrc)
+		ctx = EventContext()
+		ctx.set_pss(cache.get_pss(pssName))
+		try:
+			contact = cache.get_contact_by_public_key(fromKey)
+			displayFrom = contact.get_nick()
+			known = True
+		except Exception as e:
+			sys.stderr.write("exception in get  contact: " + repr(e) + "\n")
+			displayFrom = pss.label(fromKeyHex, 8)
+			# \todo without metadata we have no way of knowing the overlay, so it has to be empty
+			ctx.get_pss().add(displayFrom, fromKey, "")
+
+		ctx.reset(PSS_BUFTYPE_CHAT, pssName, displayFrom)
+		# write the message to the buffer
+		wOut(
+			PSS_BUFPFX_IN,
+			[buf_get(ctx, known)],
+			displayFrom,
+			msgSrc
+		)
 
 	return weechat.WEECHAT_RC_OK
 
@@ -449,12 +472,6 @@ def buf_get(ctx, known):
 
 		# chat is DM between two parties
 		if ctx.is_chat():
-			ispubkey = False
-			if known:
-				shortname = "pss:" + ctx.get_name()
-			else:
-				shortname = "pss:" + ctx.get_name()[:8]
-				ispubkey = True
 
 			# set up the buffer
 			ctx.set_buffer(weechat.buffer_new(bufname, "buf_in", ctx.get_node(), "buf_close", ctx.get_node()), bufname)
@@ -470,7 +487,8 @@ def buf_get(ctx, known):
 #
 #			if psses[pssName].have_account() and haveBzz:
 #				pubkey = ""
-#				if ispubkey:
+#				if !known
+##				if ispubkey:
 #					pubkey = name
 #				else:
 #					pubkey = remotekeys[name]
@@ -539,7 +557,10 @@ def buf_get(ctx, known):
 		else:
 			raise RuntimeError("invalid buffer type")
 
-	return buf
+	else:
+		ctx.set_buffer(buf, bufname)
+
+	return ctx.get_buffer()
 
 
 # handle inputs to buffer that are not slash commands
@@ -548,15 +569,17 @@ def buf_get(ctx, known):
 # the recipient must have been previously added to the node
 def buf_in(pssName, buf, inputdata):
 
-	#for k in feeds:
-	#	wOut(PSS_BUFPFX_DEBUG, [buf], "bufin feed", "k " + k)
-
 
 	ctx = EventContext()
 	ctx.parse_buffer(buf)
-	sys.stderr.write("parsed ctx: " + str(ctx))
 	ctx.set_pss(cache.get_pss(ctx.get_node()))
-	wOut(PSS_BUFPFX_DEBUG, [], "<<<" , "input in " + ctx.get_name())
+	sys.stderr.write("parsed ctx: " + str(ctx))
+	wOut(
+		PSS_BUFPFX_DEBUG,
+		[],
+		"<<<",
+		"input in " + ctx.get_name()
+	)
 
 	# check if the recipient is registered
 #	nick = inputdata[0:sepIndex]
@@ -566,24 +589,24 @@ def buf_in(pssName, buf, inputdata):
 
 	if ctx.is_room():
 		cache.get_room(ctx.get_name()).send(inputdata)
-		return weechat.WEECHAT_RC_OK
 
-	# send message
-	try:
-		ctx.get_pss().send(ctx.get_name(), inputdata)
-		wOut(
-			PSS_BUFPFX_OUT,
-			[ctx.get_buffer()],
-			"you",
-			inputdata
-		)
-	except Exception as e:
-		wOut(
-			PSS_BUFPFX_ERROR,
-			[buf],
-			"!!!",
-			"send fail: " + repr(e)
-		)
+	else:
+		# send message
+		try:
+			ctx.get_pss().send(cache.get_contact_by_nick(ctx.get_name()), inputdata)
+			wOut(
+				PSS_BUFPFX_OUT,
+				[ctx.get_buffer()],
+				"you",
+				inputdata
+			)
+		except Exception as e:
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[buf],
+				"!!!",
+				"send fail: " + repr(e)
+			)
 
 	# \todo make this asynchronous instead, we want command to print and return immediately in the ui
 	# \todo add buffering of sub-second updates (and a timer hook to send them, this solves async too)
@@ -815,7 +838,7 @@ def pss_handle(pssName, buf, args):
 		newcontact = None
 		try:
 			newcontact =  ctx.get_pss().add(nick, pubkey, overlay)
-			cache.add_contact(ctx.get_name(), newcontact, ctx.get_pss().get_public_key())
+			cache.add_contact(nick, newcontact, ctx.get_pss().get_public_key())
 		except Exception as e:
 			wOut(
 				PSS_BUFPFX_ERROR,
@@ -832,7 +855,7 @@ def pss_handle(pssName, buf, args):
 			PSS_BUFPFX_DEBUG,
 			[],
 			"!!!",
-			"added key " + pubkeyhx + " to nick " + nick
+			"added key " + pubkeyhx + " to nick " + nick + " node " + ctx.get_node()
 		)
 
 		# append recipient to file for reinstating across sessions
@@ -940,12 +963,12 @@ def pss_handle(pssName, buf, args):
 
 	# output node key
 	elif argv[0] == "key" or argv[0] == "pubkey":
-		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName + ".key", currentPss.get_public_key().encode("hex"))
+		wOut(PSS_BUFPFX_INFO, [bufs[ctx.get_node()]], ctx.get_node() + ".key", ctx.get_pss().get_public_key().encode("hex"))
 
 
 	# output node base address
 	elif argv[0] == "addr" or argv[0] == "address":
-		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName + ".addr", currentPss.get_overlay().encode("hex"))
+		wOut(PSS_BUFPFX_INFO, [bufs[ctx.get_node()]], ctx.get_node() + ".addr", ctx.get_pss().get_overlay().encode("hex"))
 
 
 	# set nick for pss node
