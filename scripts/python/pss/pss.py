@@ -11,7 +11,6 @@ topic = "0xdeadbee2"
 
 # object encapsulating pss node connection
 # \todo remove direct websocket comms and get node key and addr from background process
-# \todo remove contact store, should be handled through cache only
 class Pss:
 	
 
@@ -24,7 +23,6 @@ class Pss:
 		if port != "":
 			self.port = port
 
-		self.contacts = {}
 		self.connected = False
 		self.inputConnected = False
 		self.account = Account()
@@ -148,21 +146,12 @@ class Pss:
 	
 
 	# adds recipient to node
-	def add(self, nick, pubkey, overlay):
+	def add(self, contact):
 
-		# holds the newly created contact object
-		contact = None
-
-		# 
 		# no use if we're not connected
 		# \todo use exception instead
 		if self.ws == None or not self.connected:
 			raise IOError("not connected")
-
-		# create the contact object	
-		contact = PssContact(nick, self.account.get_public_key())
-		contact.set_public_key(pubkey)
-		contact.set_overlay(overlay)
 
 		# add to node and object cache
 		pubkeyhx = rpchex(contact.get_public_key())
@@ -170,10 +159,6 @@ class Pss:
 		self.ws.send(rpc_call(self.seq, "setPeerPublicKey", [pubkeyhx, topic, overlayhx]))
 		#self.ws.recv()
 		self.seq += 1
-		self.contacts[nick] = contact
-
-		return contact
-
 
 
 	# send message to registered recipient
@@ -206,21 +191,3 @@ class Pss:
 		self.connected = False
 		self.run = False
 		self.ws.close()
-
-
-
-	# retrieve a registered contact	
-	def get_contact(self, nick):
-		try:
-			return self.contacts[nick]
-		except:	
-			return None
-
-
-	# check if nick is registered in node
-	def have_nick(self, nick):
-		return nick in self.contacts
-
-
-
-

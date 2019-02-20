@@ -56,7 +56,7 @@ class Cache:
 
 
 	# \todo handle source param, must be supplied	
-	def add_contact(self, name, contact, src=None):
+	def add_contact(self, name, contact):
 
 		if name in self.idx_nick_contact.keys():
 			raise KeyError("contact name '" + str(name) + "' already in use")

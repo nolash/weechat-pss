@@ -420,7 +420,12 @@ def msgPipeRead(pssName, fd):
 			sys.stderr.write("exception in get  contact: " + repr(e) + "\n")
 			displayFrom = pss.label(fromKeyHex, 8)
 			# \todo without metadata we have no way of knowing the overlay, so it has to be empty
-			cache.add_contact(displayFrom, ctx.get_pss().add(displayFrom, fromKey, ""), ctx.get_pss().get_public_key())
+			contact = pss.PssContact(displayFrom, ctx.get_pss().get_public_key())
+			contact.set_public_key(fromKey)
+			contact.set_overlay("")
+			#cache.add_contact(displayFrom, ctx.get_pss().add(displayFrom, fromKey, ""), ctx.get_pss().get_public_key())
+			ctx.get_pss().add(contact)
+			cache.add_contact(displayFrom, contact)
 
 		ctx.reset(PSS_BUFTYPE_CHAT, pssName, displayFrom)
 		# write the message to the buffer
@@ -835,10 +840,12 @@ def pss_handle(pssName, buf, args):
 		# backend add recipient call	
 		pubkey = pss.clean_pubkey(pubkeyhx).decode("hex")
 		overlay = pss.clean_overlay(overlayhx).decode("hex")
-		newcontact = None
 		try:
-			newcontact =  ctx.get_pss().add(nick, pubkey, overlay)
-			cache.add_contact(nick, newcontact, ctx.get_pss().get_public_key())
+			newcontact = pss.PssContact(nick, ctx.get_pss().get_public_key())
+			newcontact.set_public_key(pubkey)
+			newcontact.set_overlay(overlay)
+			ctx.get_pss().add(newcontact)
+			cache.add_contact(nick, newcontact)
 		except Exception as e:
 			wOut(
 				PSS_BUFPFX_ERROR,
