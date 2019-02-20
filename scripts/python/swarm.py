@@ -44,6 +44,7 @@ hookTimers = []
 feedOutQueue = pss.Queue(10)
 
 # buffers
+# \todo deprecate this global, always use EventContext instead
 bufs = {}
 
 # path to scripts
@@ -125,6 +126,10 @@ class EventContext:
 
 	def set_name(self, name):
 		self.name = name
+
+
+	def set_node(self, node):
+		self.node = node
 
 
 	def set_pss(self, pss):
@@ -262,7 +267,12 @@ def pss_connect(ctxid, status, tlsrc, sock, error, ip):
 		wOut(PSS_BUFPFX_ERROR, [], "???", "swarm gateway connect failed (" + str(status) + "): " + error )
 		return weechat.WEECHAT_RC_ERROR
 
-	wOut(PSS_BUFPFX_INFO, [], "!!!", "swarm gateway connected on " + ctx.get_name() + ", sock " + repr(sock))
+	wOut(
+		PSS_BUFPFX_INFO,
+		[],
+		"!!!",
+		"swarm gateway connected on " + ctx.get_name() + ", sock " + repr(sock)
+	)
 	agent = pss.Agent(ctx.get_pss().get_host(), 8500, sock)
 
 	bzz = pss.Bzz(agent)
@@ -272,12 +282,19 @@ def pss_connect(ctxid, status, tlsrc, sock, error, ip):
 	# provided the connection went ok
 	# add all nicks in the plugin's memory nick map
 	# that match the pubkey of the node to the node's recipient address book
-	for c in cache.update_node(ctx.get_name()):
+	savedcontacts = []
+	try:
+		savedcontacts = cache.update_node(ctx.get_node())
+	# if it fails it just means we have no saved entries for that node
+	except: 
+		pass
+
+	for c in savedcontacts:
 		wOut(
 			PSS_BUFPFX_INFO,
-			[bufs[pssName]],
+			[ctx.get_buffer()],
 			"+++",
-			"added '" + c.get_nick()
+			"added cached contact '" + c.get_nick() + "' to node '" + ctx.get_node() + "'"
 		)
 		# \ todo make this call more legible (public key to bytes method in pss pkg)
 #		try:
@@ -423,7 +440,6 @@ def msgPipeRead(pssName, fd):
 			contact = pss.PssContact(displayFrom, ctx.get_pss().get_public_key())
 			contact.set_public_key(fromKey)
 			contact.set_overlay("")
-			#cache.add_contact(displayFrom, ctx.get_pss().add(displayFrom, fromKey, ""), ctx.get_pss().get_public_key())
 			ctx.get_pss().add(contact)
 			cache.add_contact(displayFrom, contact)
 
@@ -469,15 +485,14 @@ def buf_get(ctx, known):
 	
 	if buf == "":
 
-		shortname = ""
-
 		# for debug only
 		pss_publickey_hex = pss.rpchex(ctx.get_pss().get_public_key())
 		pss_overlay_hex = pss.rpchex(ctx.get_pss().get_overlay())
 
 		# chat is DM between two parties
 		if ctx.is_chat():
-
+		
+			shortname = "pss:" + ctx.get_name()
 			# set up the buffer
 			ctx.set_buffer(weechat.buffer_new(bufname, "buf_in", ctx.get_node(), "buf_close", ctx.get_node()), bufname)
 			weechat.buffer_set(ctx.get_buffer(), "short_name", shortname)
@@ -485,6 +500,7 @@ def buf_get(ctx, known):
 			weechat.buffer_set(ctx.get_buffer(), "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 			weechat.buffer_set(ctx.get_buffer(), "display", "1")
 			plugin = weechat.buffer_get_pointer(ctx.get_buffer(), "plugin")
+
 			bufs[bufname] = buf
 
 #			debugstr = "have " + repr(ctx.get_pss().have_account()) + " + " +  repr(ctx.get_bzz() != None)
@@ -673,11 +689,10 @@ def pss_handle(pssName, buf, args):
 
 		host = "127.0.0.1"
 		port = "8546"
-		pssName = "" 
 	
 		if argc < 2:
 			wOut(PSS_BUFPFX_ERROR, [], "!!!", "invalid command <TODO insert help text>")
-		pssName = argv[1]
+		ctx.set_node(argv[1])
 
 		if argc > 2:
 			host = argv[2]	
@@ -685,58 +700,58 @@ def pss_handle(pssName, buf, args):
 		if argc > 3:
 			port = argv[3]	
 
-		if cache.have_node_name(pssName):	
-			existingBuf = weechat.buffer_search("python", "pss.node." + pssName)
+		if cache.have_node_name(ctx.get_node()):	
+			existingBuf = weechat.buffer_search("python", "pss.node." + ctx.get_node())
 			if existingBuf != "":
-				wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + pssName + " already exists, changing to that buffer")
-				weechat.buffer_set(bufs[pssName], "display", "1")
+				wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + ctx.get_node() + " already exists, changing to that buffer")
+				weechat.buffer_set(bufs[ctx.get_node()], "display", "1")
 				return weechat.WEECHAT_RC_OK
 
 			if host == "":
-				host = weechat.config_get_plugin(pssName + "_url", host)
+				host = weechat.config_get_plugin(ctx.get_node() + "_url", host)
 
 			if port == "":
-				port = weechat.config_get_plugin(pssName + "_port", port)
+				port = weechat.config_get_plugin(ctx.get_node() + "_port", port)
 	
-			wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + pssName + " already exists")
+			wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + ctx.get_node() + " already exists")
 		else:
 				
-			cache.add_node(pss.Pss(pssName, host, port), pssName)
-			wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + pssName)
+			cache.add_node(pss.Pss(ctx.get_node(), host, port), ctx.get_node())
+			wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + ctx.get_node())
 
 
 		# regardless of if we have the node already, store the connection parameters for later for this node name	
-		weechat.config_set_plugin(pssName + "_url", host)
-		weechat.config_set_plugin(pssName + "_port", port)
+		weechat.config_set_plugin(ctx.get_node() + "_url", host)
+		weechat.config_set_plugin(ctx.get_node() + "_port", port)
 
 	
 		# if we made it here we don't have a buffer for this node already
 		# so create it and merge the node buffer with core so we can do the neat ctrl-x trick
-		bufs[pssName] = weechat.buffer_new("pss.node." + pssName, "buf_node_in", pssName, "buf_close", pssName)
-		weechat.buffer_set(bufs[pssName], "short_name", "pss."+ pssName)
-		weechat.buffer_set(bufs[pssName], "title", "PSS '" + pssName + "' | not connected")
-		weechat.buffer_merge(bufs[pssName], weechat.buffer_search_main())
-		weechat.buffer_set(bufs[pssName], "display", "1")
+		bufs[ctx.get_node()] = weechat.buffer_new("pss.node." + ctx.get_node(), "buf_node_in", ctx.get_node(), "buf_close", ctx.get_node())
+		weechat.buffer_set(bufs[ctx.get_node()], "short_name", "pss."+ ctx.get_node())
+		weechat.buffer_set(bufs[ctx.get_node()], "title", "PSS '" + ctx.get_node() + "' | not connected")
+		weechat.buffer_merge(bufs[ctx.get_node()], weechat.buffer_search_main())
+		weechat.buffer_set(bufs[ctx.get_node()], "display", "1")
 
 
 		# now that we have the buffer up we have somewhere to write output relevant to this connection
 		# we can proceed with connection in the pss instance
 		wOut(
 			PSS_BUFPFX_WARN,
-			[bufs[pssName]],
+			[bufs[ctx.get_node()]],
 			"0-> 0",
-			"connecting to '" + pssName + "'"
+			"connecting to '" + ctx.get_node() + "'"
 		)
 	
-		if not cache.get_pss(pssName).connect():
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "0-x 0", "connect to '" + pssName + "' failed: " + cache.get_pss(pssName).error()['description'])
+		if not cache.get_pss(ctx.get_node()).connect():
+			wOut(PSS_BUFPFX_ERROR, [bufs[ctx.get_node()]], "0-x 0", "connect to '" + ctx.get_node() + "' failed: " + cache.get_pss(ctx.get_node()).error()['description'])
 			return weechat.WEECHAT_RC_ERROR
-		wOut(PSS_BUFPFX_OK, [bufs[pssName]], "0---0", "connected to '" + pssName + "'")
+		wOut(PSS_BUFPFX_OK, [bufs[ctx.get_node()]], "0---0", "connected to '" + ctx.get_node() + "'")
 
 		
 		# save what we've accomplished so far in the context, to be passed to the hook
-		ctx.parse_buffer(bufs[pssName])
-		ctx.set_pss(cache.get_pss(pssName))
+		ctx.parse_buffer(bufs[ctx.get_node()])
+		ctx.set_pss(cache.get_pss(ctx.get_node()))
 		# \todo temporary solution, swarm gateway should be set explicitly or at least we need to be able to choose port
 		ctxid = ctxstore.put(ctx)
 		hookSocks.append(weechat.hook_connect("", host, 8500, 0, 0, "", "pss_connect", ctxid))
@@ -744,13 +759,13 @@ def pss_handle(pssName, buf, args):
 
 
 		# start processing inputs on the websocket
-		hookFds[pssName] = weechat.hook_fd(cache.get_pss(pssName).get_fd(), 1, 0, 0, "msgPipeRead", pssName)
-		hookTimers.append(weechat.hook_timer(PSS_FEEDBOX_PERIOD, 0, 0, "processFeedOutQueue", pssName))
+		hookFds[ctx.get_node()] = weechat.hook_fd(cache.get_pss(ctx.get_node()).get_fd(), 1, 0, 0, "msgPipeRead", ctx.get_node())
+		hookTimers.append(weechat.hook_timer(PSS_FEEDBOX_PERIOD, 0, 0, "processFeedOutQueue", ctx.get_node()))
 
 		# set own nick for this node
 		# \todo use configurable global default nick
 		# \todo clean up messy pubkey slicing (should be binary format in pss obj)
-		cache.add_self(PSS_DEFAULT_NICK, pssName)
+		cache.set_nodeself(ctx.get_node(), PSS_DEFAULT_NICK)
 		
 		return weechat.WEECHAT_RC_OK
 
@@ -766,16 +781,19 @@ def pss_handle(pssName, buf, args):
 
 	ctx.parse_buffer(buf)
 	if ctx.is_root():
-		ctx.set_name(argv[0])
+		ctx.set_node(argv[0])
 		argv = argv[1:]
 		argc -= 1
 
-	ctx.set_pss(cache.get_pss(ctx.get_name()))
-
-
-	# see if we already have this node registered
-	if not cache.have_node_name(ctx.get_name()):
-		wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown pss connection '" + pssName + "'")
+	try:
+		ctx.set_pss(cache.get_pss(ctx.get_node()))
+	except:
+		wOut(
+			PSS_BUFPFX_ERROR,
+			[],
+			"!!!",
+			"unknown pss connection '" + ctx.get_node() + "'"
+		)
 		return weechat.WEECHAT_RC_ERROR
 
 
@@ -845,7 +863,7 @@ def pss_handle(pssName, buf, args):
 			newcontact.set_public_key(pubkey)
 			newcontact.set_overlay(overlay)
 			ctx.get_pss().add(newcontact)
-			cache.add_contact(nick, newcontact)
+			cache.add_contact(nick, newcontact, True)
 		except Exception as e:
 			wOut(
 				PSS_BUFPFX_ERROR,
@@ -865,14 +883,8 @@ def pss_handle(pssName, buf, args):
 			"added key " + pubkeyhx + " to nick " + nick + " node " + ctx.get_node()
 		)
 
-		# append recipient to file for reinstating across sessions
-		# \todo move to cache object
-		# storeFile.write(nick + "\t" + pubkeyhx + "\t" + overlayhx + "\t" + pss.rpchex(currentPss.get_public_key()) + "\n")
-
-		# open the buffer if it doesn't exist
-		#buf_get(ctxstore.put(ctx), "chat", nick, True)	
+		# retrieve the buffer (create if it doesn't exist)
 		buf_get(ctx, True)	
-
 		wOut(
 			PSS_BUFPFX_INFO,
 			[ctx.get_buffer()],
@@ -887,95 +899,151 @@ def pss_handle(pssName, buf, args):
 		nick = ""
 		msg = ""
 
+		# verify input
 		if argc < 2:
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "not enough arguments for send")
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"not enough arguments for send"
+			)
 			return weechat.WEECHAT_RC_ERROR
 
-		nick = argv[1]
+		nick = pss.clean_nick(argv[1])
 		if argc > 2:
 			msg = " ".join(argv[2:])
-	
-		# \todo handle hex address only	
-		if not currentPss.have_nick(nick):
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "invalid nick " + nick)
+
+		# check that the contact is known in the cache
+		contact = None
+		try:
+			contact = cache.get_contact_by_nick(nick)
+		except:
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"invalid nick " + nick
+			)
 			return weechat.WEECHAT_RC_ERROR
 
-		buf = buf_get(pssName, "chat", nick, True)
-		# \todo remove the bufs dict, since we can use weechat method for getting it
-		bufs[weechat.buffer_get_string(buf, "name")] = buf
+		ctx.reset(PSS_BUFTYPE_CHAT, ctx.get_node(), nick)
+		buf = buf_get(ctx, True)
 
 		# if no message body we've just opened the chat window
 		if msg != "":
 			if not pss.is_message(msg):
-				wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "invalid message " + msg)
+				wOut(
+					PSS_BUFPFX_DEBUG,
+					[ctx.get_buffer()],
+					"",
+					"invalid message " + msg
+				)
 				return weechat.WEECHAT_RC_ERROR
-			return buf_in(pssName, buf, msg)
+
+			return buf_in(ctx.get_node(), buf, msg)
 
 
 	# create/join existing chat room
+	# \todo broken 
 	elif argv[0] == "join":
 
 		room = ""
 
 		if argc < 2:
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "not enough arguments for join")
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"not enough arguments for join"
+			)
 			return weechat.WEECHAT_RC_ERROR
 
 		room = argv[1]
+		ctx.reset(PSS_BUFTYPE_ROOM, ctx.get_node(), room)
 
-		wOut(PSS_BUFPFX_DEBUG, [], "!!!", "in join " + pssName)	
-		buf = buf_get(pssName, True)
+		# start buffer for room
+		buf_get(ctx.get_node(), True)
 
 
 	# invite works in context of chat rooms, and translates in swarm terms to
 	# adding one separate feed encoded with the invited peer's key
 	# room argument can be omitted if command is issued om channel to invite to
 	# note feeds are currently unencrypted
+	# \todo broken
 	elif argv[0] == "invite":
 
 		nick = ""
 		roomname = ""
 
 		if argc < 2:
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "not enough arguments for invite")
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"not enough arguments for invite"
+			)
 
 		# if missing channel argument get bufname command was issued in
 		# and derive channel name from it if we can (fail if not)
 		elif argc < 3:
-			if ctx['t'] != PSS_BUFTYPE_ROOM:
-				wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "unknown channel '" + ctx['t'] + "'")
+			if not ctx.is_room():
+				wOut(
+					PSS_BUFPFX_ERROR,
+					[ctx.get_buffer()],
+					"!!!",
+					"unknown channel '" + ctx.get_name() + "'"
+				)
 				return weechat.WEECHAT_RC_ERROR
-			roomname = ctx['h']
 	
 		else:
-			roomname = argv[2]
+			ctx.set_name(argv[2])
 
-		nick = argv[1]
+		nick = pss.clean_nick(argv[1])
 
 		# check if room exists
 		# if it does, perform invitation
 		try:
-			roombufname = buf_generate_name(pssName, "room", roomname)
-			room = rooms[roombufname]	
-			pss_invite(pssName, nick, room)
-
-			wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added " + nick + " to " + roomname)
+			#roombufname = buf_generate_name(pssName, "room", roomname)
+			roombufname = ctx.to_buffer_name()
+			room = cache.get_room(roombufname)
+			#pss_invite(pssName, nick, room)
+			#wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added " + nick + " to " + roomname)
+			wOut(
+				PSS_BUFPFX_DEBUG, [],
+				"!!!",
+				"noop invite " + nick + " to " + ctx.get_name()
+			)
 			# if neither the previous fail, add the nick to the buffer
-			roombuf = weechat.buffer_search("python", roombufname)
-			buf_room_add(roombuf, nick)
+			#roombuf = weechat.buffer_search("python", roombufname)
+			#buf_room_add(roombuf, nick)
 
 		except KeyError as e: # keyerror catches both try statements
-			wOut(PSS_BUFPFX_ERROR, [buf], "!!!", "Unknown room or nick: " + str(e))
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"Unknown room or nick: " + str(e)
+			)
 
 
 	# output node key
 	elif argv[0] == "key" or argv[0] == "pubkey":
-		wOut(PSS_BUFPFX_INFO, [bufs[ctx.get_node()]], ctx.get_node() + ".key", ctx.get_pss().get_public_key().encode("hex"))
+		wOut(
+			PSS_BUFPFX_INFO,
+			[ctx.get_buffer()],
+			ctx.get_node() + ".key",
+			ctx.get_pss().get_public_key().encode("hex")
+		)
 
 
 	# output node base address
 	elif argv[0] == "addr" or argv[0] == "address":
-		wOut(PSS_BUFPFX_INFO, [bufs[ctx.get_node()]], ctx.get_node() + ".addr", ctx.get_pss().get_overlay().encode("hex"))
+		wOut(
+			PSS_BUFPFX_INFO,
+			[ctx.get_buffer()],
+			ctx.get_node() + ".addr",
+			ctx.get_pss().get_overlay().encode("hex")
+		)
 
 
 	# set nick for pss node
@@ -983,19 +1051,33 @@ def pss_handle(pssName, buf, args):
 		try:
 			if len(argv) > 1:
 				nick = pss.clean_nick(argv[1])
-				selfs[pssName].nick = nick
-			wOut(PSS_BUFPFX_INFO, [bufs[pssName]], pssName, "nick is '" + selfs[pssName].nick + "'")
+				cache.set_nodeself(ctx.get_node(), nick)
+			wOut(
+				PSS_BUFPFX_INFO,
+				[ctx.get_buffer()],
+				ctx.get_node(),
+				"nick is '" + cache.get_nodeself(ctx.get_node()) + "'"
+			)
 		except ValueError as e:
-			wOut(PSS_BUFPFX_ERROR, [bufs[pssName]], "!!!", "Invalid nick: " + argv[1])
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"Invalid nick: " + argv[1]
+			)
 			
 	# stop connection
 	# \todo also kill the subprocess 
 	# \todo ensure clean shutdown so conncet can be called over
 	elif argv[0] == "stop":
-		weechat.unhook(hookFds[pssName])
-		wOut(PSS_BUFPFX_INFO, [bufs[pssName]], "!!!", "disconnected from " + pssName)
-		currentPss.close()
-		#del psses[currentPssName]
+		weechat.unhook(hookFds[ctx.get_node()])
+		wOut(
+			PSS_BUFPFX_INFO,
+			[ctx.get_buffer()],
+			"!!!",
+			"disconnected from " + ctx.get_node()
+		)
+		cache.close_node(ctx.get_node())
 
 
 	# invalid input

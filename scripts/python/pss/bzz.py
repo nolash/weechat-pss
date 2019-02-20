@@ -38,6 +38,9 @@ class Bzz():
 		return self.agent.get("/bzz-raw:/" + hsh + "/")
 
 
+	def close(self):
+		pass
+
 # FeedUpdate encapsulates a single update to be sent on the network
 class FeedUpdate:
 

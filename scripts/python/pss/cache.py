@@ -13,10 +13,12 @@ class Cache:
 		self.bzzs = {}
 		self.psses = {}
 		self.selfs = {}	
+		self.defaultname = ""
 
 		# address book members
 		self.contacts = []
 		self.idx_publickey_contact = {}
+		self.idx_publickey_pss = {}
 		self.idx_nick_contact = {}
 		self.idx_src_contacts = {}
 
@@ -36,12 +38,15 @@ class Cache:
 		if nodename in self.psses.keys():
 			raise AttributeError("pss key " + str(nodename) + " already in use")
 
+		if self.defaultname == "":
+			self.defaultname = nodename		
+
 		self.psses[nodename] = pssobj
 		return True
 
 
 
-	def add_self(self, nick, nodename):
+	def set_nodeself(self, nodename, nick):
 		self.selfs[nodename] = nick
 	
 
@@ -56,7 +61,7 @@ class Cache:
 
 
 	# \todo handle source param, must be supplied	
-	def add_contact(self, name, contact):
+	def add_contact(self, name, contact, store=False):
 
 		if name in self.idx_nick_contact.keys():
 			raise KeyError("contact name '" + str(name) + "' already in use")
@@ -68,6 +73,15 @@ class Cache:
 		self.contacts.append(contact)
 		self.idx_publickey_contact[contact.get_public_key()] = contact
 		self.idx_nick_contact[name] = contact
+		if store and self.file != None:
+			self.file.write( 
+				name + "\t" 
+				+ contact.get_public_key().encode("hex") + "\t" 
+				+ contact.get_overlay().encode("hex") + "\t" 
+				+ contact.get_src().encode("hex") + "\n"
+			)
+			self.file.flush()
+		
 		return True
 
 
@@ -85,7 +99,7 @@ class Cache:
 		if (len(self.bzzs) == 0):
 			return None
 
-		return self.bzzs[0]
+		return self.bzzs[self.defaultname]
 
 
 
@@ -101,10 +115,11 @@ class Cache:
 
 	# check all sources and add as recipients in node
 	# returns array of contacts added
-	def update_node(self, name):
+	def update_node(self, nodename):
+		srckey = self.psses[nodename].get_public_key()
 		contacts = []
-		for c in self.idx_src_contacts:
-			self.psses[name].add(n, c.get_public_key(), c.get_overlay())
+		for c in self.idx_src_contacts[srckey]:
+			self.psses[nodename].add(c)
 			contacts.append(c)
 		return contacts
 					
@@ -136,42 +151,47 @@ class Cache:
 		entrycount = 0
 		okcount = 0
 
-		f = open(self.get_store_path(), "r", 0600)
+		try:
+			f = open(self.get_store_path(), "r", 0600)
+			while 1:
+				# if there is a record
+				# split fields on tab and chop newline
+				record = f.readline()
+				if len(record) == 0:
+					break	
 
-		while 1:
-			# if there is a record
-			# split fields on tab and chop newline
-			record = f.readline()
-			if len(record) == 0:
-				break	
 
+				# add it to the map and report
+				entrycount += 1
+				try: 
+					(nick, pubkeyhx, overlayhx, srckeyhx) = record.split("\t")
+					if ord(srckeyhx[len(srckeyhx)-1]) == 0x0a:
+						srckeyhx = srckeyhx[:len(srckeyhx)-1]
+					srckey = clean_pubkey(srckeyhx).decode("hex")
+					pubkey = clean_pubkey(pubkeyhx).decode("hex")
+					overlay = clean_overlay(overlayhx).decode("hex")
+					contact = PssContact(nick, srckey)
+					contact.set_public_key(pubkey)
+					contact.set_overlay(overlay)
+					
+				# \todo delete the record from the contact store
+				except Exception as e:
+					pass
 
-			# add it to the map and report
-			entrycount += 1
-			try: 
-				(nick, pubkeyhx, overlayhx, srckeyhx) = record.split("\t")
-				if ord(srckeyhx[len(srckeyhx)-1]) == 0x0a:
-					srckeyhx = srckeyhx[:len(srckeyhx)-1]
-				srckey = clean_pubkey(srckeyhx)
-				pubkey = clean_pubkey(pubkeyhx)
-				contact = PssContact(nick, srckeyhx)
-				contact.set_public_key(pubkeyhx.decode("hex"))
-				contact.set_overlay(clean_overlay(overlayhx).decode("hex"))
-				self.idx_src_contacts[srckey].append(contact)
-				self.idx_nick_contact[nick] = contact
-				self.idx_publickey_contact[pubkey] = contact
+				try:
+					self.add_contact(nick, contact)
+					okcount += 1
+					if not srckey in self.idx_src_contacts:
+						self.idx_src_contacts[srckey] = []
+					self.idx_src_contacts[srckey].append(contact)
+					self.idx_nick_contact[nick] = contact
+					self.idx_publickey_contact[pubkey] = contact
 
-			# \todo delete the record from the contact store
-			except Exception as e:
-				pass
-
-			try:
-				self.add_contact(nick, contact)
-				okcount += 1
-			except Exception as e:
-				sys.stderr.write("fail on " + str(nick) + ": " + repr(e) + "\n")
-
-		f.close()
+				except Exception as e:
+					sys.stderr.write("fail on " + str(nick) + ": " + repr(e) + "\n")
+			f.close()
+		except IOError as e:
+			pass	
 
 		# \todo dump valid entries to new file and copy over old
 		self.file = open(self.get_store_path(), "a", 0600)

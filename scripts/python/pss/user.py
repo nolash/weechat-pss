@@ -97,6 +97,11 @@ class PssContact(Account):
 
 
 
+	def get_src(self):
+		return self.src
+
+
+
 	def get_overlay(self):
 		return self.overlay
 
