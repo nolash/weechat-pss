@@ -7,7 +7,7 @@ import sys
 import socket
 import time
 
-REQUEST_TIMEOUT = 20.0
+REQUEST_TIMEOUT = 30.0
 
 regexStatusLine = re.compile("^HTTP/1.1 (\d{3}) (.+)\n", re.M)
 

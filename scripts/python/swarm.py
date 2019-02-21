@@ -751,7 +751,7 @@ def pss_handle(pssName, buf, args):
 
 		wOut(PSS_BUFPFX_OK, [bufs[ctx.get_node()]], "0---0", "connected to '" + ctx.get_node() + "'")
 
-		_tmp_queue_hash[ctx.get_node()] = pss.zerohshbytes
+		_tmp_queue_hash[ctx.get_node()] = ""
 		cache.add_node(pssnode)
 
 		wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + ctx.get_node())

@@ -10,18 +10,31 @@ from tools import now_int
 from message import Message
 
 
-signPrefix = "\x19Ethereum Signed Message:\x0a\x20" # for 32 byte hashes
+# signPrefix = "\x19Ethereum Signed Message:\x0a\x20" # for 32 byte hashes
+
+# application-specific topic root
+# all topics used for feed updates are derived from this
 feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00psschats\x00\x00\x00\x01"
+
+# a zerohash is used as a null-pointer in linked lists of swarm content
 zerohsh = ""
 for i in range(31):
 	zerohsh += "00"
+
+# bitmask for creating a chat feed topic
 chatnamehsh = zerohsh + "01"
+
+# bitmask for creating a room feed topic
 roomnamehsh = zerohsh + "02"
+
 zerohsh += "00"
 zerohshbytes = zerohsh.decode("hex")
 chatnamebytes = chatnamehsh.decode("hex")
 roomnamebytes = roomnamehsh.decode("hex")
 
+
+
+# exception to specify error in swarm content retrieval
 class BzzRetrieveError(Exception):
 
 	def __init__(self, hsh, reason):
@@ -30,15 +43,18 @@ class BzzRetrieveError(Exception):
 		
 	pass
 
+
 # Bzz is a convenience wrapper for making swarm store and retrieve calls over http
-# \todo pass agent to all methods instead of storing
 class Bzz():
+
 
 	def __init__(self, httpagent):
 		self.agent = httpagent
 
+
 	def add(self, data):
 		return self.agent.send("/bzz-raw:/", data)
+
 
 	def get(self, hsh):
 		return self.agent.get("/bzz-raw:/" + hsh + "/")
@@ -48,16 +64,12 @@ class Bzz():
 		pass
 	
 
+
 # Feed represents a single swarm feed
 #
 # It can represent both a consumer and publisher feed.
 #
 # To create a feed to which updates may be posted, the account passed to the constructor must contain the private key for the feed account.
-#
-# The isoutput argument sets or unsets the last bit of the feed topic, marking whether the feed is an output feed or an input feed. 
-# Note that a publisher feed may still be an input feed; in this case the client is listening to another publisher.
-#
-# \todo pass agent to all methods instead of storing
 class Feed():
 
 
@@ -100,7 +112,6 @@ class Feed():
 
 	# update the feed
 	# data is raw bytes
-	# \todo client side next epoch calc (retrieve from server is WAY too slow)
 	def update(self, data):
 		(tim, epoch) = self.info()
 		d = compile_digest(self.topic, self.account.address, data, int(tim), int(epoch))
@@ -137,10 +148,12 @@ class Feed():
 # wrapper for individual feeds in collections
 # contains index keeping track of position of last lookup
 # it also keeps track of broken links
+#
+# \todo the use of this object is slightly different in reader and sender context, should be revised to make the use identical
 class FeedState:
 	def __init__(self, feed):
 		self.obj = feed
-		self.headhsh = zerohshbytes
+		self.headhsh = ""
 		self.lasthsh = ""
 		self.lasttime = 0
 		self.lastseq = 0
@@ -160,10 +173,22 @@ class FeedState:
 
 
 
-# convenience class for handling feed aggregation (multiuser room, for instance)
+# Convenience class for handling feed aggregation and content linking 
+# A collection may have many feeds for reading, for which all new updates can be retrieved by one single method call
+# The collection may also have a sender feed, through which updates may be sent. This requires an account object with a private key set.
+#
+# Updates handled through the feedcollection object are linked lists. The feed update points to swarm content, and the payload of the swarm content is:
+# [00 - 31]: swarm hash of previous update
+# [32 - 36]: serial number; 4 byte timestamp (seconds) + 1 byte sequence number (in increments for updates within same timestamps)
+# [37 - n ]: content; arbitrary bytes
+#
+# The state of sender and reader feeds is the last swarm hash seen. It is stored for every retrieval or send. 
+# Upon retrieval all new updates will be retrieved until the last seen hash is encountered, and the state is reset to the hash of the newest update.
 class FeedCollection:
 
 
+
+	# if senderfeed is passed, writing to this collection is enabled
 	def __init__(self, name, senderfeed=None):
 		self.name = name
 		self.feeds = {}
@@ -173,10 +198,14 @@ class FeedCollection:
 
 
 
+	# returns the name of the collection
 	def get_name(self):
 		return self.name
-	
-	# data will be prepended by hash to current head (32 bytes) + serial (timestamp 4 bytes + 1 byte sequence number)
+
+
+
+	# makes a single update with the passed data
+	# the update will contain a link to the previous update
 	def write(self, data):
 
 		senderstate = self.senderfeed
@@ -188,13 +217,14 @@ class FeedCollection:
 					
 		lasthsh = senderstate.headhsh	
 		headhsh = senderstate.obj.bzz.add(senderstate.headhsh + senderstate.serial() + data)	
-		#self.senderfeed.update(data)
 		senderstate.headhsh = headhsh.decode("hex")
 		senderstate.lasthsh = lasthsh
 	
 		return headhsh
 
 
+
+	# adds a feed to the collection
 	def add(self, name, feed):
 		if name in self.feeds:
 			raise Exception("feed already exists")
@@ -202,10 +232,16 @@ class FeedCollection:
 		self.feeds[name] = FeedState(feed)
 
 
+
+	# removes a feed from the collection
 	def remove(self, name):
 		del self.feeds[name]
 
 
+
+	# get all updates retrieved by last syncings
+	# the array of messages is an aggregate of all reader feeds, sorted by time of update 
+	# the call will remove the updates from the buffer
 	def get(self, idx=-1):
 
 		msgs = {}
@@ -229,6 +265,10 @@ class FeedCollection:
 		return msgssorted
 
 
+
+	# syncs all reader feeds with the latest updates and stored them in a buffer
+	# the messages can be retrieved with get()
+	#
 	# \todo make sure this completes or fully abandons retrieves before returning
 	def gethead(self, bzz):
 
@@ -241,7 +281,7 @@ class FeedCollection:
 			# between completed retrieves
 			# we then need to get the new head hash
 			# the feed is currently pointing to
-			if feedstate.lasthsh == "":
+			if feedstate.headhsh == "":
 				#try:
 				feedstate.headhsh = feedstate.obj.head()
 				#except:
@@ -267,6 +307,9 @@ class FeedCollection:
 		return len(self.retrievals)-1
 
 	
+	
+	# private function for traversing linked list until target hash (or zerohash) is found 	
+	# if one lookup fails, the contents retrieved up until that point is returned
 	def _retrieve(self, bzz, feedaddress, curhsh, targethsh):
 
 		# hash map serial (timestamp+seq) => Message
@@ -290,14 +333,9 @@ class FeedCollection:
 
 		return (msgs, None)
 
-def sign_digest(pk, digest):
-	sig = pk.ecdsa_sign_recoverable(digest, raw=True)
-	s, r =  pk.ecdsa_recoverable_serialize(sig)
-	s += chr(r)
-	return s
 
 
-
+# create a message digest to be signed for feed update
 # input here is raw bytes not hex
 def compile_digest(topic, user, inputdata, tim, epoch=1):
 
@@ -328,16 +366,27 @@ def compile_digest(topic, user, inputdata, tim, epoch=1):
 
 
 
+# sign a digest with given private key to use for feed update
+def sign_digest(pk, digest):
+	sig = pk.ecdsa_sign_recoverable(digest, raw=True)
+	s, r =  pk.ecdsa_recoverable_serialize(sig)
+	s += chr(r)
+	return s
+
+
+
+# check if input is valid feed topic
 def is_valid_topic(topic):
 	return len(topic) == 32
 
 
 
+# check if input is a valid feed account address
 def is_valid_account(user):
 	return len(user) == 20
 
 
 
+# check if input is a valid feed digest
 def is_digest(digest):
 	return len(digest) == 32
-
