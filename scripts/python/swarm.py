@@ -309,7 +309,7 @@ def pss_connect(ctxid, status, tlsrc, sock, error, ip):
 	return weechat.WEECHAT_RC_OK
 
 
-_tmp_queue_hash = pss.zerohshbytes
+_tmp_queue_hash = {}
 
 # handles all outgoing feed sends
 # \todo run in separate process with ipc
@@ -317,11 +317,14 @@ def processFeedOutQueue(pssName, _):
 	global  _tmp_queue_hash 
 
 	for publickey in cache.chats.keys():
-		coll = cache.chats[publickey][pssName]
-		if _tmp_queue_hash != coll.senderfeed.headhsh:
-			sys.stderr.write("update feed " + pssName + ":" + publickey.encode("hex") + "\naddr: " + cache.chats[publickey][pssName].senderfeed.obj.account.get_address().encode("hex") + "\n")
-			coll.senderfeed.obj.update(coll.senderfeed.headhsh)
-			_tmp_queue_hash = coll.senderfeed.headhsh
+		try:
+			coll = cache.chats[publickey][pssName]
+			if _tmp_queue_hash[pssName] != coll.senderfeed.headhsh:
+				sys.stderr.write("update feed " + pssName + ":" + publickey.encode("hex") + "\naddr: " + cache.chats[publickey][pssName].senderfeed.obj.account.get_address().encode("hex") + "\n")
+				coll.senderfeed.obj.update(coll.senderfeed.headhsh)
+				_tmp_queue_hash[pssName] = coll.senderfeed.headhsh
+		except:
+			pass
 	
 	return weechat.WEECHAT_RC_OK
 
@@ -748,6 +751,7 @@ def pss_handle(pssName, buf, args):
 
 		wOut(PSS_BUFPFX_OK, [bufs[ctx.get_node()]], "0---0", "connected to '" + ctx.get_node() + "'")
 
+		_tmp_queue_hash[ctx.get_node()] = pss.zerohshbytes
 		cache.add_node(pssnode)
 
 		wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + ctx.get_node())

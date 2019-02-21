@@ -114,14 +114,17 @@ class Cache:
 			)
 			self.file.flush()
 
+		# \todo probably we shouldn't pass on all exceptions here
 		try:
 			srcnode = self.idx_publickey_pss[contact.get_src()]
 			try:
 				self.add_contact_feed(contact, srcnode)
 			except AttributeError as e:
-				sys.stderr.write("addcontact: " + repr(e))
+				#sys.stderr.write("addcontact: " + repr(e))
+				pass
 		except KeyError as e:
-			sys.stderr.write("addcontact: " + repr(e))
+			#sys.stderr.write("addcontact: " + repr(e))
+			pass
 
 
 	def add_contact_feed(self, contact, srcnode):
@@ -187,9 +190,13 @@ class Cache:
 		node = self.psses[nodename]
 		srckey = node.get_public_key()
 		contacts = []
-		for c in self.idx_src_contacts[srckey]:
-			self.psses[nodename].add(c)
-			contacts.append(c)
+		try:
+			for c in self.idx_src_contacts[srckey]:
+				self.psses[nodename].add(c)
+				contacts.append(c)
+
+		except:
+			pass
 
 		if node.can_write():
 			self.update_node_contact_feed(node)
