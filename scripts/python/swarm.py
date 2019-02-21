@@ -305,65 +305,24 @@ def pss_connect(ctxid, status, tlsrc, sock, error, ip):
 			"+++",
 			"added cached contact '" + c.get_nick() + "' to node '" + ctx.get_node() + "'"
 		)
-		# \ todo make this call more legible (public key to bytes method in pss pkg)
-#		try:
-#			feeds[buf_generate_name(pssName, "chat", nicks[c].nick)] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), PSS_BUFTYPE_CHAT + pss.publickey_to_address(psses[pssName].get_public_key()))
-#		except:
-#			wOut(PSS_BUFPFX_DEBUG, [bufs[pssName]], "", "bzz gateway for not active")
 
 	return weechat.WEECHAT_RC_OK
 
 
+_tmp_queue_hash = pss.zerohshbytes
+
 # handles all outgoing feed sends
 # \todo run in separate process with ipc
 def processFeedOutQueue(pssName, _):
+	global  _tmp_queue_hash 
 
-	while 1:
-		update = feedOutQueue.get()
-		if update == None:
-			break
-
-		try:
-			hsh = cache.get_active_bzz().add(update.data)
-			wOut(
-				PSS_BUFPFX_DEBUG,
-				[],
-				">>>",
-				"bzz sent for " + update.ctx.get_node() + "." + update.ctx.get_name() + ": " + hsh
-			)
-
-			result = ""
-			if update.ctx.is_room():
-				pass
-			else:
-				feed = cache.get_feed(update.ctx.get_name(), update.ctx.get_node())
-				result = feed.update(hsh)
-				
-			wOut(
-				PSS_BUFPFX_DEBUG,
-				[],
-				">>>",
-				"feed sent for " + update.ctx.get_node() + "." + update.ctx.get_name() + ": " + result
-			)
-
-		except IOError as e:
-			wOut(
-				PSS_BUFPFX_ERROR,
-				[],
-				"!!!",
-				"send feed for " + update.ctx.get_node() + "." + update.ctx.get_name() + " fail: " + repr(e)
-			)
-			return weechat.WEECHAT_RC_ERROR
-		except KeyError as e:
-			wOut(
-				PSS_BUFPFX_ERROR,
-				[],
-				"!!!",
-				"unknown feed for " + update.ctx.get_node() + "." + update.ctx.get_name()
-			)
-			return weechat.WEECHAT_RC_ERROR
-
-
+	for publickey in cache.chats.keys():
+		coll = cache.chats[publickey][pssName]
+		if _tmp_queue_hash != coll.senderfeed.headhsh:
+			sys.stderr.write("update feed " + pssName + ":" + publickey.encode("hex") + "\naddr: " + cache.chats[publickey][pssName].senderfeed.obj.account.get_address().encode("hex") + "\n")
+			coll.senderfeed.obj.update(coll.senderfeed.headhsh)
+			_tmp_queue_hash = coll.senderfeed.headhsh
+	
 	return weechat.WEECHAT_RC_OK
 
 
@@ -484,7 +443,7 @@ def msgPipeRead(pssName, fd):
 			contact.set_public_key(fromKey)
 			contact.set_overlay("")
 			ctx.get_pss().add(contact)
-			cache.add_contact(displayFrom, contact)
+			cache.add_contact(contact)
 
 		ctx.reset(PSS_BUFTYPE_CHAT, pssName, displayFrom)
 		# write the message to the buffer
@@ -546,25 +505,27 @@ def buf_get(ctx, known):
 
 			bufs[bufname] = buf
 
+
 			# if we have private key to write to feed
 			# open a feed to the peer publickey
-			if cache.can_feed(ctx.get_node()):
-				try:
-					feed = cache.add_feed(ctx.get_name(), ctx.get_node())
-					if feed != None:
-						wOut(
-							PSS_BUFPFX_DEBUG,
-							[],
-							"",
-							"added feed with topic " + feed.topic.encode("hex") + " name " + ctx.get_name() + " node " + ctx.get_node()
-					)
-				except ValueError as e:
-					wOut(
-						PSS_BUFPFX_ERROR,
-						[],
-						"???",
-						"could not set up feed: " + str(e)
-					)
+#			if cache.can_feed(ctx.get_node()):
+#				try:
+#					feed = cache.add_feed(ctx.get_name(), ctx.get_node())
+#					
+#					if feed != None:
+#						wOut(
+#							PSS_BUFPFX_DEBUG,
+#							[],
+#							"",
+#							"added feed with topic " + feed.topic.encode("hex") + " name " + ctx.get_name() + " node " + ctx.get_node()
+#					)
+#				except ValueError as e:
+#					wOut(
+#						PSS_BUFPFX_ERROR,
+#						[],
+#						"???",
+#						"could not set up feed: " + str(e)
+#					)
 
 		# room is multiuser conversation
 #		elif typ == "room":
@@ -662,6 +623,7 @@ def buf_in(pssName, buf, inputdata):
 				"you",
 				inputdata
 			)
+			
 		except Exception as e:
 			wOut(
 				PSS_BUFPFX_ERROR,
@@ -669,17 +631,13 @@ def buf_in(pssName, buf, inputdata):
 				"!!!",
 				"send fail: " + repr(e)
 			)
+			return weechat.WEECHAT_RC_ERROR
 
-	if cache.can_feed(ctx.get_node()):
-		try:
-			feedOutQueue.add(FeedUpdate(ctx, inputdata))
-		except RuntimeError as e:
-			wOut(
-				PSS_BUFPFX_ERROR,
-				[],
-				"!!!",
-				"feed add to buffer fail: " + str(e)
-			)
+		peercontact = cache.get_contact_by_nick(ctx.get_name())
+		feedcoll = cache.chats[peercontact.get_public_key()][ctx.get_node()]
+		hsh = feedcoll.write(inputdata)
+		sys.stderr.write("wrote update to swarm, got " + hsh + "\n")
+
 
 	return weechat.WEECHAT_RC_OK
 
@@ -758,11 +716,6 @@ def pss_handle(pssName, buf, args):
 				port = weechat.config_get_plugin(ctx.get_node() + "_port", port)
 	
 			wOut(PSS_BUFPFX_DEBUG, [], "", "pss " + ctx.get_node() + " already exists")
-		else:
-				
-			cache.add_node(pss.Pss(ctx.get_node(), host, port), ctx.get_node())
-			wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + ctx.get_node())
-
 
 		# regardless of if we have the node already, store the connection parameters for later for this node name	
 		weechat.config_set_plugin(ctx.get_node() + "_url", host)
@@ -787,10 +740,17 @@ def pss_handle(pssName, buf, args):
 			"connecting to '" + ctx.get_node() + "'"
 		)
 	
-		if not cache.get_pss(ctx.get_node()).connect():
-			wOut(PSS_BUFPFX_ERROR, [bufs[ctx.get_node()]], "0-x 0", "connect to '" + ctx.get_node() + "' failed: " + cache.get_pss(ctx.get_node()).error()['description'])
+		pssnode = pss.Pss(ctx.get_node(), host, port)
+
+		if not pssnode.connect():
+			wOut(PSS_BUFPFX_ERROR, [bufs[ctx.get_node()]], "-1-x 0", "connect to '" + ctx.get_node() + "' failed: " + cache.get_pss(ctx.get_node()).error()['description'])
 			return weechat.WEECHAT_RC_ERROR
+
 		wOut(PSS_BUFPFX_OK, [bufs[ctx.get_node()]], "0---0", "connected to '" + ctx.get_node() + "'")
+
+		cache.add_node(pssnode)
+
+		wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + ctx.get_node())
 
 		
 		# save what we've accomplished so far in the context, to be passed to the hook
@@ -859,7 +819,9 @@ def pss_handle(pssName, buf, args):
 				wOut(PSS_BUFPFX_ERROR, [], "!!!", "invalid key format")
 				return weechat.WEECHAT_RC_ERROR
 			try:
-				cache.get_pss(ctx.get_node()).set_account_write(privkey.decode("hex"))
+				pssnode = cache.get_pss(ctx.get_node())
+				pssnode.set_account_write(privkey.decode("hex"))
+				cache.update_node_contact_feed(pssnode)
 			except ValueError as e:
 				wOut(PSS_BUFPFX_ERROR, [], "!!!", "set account fail: " + str(e))
 				return weechat.WEECHAT_RC_ERROR
@@ -907,7 +869,7 @@ def pss_handle(pssName, buf, args):
 			newcontact.set_public_key(pubkey)
 			newcontact.set_overlay(overlay)
 			ctx.get_pss().add(newcontact)
-			cache.add_contact(nick, newcontact, True)
+			cache.add_contact(newcontact, True)
 		except Exception as e:
 			wOut(
 				PSS_BUFPFX_ERROR,

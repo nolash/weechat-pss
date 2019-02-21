@@ -1,9 +1,10 @@
 import os
 import sys
+import copy
 
 from tools import clean_pubkey, clean_overlay, Queue
 from user import PssContact
-from bzz import Feed
+from bzz import Feed, chatnamebytes, FeedCollection
 
 CACHE_CONTACT_STOREFILE = ".pss-contacts"
 
@@ -26,6 +27,7 @@ class Cache:
 
 		# pss chat history feeds
 		self.feeds = {}
+		self.chats = {}
 
 		# index nicks to chat rooms
 		self.rooms = {}
@@ -37,14 +39,16 @@ class Cache:
 		self.file = None
 
 
-	def add_node(self, pssobj, nodename):
-		if nodename in self.psses.keys():
+	def add_node(self, pssobj):
+		if pssobj.get_name() in self.psses.keys():
 			raise AttributeError("pss key " + str(nodename) + " already in use")
 
 		if self.defaultname == "":
-			self.defaultname = nodename		
+			self.defaultname = pssobj.get_name()
 
-		self.psses[nodename] = pssobj
+		self.psses[pssobj.get_name()] = pssobj
+		self.idx_publickey_pss[pssobj.get_public_key()] = pssobj
+		self.update_node_contact(pssobj.get_name())
 		return True
 
 	
@@ -66,7 +70,7 @@ class Cache:
 		if not publickey in self.feeds:
 			self.feeds[publickey] = {}
 		self.feeds[publickey][name] = Feed(
-			self.get_active_bzz().agent,
+			self.get_active_bzz(),
 			self.psses[nodename].get_account(),
 			topicseed
 		)
@@ -89,10 +93,10 @@ class Cache:
 
 
 	# \todo handle source param, must be supplied	
-	def add_contact(self, name, contact, store=False):
+	def add_contact(self, contact, store=False):
 
-		if name in self.idx_nick_contact.keys():
-			raise KeyError("contact name '" + str(name) + "' already in use")
+		if contact.get_nick() in self.idx_nick_contact.keys():
+			raise KeyError("contact name '" + str(contact.get_nick()) + "' already in use")
 
 		if contact.get_public_key() == "":
 			raise AttributeError("public key missing from contact")
@@ -100,17 +104,50 @@ class Cache:
 		# take over the reference of contact, caller can drop var
 		self.contacts.append(contact)
 		self.idx_publickey_contact[contact.get_public_key()] = contact
-		self.idx_nick_contact[name] = contact
+		self.idx_nick_contact[contact.get_nick()] = contact
 		if store and self.file != None:
 			self.file.write( 
-				name + "\t" 
+				contact.get_nick() + "\t" 
 				+ contact.get_public_key().encode("hex") + "\t" 
 				+ contact.get_overlay().encode("hex") + "\t" 
 				+ contact.get_src().encode("hex") + "\n"
 			)
 			self.file.flush()
-		
-		return True
+
+		try:
+			srcnode = self.idx_publickey_pss[contact.get_src()]
+			try:
+				self.add_contact_feed(contact, srcnode)
+			except AttributeError as e:
+				sys.stderr.write("addcontact: " + repr(e))
+		except KeyError as e:
+			sys.stderr.write("addcontact: " + repr(e))
+
+
+	def add_contact_feed(self, contact, srcnode):
+
+		if not srcnode.can_write():
+			raise AttributeError("can't create contact feed for '" + contact.get_nick() + "@" + srcnode.get_name() + ", missing private key")
+
+		senderfeed = Feed(
+			self.get_active_bzz(),
+			srcnode.get_account(),
+			chatnamebytes
+		)
+		peerfeed = Feed(
+			self.get_active_bzz(),
+			contact,
+			chatnamebytes
+		)
+
+		coll = FeedCollection(srcnode.get_name() + "." + contact.get_nick(), senderfeed)
+		coll.add(contact.get_nick(), peerfeed)
+
+		if not contact.get_public_key() in self.chats:
+			self.chats[contact.get_public_key()] = {}
+
+		self.chats[contact.get_public_key()][srcnode.get_name()] = coll
+
 
 
 	def remove_contact(self):
@@ -146,14 +183,24 @@ class Cache:
 
 	# check all sources and add as recipients in node
 	# returns array of contacts added
-	def update_node(self, nodename):
-		srckey = self.psses[nodename].get_public_key()
+	def update_node_contact(self, nodename):
+		node = self.psses[nodename]
+		srckey = node.get_public_key()
 		contacts = []
 		for c in self.idx_src_contacts[srckey]:
 			self.psses[nodename].add(c)
 			contacts.append(c)
+
+		if node.can_write():
+			self.update_node_contact_feed(node)
+
 		return contacts
-					
+
+	
+	def update_node_contact_feed(self, srcnode):
+		for c in self.idx_src_contacts[srcnode.get_public_key()]:
+			self.add_contact_feed(c, srcnode)
+				
 	
 	def get_contact_by_nick(self, name):
 		try:
@@ -210,7 +257,7 @@ class Cache:
 					pass
 
 				try:
-					self.add_contact(nick, contact)
+					self.add_contact(contact)
 					okcount += 1
 					if not srckey in self.idx_src_contacts:
 						self.idx_src_contacts[srckey] = []

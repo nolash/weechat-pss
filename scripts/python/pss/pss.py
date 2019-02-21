@@ -37,7 +37,7 @@ class Pss:
 
 
 	def can_write(self):
-		return self.account.privatekey != None
+		return self.account.is_owner()
 
 
 	def set_account_write(self, privkeybytes):

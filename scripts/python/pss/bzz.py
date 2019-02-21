@@ -1,6 +1,7 @@
 import struct
 import json
 import sys
+import copy
 
 from Crypto.Hash import keccak
 from urllib import urlencode
@@ -12,9 +13,14 @@ from message import Message
 signPrefix = "\x19Ethereum Signed Message:\x0a\x20" # for 32 byte hashes
 feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00psschats\x00\x00\x00\x01"
 zerohsh = ""
-for i in range(32):
+for i in range(31):
 	zerohsh += "00"
+chatnamehsh = zerohsh + "01"
+roomnamehsh = zerohsh + "02"
+zerohsh += "00"
 zerohshbytes = zerohsh.decode("hex")
+chatnamebytes = chatnamehsh.decode("hex")
+roomnamebytes = roomnamehsh.decode("hex")
 
 class BzzRetrieveError(Exception):
 
@@ -55,14 +61,14 @@ class Bzz():
 class Feed():
 
 
-	def __init__(self, httpagent, account, name, single=True):
+	def __init__(self, bzz, account, name, single=True):
 		self.tim = 0
 		self.lastepoch = 25
 		self.lastupdate = 0
 		self.topic = ""
 
 		self.account = account
-		self.agent = httpagent
+		self.bzz = bzz
 		if len(name) > 32 or len(name) == 0:
 			raise ValueError("invalid name length 0 < n <= 32")
 		for i in range( len(feedRootTopic)):
@@ -82,7 +88,7 @@ class Feed():
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
-		rstr = self.agent.get(sendpath, querystring)
+		rstr = self.bzz.agent.get(sendpath, querystring)
 		r = ""
 		try:
 			r = json.loads(rstr)
@@ -108,7 +114,7 @@ class Feed():
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
-		r = self.agent.send(sendpath, data, querystring)
+		r = self.bzz.agent.send(sendpath, data, querystring)
 	
 		self.lastupdate = tim
 		self.epoch = epoch
@@ -124,41 +130,76 @@ class Feed():
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
-		return self.agent.get(sendpath, querystring)
-			
+		return self.bzz.agent.get(sendpath, querystring)
+		
+
+
+# wrapper for individual feeds in collections
+# contains index keeping track of position of last lookup
+# it also keeps track of broken links
+class FeedState:
+	def __init__(self, feed):
+		self.obj = feed
+		self.headhsh = zerohshbytes
+		self.lasthsh = ""
+		self.lasttime = 0
+		self.lastseq = 0
+		self.orphans = {}
+
+	# increments last time of update. if same second as last, sequence number is incremented
+	def next(self):
+		tim = now_int()
+		seq = 0
+		if now == self.lasttime:
+			self.lastseq = (state.lastseq + 1) & 0xff
+		else:
+			self.lasttime = now
+
+	def serial(self):
+		return struct.pack(">I", self.lasttime) + struct.pack("B", self.lastseq)
+
 
 
 # convenience class for handling feed aggregation (multiuser room, for instance)
 class FeedCollection:
 
 
-	def __init__(self):
+	def __init__(self, name, senderfeed=None):
+		self.name = name
 		self.feeds = {}
 		self.retrievals = []
+		if senderfeed != None:
+			self.senderfeed = FeedState(senderfeed)
+
+
+
+	def get_name(self):
+		return self.name
+	
+	# data will be prepended by hash to current head (32 bytes) + serial (timestamp 4 bytes + 1 byte sequence number)
+	def write(self, data):
+
+		senderstate = self.senderfeed
+		if senderstate == None:
+			raise RuntimeError("sender feed required")
+
+		if not senderstate.obj.account.is_owner():
+			raise RuntimeError("private key required")
+					
+		lasthsh = senderstate.headhsh	
+		headhsh = senderstate.obj.bzz.add(senderstate.headhsh + senderstate.serial() + data)	
+		#self.senderfeed.update(data)
+		senderstate.headhsh = headhsh.decode("hex")
+		senderstate.lasthsh = lasthsh
+	
+		return headhsh
 
 
 	def add(self, name, feed):
 		if name in self.feeds:
 			raise Exception("feed already exists")
 
-		# index keeping track of position of last lookup
-		# it also keeps track of broken links
-		self.feeds[name] = {
-
-			# feed object
-			"obj": feed,
-
-			# head of the current retrieve
-			"headhsh": "",
-
-			# head from previous update
-			"lasthsh": zerohsh,
-	
-			# timestamp of last processed head
-			"lasttime": 0,	
-
-			"orphans": {}, # orphaned key => target key
-		}
+		self.feeds[name] = FeedState(feed)
 
 
 	def remove(self, name):
@@ -194,36 +235,33 @@ class FeedCollection:
 		# hash map eth address => hash map serial to Message 
 		feedmsgs = {}
 
-		#for k in self.feeds:
-			#sys.stderr.write("found key: " + k + "\n")
-
-		for feed in self.feeds.values():
+		for feedstate in self.feeds.values():
 
 			# headhsh will be empty string 
 			# between completed retrieves
 			# we then need to get the new head hash
 			# the feed is currently pointing to
-			if feed['headhsh'] == "":
-				try:
-					feed['headhsh'] = feed['obj'].head().decode("hex")
-				except:
-					continue
+			if feedstate.lasthsh == "":
+				#try:
+				feedstate.headhsh = feedstate.obj.head()
+				#except:
+				#continue
 
-			#sys.stderr.write("headhsh " + feed['headhsh'] + "\n")
+			# sys.stderr.write("headhsh " + feedstate.headhsh.encode("hex") + "\n")
 
-			if feed['headhsh'] == "":
+			if feedstate.headhsh == "":
 				continue
 				
 			# store new messages for feed
-			(feedmsgs[feed['obj'].account.address], brk) = self._retrieve(bzz, feed['obj'].account, feed['headhsh'], feed['lasthsh'])
+			(feedmsgs[feedstate.obj.account.address], brk) = self._retrieve(bzz, feedstate.obj.account, feedstate.headhsh, feedstate.lasthsh)
 			if brk != None:
 				sys.stderr.write("retrieve fail on hash: " + str(brk) + "\n")
-				feed['lasthsh'] = brk
-				feed['orphans'][feed['headhsh']] = feed['lasthsh']
+				feedstate.lasthsh = brk
+				feedstate.orphans[feedstate.headhsh] = feedstate.lasthsh
 
 			# set next retrieve to terminate on
-			feed['lasthsh'] = feed['headhsh']
-			feed['headhsh'] = ""
+			feedstate.lasthsh = feedstate.headhsh
+			feedstate.headhsh = ""
 	
 		self.retrievals.append(feedmsgs)
 		return len(self.retrievals)-1
@@ -239,7 +277,7 @@ class FeedCollection:
 			try:
 				r = bzz.get(curhsh.encode("hex"))
 			except Exception as e:
-				sys.stderr.write("request fail: " + str(e) + "\n")
+				#sys.stderr.write("request fail: " + str(e) + "\n")
 				return (msgs, curhsh)
 				#raise BzzRetrieveError(curhsh, str(e))
 			if r == "":
@@ -248,7 +286,7 @@ class FeedCollection:
 			curhsh = r[:32]
 			serial = r[32:37] # 4 bytes time + 1 byte serial
 			content = r[37:]	
-			msgs[serial] = Message(serial, feedaddress, content, r)
+			msgs[serial] = Message(serial, feedaddress, content)
 
 		return (msgs, None)
 

@@ -108,6 +108,7 @@ class Agent:
 		requeststring += "\n" + req.get_data()
 		return self._write(requeststring)
 
+
 	def close():
 		self._sock.close()
 		self.debugfile.close()	

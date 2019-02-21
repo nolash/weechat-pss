@@ -34,6 +34,8 @@ class TestFeedRebuild(unittest.TestCase):
 
 		self.sock = socket.create_connection(("127.0.0.1", "8500"), 20)
 		self.agent = pss.Agent("127.0.0.1", 8500, self.sock.fileno())
+		#s = socket.fromfd(self.sock.fileno(), socket.AF_INET, socket.SOCK_STREAM)
+		self.sock.settimeout(10.0)
 		self.bzz = pss.Bzz(self.agent)
 	
 		random.seed(pss.now_int()+seedval)
@@ -52,7 +54,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 		seedval += 1
 
-		self.coll = FeedCollection()
+		self.coll = FeedCollection("test")
 
 
 	# create a linked list of three elements, retrieve in order and compare hashes
@@ -60,7 +62,7 @@ class TestFeedRebuild(unittest.TestCase):
 	def test_single_feed(self):
 		global zerohsh
 
-		self.feeds.append(pss.Feed(self.agent, self.accounts[0], "one", True))
+		self.feeds.append(pss.Feed(self.bzz, self.accounts[0], "one", True))
 
 		hshfirst = self.bzz.add(zerohsh + "inky")
 		self.feeds[0].update(hshfirst)
@@ -95,7 +97,7 @@ class TestFeedRebuild(unittest.TestCase):
 	def test_feed_collection_ok(self):
 
 		for i in range(2):
-			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
+			self.feeds.append(pss.Feed(self.bzz, self.accounts[i], "one", True))
 
 		tim = pss.now_int()
 		timebytes = struct.pack(">I", tim)
@@ -112,7 +114,7 @@ class TestFeedRebuild(unittest.TestCase):
 			addr = self.feeds[i].account.get_address()
 			acc = pss.Account()
 			acc.set_address(addr)
-			outfeeds.append(pss.Feed(self.agent, acc, "one", True))
+			outfeeds.append(pss.Feed(self.bzz, acc, "one", True))
 
 			#print "set addr " +  str(i) + " " + addr.encode("hex")
 
@@ -124,8 +126,9 @@ class TestFeedRebuild(unittest.TestCase):
 			# * data (in this case incrementing counter in hex)
 			for j in range(3):
 				hsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
-				lasthsh = hsh.decode("hex")
-				self.feeds[i].update(hsh)
+				hshbytes = hsh.decode("hex")
+				lasthsh = hshbytes
+				self.feeds[i].update(hshbytes)
 
 		# put the read feeds into the collection
 		self.coll.add("foo", outfeeds[0])
@@ -143,10 +146,11 @@ class TestFeedRebuild(unittest.TestCase):
 		# compare the results
 		i = 0
 		for n in ["foo", "bar"]:
-			k = self.coll.feeds[n]['obj'].account.get_address()
+			k = self.coll.feeds[n].obj.account.get_address()
 			#print "getting addr " + k.encode("hex")
 
 			# feed updates are indexed on user address, then time and index
+
 			v = msgs[k]
 			self.assertEqual(v[timebytes + "\x00"].content, "0x" + str(i*3))
 			self.assertEqual(v[timebytes + "\x00"].user, k)
@@ -164,7 +168,7 @@ class TestFeedRebuild(unittest.TestCase):
 
 		# same setup as previous test
 		for i in range(2):
-			self.feeds.append(pss.Feed(self.agent, self.accounts[i], "one", True))
+			self.feeds.append(pss.Feed(self.bzz, self.accounts[i], "one", True))
 
 		tim = pss.now_int()
 		timebytes = struct.pack(">I", tim)
@@ -175,17 +179,17 @@ class TestFeedRebuild(unittest.TestCase):
 			addr = self.feeds[i].account.get_address()
 			acc = pss.Account()
 			acc.set_address(addr)
-			outfeeds.append(pss.Feed(self.agent, acc, "one", True))
+			outfeeds.append(pss.Feed(self.bzz, acc, "one", True))
 			#print "set addr " +  str(i) + " " + addr.encode("hex")
 			for j in range(3):
 				hsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
-				lasthsh = hsh.decode("hex")
-				self.feeds[i].update(hsh)
+				byteshsh = hsh.decode("hex")
+				lasthsh = byteshsh
+				self.feeds[i].update(byteshsh)
 
 		self.coll.add("foo", outfeeds[0])
 		self.coll.add("bar", outfeeds[1])
 		self.coll.gethead(self.bzz)
-
 		
 		msgs = self.coll.get()
 
@@ -212,7 +216,7 @@ class TestFeedRebuild(unittest.TestCase):
 	#@unittest.skip("collection single gap")
 	def test_feed_collection_single_gap(self):
 
-		feed = pss.Feed(self.agent, self.accounts[0], "one", True)
+		feed = pss.Feed(self.bzz, self.accounts[0], "one", True)
 
 		tim = pss.now_int()
 		timebytes = struct.pack(">I", tim)
@@ -228,12 +232,13 @@ class TestFeedRebuild(unittest.TestCase):
 		addr = feed.account.get_address()
 		acc = pss.Account()
 		acc.set_address(addr)
-		outfeed = pss.Feed(self.agent, acc, "one", True)
+		outfeed = pss.Feed(self.bzz, acc, "one", True)
 		#print "set addr " +  str(i) + " " + addr.encode("hex")
 		for j in range(3):
 			hsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex(j))
-			lasthsh = hsh.decode("hex")
-			feed.update(hsh)
+			hshbytes = hsh.decode("hex")
+			lasthsh = hshbytes
+			feed.update(hshbytes)
 	
 		self.coll.add("foo", outfeed)
 
@@ -246,12 +251,12 @@ class TestFeedRebuild(unittest.TestCase):
 		upd = self.coll.retrievals.pop(ridx)
 
 		try:
-			self.assertEqual(self.coll.feeds['foo']['orphans'][headhsh.decode("hex")], bogushsh.decode("hex"))
+			self.assertEqual(self.coll.feeds['foo'].orphans[headhsh], bogushsh.decode("hex"))
 		except Exception as e:
 			self.fail("dict key in test assert fail: " + str(e))
 
 		# check that we still got all the updates that we could	
-		k = self.coll.feeds['foo']['obj'].account.get_address()
+		k = self.coll.feeds['foo'].obj.account.get_address()
 		msgs = upd[k]
 		self.assertEqual(msgs[timebytes + "\x00"].content, "0x0")
 		self.assertEqual(msgs[timebytes + "\x01"].content, "0x1")
@@ -276,7 +281,7 @@ class TestFeedRebuild(unittest.TestCase):
 		p = Participant(nick, pubkey)
 		p.set_public_key(self.accounts[0].get_public_key())
 
-		resulttopic = r.feedcollection_in.feeds[p.nick]['obj'].topic
+		resulttopic = r.feedcollection_in.feeds[p.nick].obj.topic
 
 		# the name will be xor'd to the leftmost bits in the topic byte array
 		# it will still be intact as a substring
@@ -319,7 +324,7 @@ class TestFeedRebuild(unittest.TestCase):
 		return
 
 		# create feed with account from newly (re)created account
-		recreatedownerfeed = pss.Feed(self.agent, acc, unserializedroom['name'], False)
+		recreatedownerfeed = pss.Feed(self.bzz, acc, unserializedroom['name'], False)
 
 		# instantiate room with feed recreated from saved state
 		rr = pss.Room(self.bzz, recreatedownerfeed)
@@ -385,7 +390,7 @@ class TestFeedRebuild(unittest.TestCase):
 		roomname = hex(now_int())
 
 		# room ctrl feed
-		#self.feeds.append(pss.Feed(self.agent, self.accounts[0], roomname, False))
+		#self.feeds.append(pss.Feed(self.bzz, self.accounts[0], roomname, False))
 
 		nicks = ["0"]
 		r = pss.Room(self.bzz, roomname, self.accounts[0])

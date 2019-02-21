@@ -41,12 +41,12 @@ class Room:
 		roomnamelist = list(roomname)
 		roomnamelist[31] = "\x02"
 		roomname = "".join(roomnamelist)
-		self.feed_room = Feed(bzz.agent, acc, roomname, False)
+		self.feed_room = Feed(bzz, acc, roomname, False)
 		self.feed_out = None
 		self.agent = bzz.agent
 		self.bzz = bzz
 		self.participants = {}
-		self.feedcollection_in = FeedCollection()
+		self.feedcollection_in = FeedCollection("name", acc)
 		self.hsh_out = zerohsh.decode("hex")
 		self.hsh_room = ""
 		self.lasttime = 0
@@ -59,7 +59,7 @@ class Room:
 		participant = Participant(nick, srckey)
 		participant.set_from_account(self.feed_room.account)
 		self.add(nick, participant)
-		self.feed_out = Feed(self.agent, self.feed_room.account, self.name, True)
+		self.feed_out = Feed(self.bzz, self.feed_room.account, self.name, True)
 		self.hsh_room = self.save()
 
 		# create initial update so the feed lookup will succeed before first send
@@ -96,14 +96,14 @@ class Room:
 			acc = Account()
 			acc.set_public_key(clean_pubkey(pubkeyhx).decode("hex"))
 			nick = acc.address.encode("hex")
-			p = Participant(nick, "04"+acc.publickeybytes.encode("hex"), acc.address.encode("hex"), "")
+			p = Participant(nick, None) # \todo what should the src be when room
 			self.add(nick, p)
 
 		# outgoing feed user is room publisher
 		if owneraccount == None:
 			owneraccount = self.feed_room.account
 
-		self.feed_out = Feed(self.agent, owneraccount, self.name, True)
+		self.feed_out = Feed(self.bzz, owneraccount, self.name, True)
 		hd = self.feed_out.head()
 		if len(hd) == 64:
 			self.hsh_out = hd.decode("hex")

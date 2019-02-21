@@ -4,7 +4,7 @@ from content import Stream, rpc_parse
 from tools import *
 from error import *
 from message import *
-from bzz import Feed, Bzz
+from bzz import Feed, Bzz, zerohshbytes
 from agent import *
 from room import Room
 from cache import Cache
