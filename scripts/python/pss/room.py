@@ -36,7 +36,6 @@ class Room:
 	def __init__(self, bzz, name, acc):
 		self.name = clean_name(name)
 		topic = new_topic_mask(self.name, "", "\x02")
-		#sys.stderr.write("topic: " + topic.encode("hex") + "\n")
 		self.feed_room = Feed(bzz, acc, topic)
 		self.bzz = bzz
 		self.participants = {}
@@ -54,13 +53,6 @@ class Room:
 		participant = Participant(nick, srckey)
 		participant.set_from_account(self.feed_room.account)
 		self.add(nick, participant)
-
-		# create initial update so the feed lookup will succeed before first send
-		update = self.hsh_room
-		update += "\x00\x00\x00"
-		#hsh = self.bzz.add(update)
-		return self.feedcollection.write(update)
-
 
 
 	def get_name(self):
@@ -106,13 +98,12 @@ class Room:
 			nick = publickey_to_address(pubkey)
 			p = Participant(nick.encode("hex"), None)
 			p.set_public_key(pubkey)
-			self.add(nick, p, False)
-
-		#hd = self.feed_out.head()
-		#if len(hd) == 64:
-		#	self.hsh_out = hd.decode("hex")
-
-
+			try:
+				self.add(nick, p, False)
+			except Exception as e:
+				sys.stderr.write("skipping already added feed: '" + pubkey.encode("hex"))
+				
+		
 
 	# adds a new participant to the room
 	# \todo do we really need nick in addition to participant.nick here
@@ -139,14 +130,7 @@ class Room:
 		if not is_message(msg):
 			raise ValueError("invalid message")
 
-		# record update time
-		#now = now_int()
-	
 		# update will hold the actual update data
-		#update_header = self.hsh_out
-		#update_header += struct.pack(">I", now)
-		# \todo implement serial
-		#update_header += "\x00" 
 		update_header = self.hsh_room 
 		
 		update_body = ""
@@ -168,13 +152,7 @@ class Room:
 			update_body += ciphermsg
 			crsr += len(ciphermsg)
 
-		#sys.stderr.write("group send header: " + update_header.encode("hex"))
-		#sys.stderr.write("group send body: " + update_body.encode("hex"))
-		#hsh = self.bzz.add(update_header + update_body)
 		hsh = self.feedcollection.write(update_header + update_body)
-		#self.feed_out.update(hsh)
-		#self.hsh_out = hsh.decode("hex")
-		#self.lasttime = now
 		return hsh
 
 
@@ -192,7 +170,7 @@ class Room:
 
 	# extracts an update message matching the recipient pubkey
 	# \todo do not use string literals of offset calcs
-	def extract_message(self, body, contact):
+	def extract_message(self, body, account):
 		participantcount = 0
 		payloadoffset = -1
 		payloadlength = 0
@@ -205,37 +183,32 @@ class Room:
 		# we use the position of the participant in the list as the body offset index
 		matchidx = -1
 		idx = 0
-		#if self.hsh_room == body[37:69]:
 		if self.hsh_room == body[:32]:
 			participantcount = len(self.participants)
 			for p in self.participants.values():
-				if p.get_public_key() == contact.get_public_key():
+				if p.get_public_key() == account.get_public_key():
 					matchidx = idx
 				idx += 1
 		# if not we need to retrieve the one that was relevant at the time of update
 		# and match the index against that
 		else:
-			#savedroom = json.loads(self.bzz.get(body[37:69].encode("hex")))
 			savedroom = json.loads(self.bzz.get(body[:32].encode("hex")))
 			participantcount = len(savedroom['participants'])
 			for p in savedroom['participants']:
-				if clean_hex(p) == clean_pubkey(contact.get_public_key()):
+				if clean_hex(p) == clean_pubkey(account.get_public_key()):
 					matchidx = idx
 				idx += 1
 
 		# if no matches then this pubkey is not relevant for the room at that particular update	
 		if matchidx == -1:
-			raise ValueError("pubkey " + contact.get_public_key().encode("hex") + " not valid for this update")
+			raise ValueError("pubkey " + account.get_public_key().encode("hex") + " not valid for this update")
 	
 		# parse the position of the update and extract it
-		#payloadthreshold = 69+(participantcount*3)
-		#payloadoffsetcrsr = 69+(3*matchidx)
 		payloadthreshold = 32+(participantcount*3)
 		payloadoffsetcrsr = 32+(3*matchidx)
 		payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]
 		payloadoffset = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
 		if participantcount-1 == matchidx:
-			#ciphermsg = body[69+(participantcount*3)+payloadoffset:]
 			ciphermsg = body[32+(participantcount*3)+payloadoffset:]
 		else:
 			payloadoffsetcrsr += 3

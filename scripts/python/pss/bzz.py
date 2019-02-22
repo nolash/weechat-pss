@@ -138,7 +138,7 @@ class FeedState:
 	def __init__(self, feed):
 		self.obj = feed
 		self.headhsh = ""
-		self.lasthsh = ""
+		self.lasthsh = zerohsh
 		self.lasttime = 0
 		self.lastseq = 0
 		self.orphans = {}
@@ -147,10 +147,11 @@ class FeedState:
 	def next(self):
 		tim = now_int()
 		seq = 0
-		if now == self.lasttime:
+		if tim == self.lasttime:
 			self.lastseq = (state.lastseq + 1) & 0xff
 		else:
-			self.lasttime = now
+			self.lasttime = tim
+			self.lastseq = 0
 
 	def serial(self):
 		return struct.pack(">I", self.lasttime) + struct.pack("B", self.lastseq)
@@ -200,10 +201,10 @@ class FeedCollection:
 			raise RuntimeError("private key required")
 				
 		# \todo this is wrong - headhsh will always be empty for rooms, but will have last hash for chats. headhsh needs to be renamed to not mistake it for pointing to head position at all times
-		lasthsh = senderstate.headhsh	
-		headhsh = senderstate.obj.bzz.add(senderstate.headhsh + senderstate.serial() + data)	
-		senderstate.headhsh = headhsh.decode("hex")
-		senderstate.lasthsh = lasthsh
+		lasthsh = senderstate.lasthsh
+		senderstate.next()
+		headhsh = senderstate.obj.bzz.add(lasthsh + senderstate.serial() + data)	
+		senderstate.lasthsh = headhsh.decode("hex")
 	
 		return headhsh
 
@@ -212,7 +213,7 @@ class FeedCollection:
 	# adds a feed to the collection
 	def add(self, name, feed):
 		if name in self.feeds:
-			raise Exception("feed already exists")
+			raise Exception("feed already exists with name '" + repr(name) + "'")
 
 		self.feeds[name] = FeedState(feed)
 
@@ -273,13 +274,14 @@ class FeedCollection:
 				#except:
 				#continue
 
-			# sys.stderr.write("headhsh " + feedstate.headhsh.encode("hex") + "\n")
+			#sys.stderr.write("headhsh " + feedstate.headhsh.encode("hex") + "\n")
 
 			if feedstate.headhsh == "":
 				continue
 				
 			# store new messages for feed
-			(feedmsgs[feedstate.obj.account.address], brk) = self._retrieve(bzz, feedstate.obj.account, feedstate.headhsh, feedstate.lasthsh)
+			(msgs, brk) = self._retrieve(bzz, feedstate.obj.account, feedstate.headhsh, feedstate.lasthsh)
+			feedmsgs[feedstate.obj.account.get_address()] = msgs
 			if brk != None:
 				sys.stderr.write("retrieve fail on hash: " + str(brk) + "\n")
 				feedstate.lasthsh = brk
@@ -306,12 +308,13 @@ class FeedCollection:
 			try:
 				r = bzz.get(curhsh.encode("hex"))
 			except Exception as e:
-				#sys.stderr.write("request fail: " + str(e) + "\n")
+				sys.stderr.write("request fail: " + repr(e) + "\n")
 				return (msgs, curhsh)
 				#raise BzzRetrieveError(curhsh, str(e))
 			if r == "":
 				return (msgs, curhsh)
 				#raise BzzRetrieveError(curhsh, "empty HTTP response body")
+
 			curhsh = r[:32]
 			serial = r[32:37] # 4 bytes time + 1 byte serial
 			content = r[37:]	

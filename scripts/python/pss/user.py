@@ -25,7 +25,7 @@ class Account:
 	def set_public_key(self, pubkey, address=None):
 		self._clear_key()
 		self.publickeybytes = pubkey
-		self.address = publickey_to_address(pubkey[1:])
+		self.address = publickey_to_address(pubkey)
 		if address != None and self.address != address:
 			raise RuntimeError("pubkey address and control address do not match: " + repr(self.address).encode("hex") + " != " + repr(address))
 	
@@ -75,6 +75,7 @@ class PssContact(Account):
 	# \todo proper nested json serialize
 	def serialize(self):
 		return	"\"key\":\"" + self.key + "\""
+
 
 
 	# \todo implement	

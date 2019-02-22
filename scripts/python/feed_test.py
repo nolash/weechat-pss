@@ -281,12 +281,9 @@ class TestFeedRebuild(unittest.TestCase):
 		r = pss.Room(self.bzz, "abc", self.accounts[0])
 		r.start("foo")
 		for i in range(1, len(self.accounts)):
-			#addrhx = self.accounts[i].get_address().encode("hex")
 			nicks.append(str(i))
-			#pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
 			p = Participant(nicks[i], pubkey)
 			p.set_public_key(self.accounts[i].get_public_key())	
-			#p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
 			r.add(nicks[i], p)
 	
 		# get the serialized representation of room	
@@ -321,7 +318,6 @@ class TestFeedRebuild(unittest.TestCase):
 					matched = True
 					matchesleft -= 1
 			if not matched:
-				print "key '" + f['obj'].account.publickeybytes.encode("hex") + "'"
 				self.fail("found unknown address " + f['obj'].account.get_address().encode("hex"))
 		if matchesleft != 0:
 			self.fail("have " + str(matchesleft) + " unmatched addresses")
@@ -364,24 +360,18 @@ class TestFeedRebuild(unittest.TestCase):
 
 
 	# test that we can create update and that the saved update contains the expected data
+	# \todo rewrite using feedcollections.write()
 	#@unittest.skip("room send")	
 	def test_feed_room_send(self):
 
 		msg = "heyho"
 		roomname = hex(now_int())
 
-		# room ctrl feed
-		#self.feeds.append(pss.Feed(self.bzz, self.accounts[0], roomname))
-
 		nicks = ["0"]
 		r = pss.Room(self.bzz, roomname, self.accounts[0])
-		#r = pss.Room(self.bzz, self.feeds[0])
 		r.start("0")
 		for i in range(1, len(self.accounts)):
-			#addrhx = self.accounts[i].get_address().encode("hex")
 			nicks.append(str(i))
-			#pubkeyhx = "04"+self.accounts[i].publickeybytes.encode("hex")
-			#p = Participant(nicks[i], pubkeyhx, addrhx, "04"+pubkey)
 			p = Participant(nicks[i], pubkey)
 			p.set_public_key(self.accounts[i].get_public_key())
 			r.add(nicks[i], p)
@@ -397,12 +387,11 @@ class TestFeedRebuild(unittest.TestCase):
 		datathreshold = 69 + (participantcount*3)
 		for i in range(participantcount):
 			lenbytes = body[crsr:crsr+3]
-			print lenbytes.encode("hex")
 			offset = struct.unpack("<I", lenbytes + "\x00")[0]
 			self.assertEqual(offset, i*len(msg))
 			self.assertEqual(body[datathreshold+offset:datathreshold+offset+len(msg)], msg)
 			body = self.bzz.get(hsh)
-			ciphermsg = r.extract_message(body, r.participants[nicks[i]])
+			ciphermsg = r.extract_message(body[37:], r.participants[nicks[i]])
 			self.assertEqual(ciphermsg, msg)
 			crsr += 3
 
@@ -417,7 +406,6 @@ class TestFeedRebuild(unittest.TestCase):
 			colls.append(k)
 		for k in colls:
 			self.coll.remove(k)
-		sys.stderr.write("teardown\n")
 		self.sock.close()
 
 

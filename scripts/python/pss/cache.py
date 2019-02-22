@@ -84,34 +84,21 @@ class Cache:
 		node = self.get_pss(nodename)
 		account = node.get_account()
 		room = Room(self.get_active_bzz(), name, account)
-
+		loaded = False
 		try:
 			roomhsh = room.get_state_hash()
 			room.load(roomhsh, account)
+			loaded = True
+			for k, p in room.participants.iteritems():
+				publickey = p.get_public_key()
+				if publickey != node.get_public_key():
+					self.add_contact(p)
 		except Exception as e:
 			sys.stderr.write("can't find state for room " + name + ": " + repr(e) + "\n")
+			room.start(self.get_nodeself(nodename))
 
-		for k, p in room.participants.iteritems():
-			nick = ""
-			publickey = p.get_public_key()
-			if publickey == node.get_public_key():
-				nick = self.get_nodeself(nodename)
-			else:
-				if not publickey in nicks:
-					acc = Account()
-					try:
-						acc.set_public_key(publickey, p.get_address())
-						nicks[p.nick] = pss.PssContact(p.nick, p.src)
-						remotekeys[publickey] = p.nick
-					except RuntimeError as e:
-						wOut(PSS_BUFPFX_WARN, [], "", "public key does not match address")
-						continue
-
-				nick = nicks[publickey]
-
-		room.start(self.get_nodeself(nodename))
 		self.rooms[name] = room
-		return room
+		return (room, loaded)
 			
 
 

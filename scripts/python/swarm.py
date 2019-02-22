@@ -319,27 +319,25 @@ _tmp_room_dirty = False
 def processFeedOutQueue(pssName, _):
 	global  _tmp_chat_queue_hash, _tmp_room_dirty
 
+	# \todo change to lasthsh
 	for publickey in cache.chats.keys():
 		try:
 			coll = cache.chats[publickey][pssName]
-			if _tmp_chat_queue_hash[pssName] != coll.senderfeed.headhsh:
+			if _tmp_chat_queue_hash[pssName] != coll.senderfeed.lasthsh:
 				sys.stderr.write("update feed " + pssName + ":" + publickey.encode("hex") + "\naddr: " + cache.chats[publickey][pssName].senderfeed.obj.account.get_address().encode("hex") + "\n")
-				coll.senderfeed.obj.update(coll.senderfeed.headhsh)
-				_tmp_chat_queue_hash[pssName] = coll.senderfeed.headhsh
+				coll.senderfeed.obj.update(coll.senderfeed.lasthsh)
+				_tmp_chat_queue_hash[pssName] = coll.senderfeed.lasthsh
 		except:
 			pass
 
 	for roomname in cache.rooms.keys():
 		try:
 			room = cache.get_room(roomname)
-			#if _tmp_room_queue_hash[roomname] != room.feedcollection.senderfeed.headhsh:
 			if _tmp_room_queue_hash[roomname] != room.feedcollection.senderfeed.lasthsh:
 				sys.stderr.write("update room " + roomname + ":" + room.feedcollection.senderfeed.obj.account.get_public_key().encode("hex") + "\naddr: " + room.feedcollection.senderfeed.obj.account.get_address().encode("hex") + "\n")
-				#room.feedcollection.senderfeed.obj.update(room.feedcollection.senderfeed.headhsh)
 				room.feedcollection.senderfeed.obj.update(room.feedcollection.senderfeed.lasthsh)
-				#_tmp_room_queue_hash[roomname] = room.feedcollection.senderfeed.headhsh
 				_tmp_room_queue_hash[roomname] = room.feedcollection.senderfeed.lasthsh
-				#_tmp_room_dirty = True
+				_tmp_room_dirty = True
 		except Exception as e:
 			raise(e)
 	
@@ -363,46 +361,39 @@ def roomRead(pssName, _):
 
 		ctx = EventContext()
 		ctx.reset(PSS_BUFTYPE_ROOM, pssName, r.get_name())
-		#for k, f in r.feedcollection_in.feeds.iteritems():
-		#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "getting room feed " + k + " infeed " + k + " / " + f['obj'].account.address.encode("hex") + " bufname " + bufname)
-		#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "room hash " + r.hsh_room.encode("hex"))
+
 		r.feedcollection.gethead(cache.get_active_bzz())
 		msgs = r.feedcollection.get()
-		sys.stderr.write("getting feed for room: " + repr(r) + "\n" + "msglen" + len(msgs))
+		sys.stderr.write("getting feed for room: " + repr(r) + "\n" + "msglen" + repr(len(msgs)))
 
-		#buf = weechat.buffer_search("python", buf_generate_name(pssName, "room", k))
 		for m in msgs:
-			#wOut(PSS_BUFPFX_DEBUG, [], "!!!", "getting nick from key " + m.key.encode("hex"))
-			#for k in nicks.keys():
-			#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "have key " + k)
-
-			#wOut(PSS_BUFPFX_DEBUG, [], "!!!", "parsing content " + m.content.encode("hex"))
 
 			# use set nick if message sender is self
 			# \todo eliminate, move to instant feedback on send for self
-			nickuser = None
-			#if psses[pssName].eth.publickeybytes == m.key:
-			if cache.get_pss().get_public_key() == m.key:
-				nickuser = cache.get_nodeself(pssName)
+			contact = None
+			nick = ""
+			ps = cache.get_pss(ctx.get_node())
+			if ps.get_public_key() == m.key:
+				contact = ps.account
+				nick = cache.get_nodeself(ctx.get_node())
 			# \todo use binary key repr in nicks dict
 			else:
 				contact = cache.get_contact_by_public_key(m.key)
-				nickuser = contact.get_nick()
+				nick = contact.get_nick()
 
 			msg = r.extract_message(m.content, contact)
 
 			buf = weechat.buffer_search("python", ctx.to_buffer_name()) #bufname)
-			#bufname = buf_get(pssName, "room", r.name, True)
 			wOut(
 				PSS_BUFPFX_DEBUG,
 				[],
 				"!!!",
-				"writing to room buf " + bufname + " for room " + r.get_name()
+				"writing to room buf " + ctx.to_buffer_name() + " for room " + r.get_name()
 			)
 			wOut(
 				PSS_BUFPFX_IN,
 				[buf],
-				contact.get_nick(),
+				nick,
 				msg
 			)
 
@@ -509,6 +500,7 @@ def msgPipeRead(pssName, fd):
 # creates if it doesn't exists
 # \todo rename bufname to more precise term
 def buf_get(ctx, known):
+	global _tmp_room_queue_hash, _tmp_room_dirty
 
 	haveBzz = False
 	# \todo integrity check of input data
@@ -575,7 +567,10 @@ def buf_get(ctx, known):
 			)
 
 			# create new room
-			room = cache.add_room(ctx.get_name(), ctx.get_node())
+			(room, loaded) = cache.add_room(ctx.get_name(), ctx.get_node())
+			if loaded:
+				_tmp_room_queue_hash[ctx.get_name()] = room.feedcollection.senderfeed.lasthsh
+				_tmp_room_dirty = True
 
 			wOut(
 				PSS_BUFPFX_DEBUG,
@@ -619,8 +614,8 @@ def buf_in(pssName, buf, inputdata):
 		room = cache.get_room(ctx.get_name())
 		for f in room.feedcollection.feeds.keys():
 			sys.stderr.write("f is " + repr(f) + "\n")	
-		#hsh = room.send(inputdata)
-		#sys.stderr.write("room update: " + hsh + "\n")
+		hsh = room.send(inputdata)
+		sys.stderr.write("room update: " + hsh + "\n")
 		
 
 	else:
@@ -660,7 +655,7 @@ def buf_close(pssName, buf):
 	return weechat.WEECHAT_RC_OK
 
 
-
+# \todo broken
 def pss_invite(pssName, nick, room):
 	#bufname = buf_generate_name(pssName, "room", nick)
 	#feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_address(remotekeys[nick]))
@@ -671,8 +666,8 @@ def pss_invite(pssName, nick, room):
 
 
 def buf_room_add(buf, nick, groupname=""):
-	#if weechat.nicklist_search_group(buf, "", "members") == "":
-	#	weechat.nicklist_add_group(buf, "", "members", "weechat.color.nicklist_group", 1)
+	if weechat.nicklist_search_group(buf, "", "members") == "":
+		weechat.nicklist_add_group(buf, "", "members", "weechat.color.nicklist_group", 1)
 	weechat.nicklist_add_nick(buf, groupname, nick, "bar_fg", "", "bar_fg", 1)
 
 
@@ -984,7 +979,7 @@ def pss_handle(pssName, buf, args):
 		ctx.reset(PSS_BUFTYPE_ROOM, ctx.get_node(), room)
 
 		if not ctx.get_name() in _tmp_room_queue_hash:
-			_tmp_room_queue_hash[ctx.get_name()] = ""		
+			_tmp_room_queue_hash[ctx.get_name()] = pss.zerohsh
 
 		# start buffer for room
 		buf_get(ctx, True)
