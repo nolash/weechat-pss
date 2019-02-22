@@ -347,12 +347,12 @@ def processFeedOutQueue(pssName, _):
 
 # \todo conceal feed queries in room obj
 def roomRead(pssName, _):
-	global _tmp_room_dirty
-
-	if not _tmp_room_dirty:
-		return weechat.WEECHAT_RC_OK
-
-	_tmp_room_dirty = False
+#	global _tmp_room_dirty
+#
+#	if not _tmp_room_dirty:
+#		return weechat.WEECHAT_RC_OK
+#
+#	_tmp_room_dirty = False
 
 	outbufs = []
 	for r in cache.rooms.values():
