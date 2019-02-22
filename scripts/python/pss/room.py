@@ -192,10 +192,12 @@ class Room:
 		# if not we need to retrieve the one that was relevant at the time of update
 		# and match the index against that
 		else:
-			savedroom = json.loads(self.bzz.get(body[:32].encode("hex")))
+			roomhshhx = self.bzz.get(body[:32].encode("hex"))
+			savedroom = json.loads(roomhshhx)
 			participantcount = len(savedroom['participants'])
 			for p in savedroom['participants']:
-				if clean_hex(p) == clean_pubkey(account.get_public_key()):
+				sys.stderr.write("participant: " + repr(p) + "\n")
+				if clean_hex(p) == clean_pubkey(account.get_public_key().encode("hex")):
 					matchidx = idx
 				idx += 1
 

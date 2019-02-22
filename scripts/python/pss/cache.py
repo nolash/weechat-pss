@@ -4,7 +4,7 @@ import copy
 
 from tools import clean_pubkey, clean_overlay, Queue
 from user import PssContact
-from bzz import Feed, FeedCollection
+from bzz import Feed, FeedCollection, chattopic, roomtopic
 from room import Room
 
 CACHE_CONTACT_STOREFILE = ".pss-contacts"

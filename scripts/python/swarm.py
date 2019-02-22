@@ -363,6 +363,7 @@ def roomRead(pssName, _):
 		ctx.reset(PSS_BUFTYPE_ROOM, pssName, r.get_name())
 
 		r.feedcollection.gethead(cache.get_active_bzz())
+
 		msgs = r.feedcollection.get()
 		sys.stderr.write("getting feed for room: " + repr(r) + "\n" + "msglen" + repr(len(msgs)))
 
@@ -659,8 +660,9 @@ def buf_close(pssName, buf):
 def pss_invite(pssName, nick, room):
 	#bufname = buf_generate_name(pssName, "room", nick)
 	#feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_address(remotekeys[nick]))
-	nickkey = remotekeys[nick]
-	contact = nicks[nickkey]
+	contact = cache.get_contact_by_nick(nick)
+	#nickkey = remotekeys[nick]
+	#contact = nicks[nickkey]
 	room.add(nick, contact)
 	#wOut(PSS_BUFPFX_DEBUG, [], "", "added room feed with topic " + feeds[bufname].topic.encode("hex"))
 
@@ -1025,17 +1027,17 @@ def pss_handle(pssName, buf, args):
 		try:
 			#roombufname = buf_generate_name(pssName, "room", roomname)
 			roombufname = ctx.to_buffer_name()
-			room = cache.get_room(roombufname)
-			#pss_invite(pssName, nick, room)
-			#wOut(PSS_BUFPFX_DEBUG, [], "!!!", "added " + nick + " to " + roomname)
+			room = cache.get_room(ctx.get_name()) #roombufname)
+			pss_invite(pssName, nick, room)
 			wOut(
-				PSS_BUFPFX_DEBUG, [],
+				PSS_BUFPFX_DEBUG,
+				[],
 				"!!!",
-				"noop invite " + nick + " to " + ctx.get_name()
+				"added " + nick + " to " + ctx.get_name()
 			)
 			# if neither the previous fail, add the nick to the buffer
-			#roombuf = weechat.buffer_search("python", roombufname)
-			#buf_room_add(roombuf, nick)
+			roombuf = weechat.buffer_search("python", roombufname)
+			buf_room_add(roombuf, nick)
 
 		except KeyError as e: # keyerror catches both try statements
 			wOut(

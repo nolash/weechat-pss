@@ -269,10 +269,10 @@ class FeedCollection:
 			# we then need to get the new head hash
 			# the feed is currently pointing to
 			if feedstate.headhsh == "":
-				#try:
-				feedstate.headhsh = feedstate.obj.head()
-				#except:
-				#continue
+				try:
+					feedstate.headhsh = feedstate.obj.head()
+				except:
+					continue
 
 			#sys.stderr.write("headhsh " + feedstate.headhsh.encode("hex") + "\n")
 
@@ -394,4 +394,7 @@ def is_valid_account(user):
 # check if input is a valid feed digest
 def is_digest(digest):
 	return len(digest) == 32
+
+chattopic = new_topic_mask(zerohsh, "", "\x01")
+roomtopic = new_topic_mask(zerohsh, "", "\x02")
 
