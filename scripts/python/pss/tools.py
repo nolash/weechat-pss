@@ -1,6 +1,8 @@
 import re
 import time
 
+# \todo make clean functions for non-hex data
+
 # \todo make unicode aware
 regexValidNick = re.compile("^[\w\d_]$")
 
@@ -19,14 +21,27 @@ def clean_privkey(key):
 
 
 
-# check validity of address 
+# check validity of ethereum address 
 # length and valid hex check
 # \todo add unit test 
 def clean_address(addr):
 	addrhex = clean_hex(addr)
 		
-	if len(addrhex) > 64:
+	if len(addrhex) > 40:
 		raise ValueError("address too long")
+	
+	return addrhex
+
+
+
+# check validity of swarm overlay address
+# length and valid hex check
+# \todo add unit test 
+def clean_overlay(addr):
+	addrhex = clean_hex(addr)
+		
+	if len(addrhex) > 64:
+		raise ValueError("overlay address too long")
 	
 	return addrhex
 
@@ -154,3 +169,6 @@ class Queue:
 		return nxt
 
 
+
+def rpchex(b):
+	return "0x" + b.encode("hex")	

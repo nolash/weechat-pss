@@ -4,48 +4,16 @@ from Crypto.Hash import keccak
 
 from tools import clean_pubkey, clean_address, clean_nick
 
-# object representing a single recipient
-# \todo move to separate package
-class PssContact:
-	nick = ""
-	key = ""
-	address = ""
-	src = ""
-
-	def __init__(self, nick, key, addr, src):
-
-		validnick = ""
-		validkey = ""
-		validaddr = ""
-
-		validnick = clean_nick(nick)
-		validkey = clean_pubkey(key)
-		if len(addr) > 0:
-			validaddr = clean_address(addr)
-
-		self.nick = validnick
-		self.key = "0x" + validkey
-		self.address = "0x" + validaddr
-		self.src = src
-
-
-	# \todo proper nested json serialize
-	def serialize(self):
-		return	"\"key\":\"" + self.key + "\""
-
-
-	# \todo implement	
-	def encrypt_to(self, s):
-		return s
-
 
 # holds ethereum account
 # \todo move out of pss to enable sync comms even though crypto modules doesn't exist
-# \todo simplify representation of public key with 04 byte prefix
 class Account:
-	privatekey = None
-	publickeybytes = "" 
-	address = None
+
+
+	def __init__(self):
+		self.privatekey = None
+		self.publickeybytes = "" 
+		self.address = None
 
 
 	# \todo check address
@@ -54,17 +22,19 @@ class Account:
 		self.address = address
 
 
-	def set_public_key(self, pubkey):
+	def set_public_key(self, pubkey, address=None):
 		self._clear_key()
-		self.publickeybytes = pubkey[1:]
-		self.address = publickey_to_account(pubkey[1:])
+		self.publickeybytes = pubkey
+		self.address = publickey_to_address(pubkey)
+		if address != None and self.address != address:
+			raise RuntimeError("pubkey address and control address do not match: " + repr(self.address).encode("hex") + " != " + repr(address))
 	
 	
 	def set_key(self, keybytes):
 		self._clear_key()
 		self.privatekey = secp256k1.PrivateKey(keybytes)
-		self.publickeybytes = self.privatekey.pubkey.serialize(False)[1:]
-		self.address = publickey_to_account(self.publickeybytes)
+		self.publickeybytes = self.privatekey.pubkey.serialize(False)
+		self.address = publickey_to_address(self.publickeybytes)
 
 
 	def _clear_key(self):
@@ -73,14 +43,75 @@ class Account:
 		self.address = None
 
 
-
 	def is_owner(self):
 		return self.privatekey != None
 			
 
+	def get_public_key(self):
+		return self.publickeybytes
 
-def publickey_to_account(keybytes):
+
+	def get_address(self):
+		return self.address
+
+
+
+# object representing a single recipient
+# \todo extend account
+class PssContact(Account):
+
+
+	# key is the contact's public key in HEX
+	# addr is the account of the contact in HEX
+	# src is the public key of the pss node used when adding the contact
+	def __init__(self, nick, src):
+		Account.__init__(self)
+
+		self.nick = nick #clean_nick(nick)
+		self.src = src
+		self.overlay = ""
+
+
+	# \todo proper nested json serialize
+	def serialize(self):
+		return	"\"key\":\"" + self.key + "\""
+
+
+
+	# \todo implement	
+	def encrypt_to(self, s):
+		return s
+
+
+	
+	def set_from_account(self, account):
+		self.publickeybytes = account.get_public_key()
+		self.address = account.get_address()
+
+
+
+	def set_overlay(self, overlay):
+		self.overlay = overlay
+
+
+
+	def get_src(self):
+		return self.src
+
+
+
+	def get_overlay(self):
+		return self.overlay
+
+
+
+	def get_nick(self):
+		return self.nick
+
+
+
+def publickey_to_address(keybytes):
 	h = keccak.new(digest_bits=256)
-	h.update(keybytes)
+	h.update(keybytes[1:])
 	return h.digest()[12:]
 	

@@ -1,6 +1,6 @@
 import websocket
 
-from tools import clean_address, clean_pubkey
+from tools import clean_pubkey, clean_overlay, rpchex
 from error import *
 from content import rpc_call, rpc_parse
 from user import PssContact, Account
@@ -10,25 +10,9 @@ topic = "0xdeadbee2"
 
 
 # object encapsulating pss node connection
-# \todo move to separate package
 # \todo remove direct websocket comms and get node key and addr from background process
 class Pss:
-	host = "127.0.0.1"
-	port = "8546"
-	connected = False
-	inputConnected = False
-	base = ""
-	key = ""
-	eth = None
-	err = 0
-	errstr = ""
-	contacts = None
-	seq = 0
-	ws = None
-	name = ""
-	run = False
-	sub = ""
-
+	
 
 	def __init__(self, name, host="127.0.0.1", port="8546"):
 		""" set the pss instance name and create the fifo for catching msgs from subprocess
@@ -39,30 +23,39 @@ class Pss:
 		if port != "":
 			self.port = port
 
-		self.contacts = {}
+		self.connected = False
+		self.inputConnected = False
+		self.account = Account()
+		self.overlay = ""
+		self.err = 0
+		self.errstr = ""
+		self.seq = 0
+		self.ws = None
+		self.run = False
+		self.sub = ""
 
 
-	
-	def have_account(self):
-		return self.eth != None
 
+	def can_write(self):
+		return self.account.is_owner()
 
 
 	def set_account_write(self, privkeybytes):
-		eth = Account()
-		eth.set_key(privkeybytes)
+		acc = Account()
+		acc.set_key(privkeybytes)
 		# node pubkey is prefixed with 04
 		# \todo verify that the number can't be other than 4
-		if  eth.publickeybytes.encode("hex") != self.key[2:]:
-			raise ValueError("private key does not match pss node public key " + self.key + " " + eth.publickeybytes.encode("hex"))
-			return
+		currentpubkey = self.account.get_public_key()
+		if len(currentpubkey) > 0 and acc.get_public_key() != self.account.get_public_key():
+			raise ValueError("private key does not match pss node public key " + rpchex(acc.get_public_key()) + " != " + rpchex(self.account.get_public_key()))
 
-		self.eth = eth
+		self.account.set_key(privkeybytes)
 
 
 
 	def get_account(self):
-		return self.eth
+		return self.account
+
 
 
 	# get underlying file descriptor of websocket
@@ -76,7 +69,7 @@ class Pss:
 	# open sockets and get initial data
 	def connect(self):
 
-		base = ""
+		overlay = ""
 		key = ""
 
 		self.ws = None
@@ -94,7 +87,7 @@ class Pss:
 
 		# verify address
 		try:
-			base = clean_address(resp['result'])
+			overlay = clean_overlay(resp['result']).decode("hex")
 		except ValueError as e:
 			self.err = PSS_EREMOTEINVAL
 			self.errstr = "received bogus base address " + resp['result']
@@ -107,7 +100,7 @@ class Pss:
 	
 		# verify key
 		try: 
-			key = clean_pubkey(resp['result'])
+			key = clean_pubkey(resp['result']).decode("hex")
 		except ValueError as e:
 			self.err = PSS_EREMOTEINVAL
 			self.errstr = "received bogus pubkey " + resp['result']
@@ -121,72 +114,63 @@ class Pss:
 
 		# now we're in the clear
 		# finish setting up object properties
-		self.key = key
-		self.base = base
+		self.account.set_public_key(key)
+		self.overlay = overlay
 		self.connected = True
 		self.run = True
 
 		return True
 
 
+	def get_name(self):
+		return self.name
+
+
+	def get_host(self):
+		return self.host	
+
+	
+	def get_port(self):
+		return self.port
+
+	
+	def get_public_key(self):
+		return self.account.publickeybytes
+
+
+
+	def get_overlay(self):
+		return self.overlay
+
 	
 
 	# adds recipient to node
-	def add(self, nick, pubkey, address):
-
-		# holds the newly created contact object
-		contact = None
-
-		# brief address and key for display in buffer
-		addrLabel = ""
-		keyLabel = ""
+	def add(self, contact):
 
 		# no use if we're not connected
 		# \todo use exception instead
 		if self.ws == None or not self.connected:
-			self.err = PSS_ESTATE
-			self.errstr = "pss " + self.name + " not connected"
-			return False
-
-		# create the contact object	
-		try:
-			contact = PssContact(nick, pubkey, address, self.key)
-		except ValueError as e:
-			self.err = PSS_ELOCALINVAL
-			self.errstr = "invalid input for add: " + repr(e)
-			return False
+			raise IOError("not connected")
 
 		# add to node and object cache
-		self.ws.send(rpc_call(self.seq, "setPeerPublicKey", [contact.key, topic, contact.address]))
+		pubkeyhx = rpchex(contact.get_public_key())
+		overlayhx = rpchex(contact.get_overlay())
+		self.ws.send(rpc_call(self.seq, "setPeerPublicKey", [pubkeyhx, topic, overlayhx]))
 		#self.ws.recv()
 		self.seq += 1
-		self.contacts[nick] = contact
-
-		return True
-
 
 
 	# send message to registered recipient
-	def send(self, nick, msg):
-
-		# recipient must already be added
-		if not nick in self.contacts:
-			self.err = PSS_ELOCALINVAL
-			self.errstr = "no such nick " + nick
-			return False
+	def send(self, contact, msg):
 
 		# check if we have connection
 		# \todo store outgoing messages until online on temporary network loss
 		if not self.connected:
-			self.err = PSS_ESOCK
-			self.errstr = "not connected"
-			return False
+			raise IOError("not connected")
 
 		# send the message
-		self.ws.send(rpc_call(self.seq, "sendAsym", [self.contacts[nick].key, topic, "0x" + msg.encode("hex")]))
+		self.ws.send(rpc_call(self.seq, "sendAsym", [rpchex(contact.get_public_key()), topic, "0x" + msg.encode("hex")]))
 		self.seq += 1
-
-		return True
 
 
 	# retrieve last error from object
@@ -206,17 +190,3 @@ class Pss:
 		self.connected = False
 		self.run = False
 		self.ws.close()
-
-
-
-	# retrieve a registered contact	
-	def get_contact(self, nick):
-		try:
-			return self.contacts[nick]
-		except:	
-			return None
-
-
-	# check if nick is registered in node
-	def have_nick(self, nick):
-		return nick in self.contacts
