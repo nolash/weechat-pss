@@ -61,6 +61,12 @@ class Room:
 		#hsh = self.bzz.add(update)
 		return self.feedcollection.write(update)
 
+
+
+	def get_name(self):
+		return self.name
+
+
 	
 	def can_write(self):
 		return self.feed_room.account.is_owner()
@@ -98,7 +104,7 @@ class Room:
 		for pubkeyhx in r['participants']:
 			pubkey = clean_pubkey(pubkeyhx).decode("hex")
 			nick = publickey_to_address(pubkey)
-			p = Participant(nick, None)
+			p = Participant(nick.encode("hex"), None)
 			p.set_public_key(pubkey)
 			self.add(nick, p, False)
 
@@ -199,7 +205,8 @@ class Room:
 		# we use the position of the participant in the list as the body offset index
 		matchidx = -1
 		idx = 0
-		if self.hsh_room == body[37:69]:
+		#if self.hsh_room == body[37:69]:
+		if self.hsh_room == body[:32]:
 			participantcount = len(self.participants)
 			for p in self.participants.values():
 				if p.get_public_key() == contact.get_public_key():
@@ -208,7 +215,8 @@ class Room:
 		# if not we need to retrieve the one that was relevant at the time of update
 		# and match the index against that
 		else:
-			savedroom = json.loads(self.bzz.get(body[37:69].encode("hex")))
+			#savedroom = json.loads(self.bzz.get(body[37:69].encode("hex")))
+			savedroom = json.loads(self.bzz.get(body[:32].encode("hex")))
 			participantcount = len(savedroom['participants'])
 			for p in savedroom['participants']:
 				if clean_hex(p) == clean_pubkey(contact.get_public_key()):
@@ -217,15 +225,18 @@ class Room:
 
 		# if no matches then this pubkey is not relevant for the room at that particular update	
 		if matchidx == -1:
-			raise ValueError("pubkey " + contact.pubkey + " not valid for this update")
+			raise ValueError("pubkey " + contact.get_public_key().encode("hex") + " not valid for this update")
 	
 		# parse the position of the update and extract it
-		payloadthreshold = 69+(participantcount*3)
-		payloadoffsetcrsr = 69+(3*matchidx)
+		#payloadthreshold = 69+(participantcount*3)
+		#payloadoffsetcrsr = 69+(3*matchidx)
+		payloadthreshold = 32+(participantcount*3)
+		payloadoffsetcrsr = 32+(3*matchidx)
 		payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]
 		payloadoffset = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
 		if participantcount-1 == matchidx:
-			ciphermsg = body[69+(participantcount*3)+payloadoffset:]
+			#ciphermsg = body[69+(participantcount*3)+payloadoffset:]
+			ciphermsg = body[32+(participantcount*3)+payloadoffset:]
 		else:
 			payloadoffsetcrsr += 3
 			payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]

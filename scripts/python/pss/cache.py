@@ -120,6 +120,11 @@ class Cache:
 
 
 
+	def get_room_count(self):
+		return len(self.rooms.keys())
+
+
+
 	def set_nodeself(self, nodename, nick):
 		self.selfs[nodename] = nick
 	

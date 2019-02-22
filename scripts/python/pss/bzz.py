@@ -198,7 +198,8 @@ class FeedCollection:
 
 		if not senderstate.obj.account.is_owner():
 			raise RuntimeError("private key required")
-					
+				
+		# \todo this is wrong - headhsh will always be empty for rooms, but will have last hash for chats. headhsh needs to be renamed to not mistake it for pointing to head position at all times
 		lasthsh = senderstate.headhsh	
 		headhsh = senderstate.obj.bzz.add(senderstate.headhsh + senderstate.serial() + data)	
 		senderstate.headhsh = headhsh.decode("hex")
@@ -259,8 +260,9 @@ class FeedCollection:
 		# hash map eth address => hash map serial to Message 
 		feedmsgs = {}
 
-		for feedstate in self.feeds.values():
+		for feedname in self.feeds.keys(): # feedstate in self.feeds.values():
 
+			feedstate = self.feeds[feedname]
 			# headhsh will be empty string 
 			# between completed retrieves
 			# we then need to get the new head hash

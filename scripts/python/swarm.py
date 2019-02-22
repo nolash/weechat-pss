@@ -311,12 +311,13 @@ def pss_connect(ctxid, status, tlsrc, sock, error, ip):
 
 _tmp_chat_queue_hash = {}
 _tmp_room_queue_hash = {}
+_tmp_room_dirty = False
 
 # handles all outgoing feed sends
 # \todo run in separate process with ipc
 # \todo provide and use proper accessors for chats and rooms
 def processFeedOutQueue(pssName, _):
-	global  _tmp_chat_queue_hash 
+	global  _tmp_chat_queue_hash, _tmp_room_dirty
 
 	for publickey in cache.chats.keys():
 		try:
@@ -331,28 +332,43 @@ def processFeedOutQueue(pssName, _):
 	for roomname in cache.rooms.keys():
 		try:
 			room = cache.get_room(roomname)
-			if _tmp_room_queue_hash[roomname] != room.feedcollection.senderfeed.headhsh:
+			#if _tmp_room_queue_hash[roomname] != room.feedcollection.senderfeed.headhsh:
+			if _tmp_room_queue_hash[roomname] != room.feedcollection.senderfeed.lasthsh:
 				sys.stderr.write("update room " + roomname + ":" + room.feedcollection.senderfeed.obj.account.get_public_key().encode("hex") + "\naddr: " + room.feedcollection.senderfeed.obj.account.get_address().encode("hex") + "\n")
-				room.feedcollection.senderfeed.obj.update(room.feedcollection.senderfeed.headhsh)
-				_tmp_room_queue_hash[roomname] = room.feedcollection.senderfeed.headhsh
-		except:
-			pass
+				#room.feedcollection.senderfeed.obj.update(room.feedcollection.senderfeed.headhsh)
+				room.feedcollection.senderfeed.obj.update(room.feedcollection.senderfeed.lasthsh)
+				#_tmp_room_queue_hash[roomname] = room.feedcollection.senderfeed.headhsh
+				_tmp_room_queue_hash[roomname] = room.feedcollection.senderfeed.lasthsh
+				#_tmp_room_dirty = True
+		except Exception as e:
+			raise(e)
 	
 	return weechat.WEECHAT_RC_OK
 
 
 
 # \todo conceal feed queries in room obj
-# \todo broken
 def roomRead(pssName, _):
+	global _tmp_room_dirty
+
+	if not _tmp_room_dirty:
+		return weechat.WEECHAT_RC_OK
+
+	_tmp_room_dirty = False
+
 	outbufs = []
-	for bufname, r in rooms.iteritems():
+	for r in cache.rooms.values():
+
 		msgs = []
+
+		ctx = EventContext()
+		ctx.reset(PSS_BUFTYPE_ROOM, pssName, r.get_name())
 		#for k, f in r.feedcollection_in.feeds.iteritems():
 		#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "getting room feed " + k + " infeed " + k + " / " + f['obj'].account.address.encode("hex") + " bufname " + bufname)
 		#	wOut(PSS_BUFPFX_DEBUG, [], "!!!", "room hash " + r.hsh_room.encode("hex"))
-		r.feedcollection_in.gethead(r.bzz)
-		msgs = r.feedcollection_in.get()
+		r.feedcollection.gethead(cache.get_active_bzz())
+		msgs = r.feedcollection.get()
+		sys.stderr.write("getting feed for room: " + repr(r) + "\n" + "msglen" + len(msgs))
 
 		#buf = weechat.buffer_search("python", buf_generate_name(pssName, "room", k))
 		for m in msgs:
@@ -365,19 +381,30 @@ def roomRead(pssName, _):
 			# use set nick if message sender is self
 			# \todo eliminate, move to instant feedback on send for self
 			nickuser = None
-			if psses[pssName].eth.publickeybytes == m.key:
-				nickuser = selfs[pssName]
+			#if psses[pssName].eth.publickeybytes == m.key:
+			if cache.get_pss().get_public_key() == m.key:
+				nickuser = cache.get_nodeself(pssName)
 			# \todo use binary key repr in nicks dict
 			else:
-				nickdictkey = m.key.encode("hex")
-				nickuser = nicks[nickdictkey]
+				contact = cache.get_contact_by_public_key(m.key)
+				nickuser = contact.get_nick()
 
-			msg = r.extract_message(m.src, nickuser)
+			msg = r.extract_message(m.content, contact)
 
-			buf = weechat.buffer_search("python", bufname)
+			buf = weechat.buffer_search("python", ctx.to_buffer_name()) #bufname)
 			#bufname = buf_get(pssName, "room", r.name, True)
-			wOut(PSS_BUFPFX_DEBUG, [], "!!!", "writing to room buf " + bufname + " for room " + r.name)
-			wOut(PSS_BUFPFX_IN, [buf], nickuser.nick, msg)
+			wOut(
+				PSS_BUFPFX_DEBUG,
+				[],
+				"!!!",
+				"writing to room buf " + bufname + " for room " + r.get_name()
+			)
+			wOut(
+				PSS_BUFPFX_IN,
+				[buf],
+				contact.get_nick(),
+				msg
+			)
 
 
 	return weechat.WEECHAT_RC_OK	
@@ -538,8 +565,8 @@ def buf_get(ctx, known):
 			plugin = weechat.buffer_get_pointer(buf, "plugin")
 			bufs[bufname] = buf
 			
-#			if len(rooms) == 0:
-#				hookTimers.append(weechat.hook_timer(PSS_ROOM_PERIOD, 0, 0, "roomRead", psses[pssName].name))
+			if cache.get_room_count() == 0:
+				hookTimers.append(weechat.hook_timer(PSS_ROOM_PERIOD, 0, 0, "roomRead", ctx.get_node()))
 			wOut(
 				PSS_BUFPFX_DEBUG,
 				[],
@@ -590,8 +617,10 @@ def buf_in(pssName, buf, inputdata):
 
 	if ctx.is_room():
 		room = cache.get_room(ctx.get_name())
-		hsh = room.send(inputdata)
-		sys.stderr.write("room update: " + hsh + "\n")
+		for f in room.feedcollection.feeds.keys():
+			sys.stderr.write("f is " + repr(f) + "\n")	
+		#hsh = room.send(inputdata)
+		#sys.stderr.write("room update: " + hsh + "\n")
 		
 
 	else:
@@ -616,6 +645,7 @@ def buf_in(pssName, buf, inputdata):
 
 		peercontact = cache.get_contact_by_nick(ctx.get_name())
 		feedcoll = cache.chats[peercontact.get_public_key()][ctx.get_node()]
+		# \todo should not do direct write, should go via msg object
 		hsh = feedcoll.write(inputdata)
 		sys.stderr.write("wrote update to swarm, got " + hsh + "\n")
 
