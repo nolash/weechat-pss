@@ -11,7 +11,7 @@ Please note that this project is meant to be something of a reference implementa
 
 ## Version
 
-0.3.2 alpha
+0.4.0 alpha
 
 
 ## Development
@@ -21,14 +21,8 @@ If you want to help debugging this project I would greatly appreciate it. **You 
 Please let me know if you do:
 
 * email: dev@holbrook.no
-* XMPP: lash@jabber.in-berlin.de
+* XMPP: lash@pimux.de
 * gitter: @nolash
-* status: lash.stateofus.eth 
-
-My PSS node is:
-
-* publickey: 0x04578fcba26eb70ff2cef4a1ee6de5bbcac169adc6a067be6dab2e1781234d8ba9e97782ee2e460589e2925762c602d97d463549d4314e104a1d67d283e103c427
-* addr: 0xacae369e3fcef13ec171298c5d9a4ea3631cb4f082d9a72f8f95f27d54b4f145
 
 
 #### Feedback
@@ -227,6 +221,12 @@ GPLv3
 
 ## Changelog
 
+* v0.4.0:
+    - Improve separation between plugin and library code
+    - Introduce cache object to handle in-memory state of session
+    - Introduce context object in plugin to facilitate per-command state
+    - Audit consistent binary representations of public key
+    - Fix faulty ethereum address generation
 * v0.3.2:
     - Load room state from swarm if already exists
 * v0.3.1:
