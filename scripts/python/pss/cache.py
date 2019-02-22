@@ -99,7 +99,13 @@ class Cache:
 
 		self.rooms[name] = room
 		return (room, loaded)
-			
+		
+
+
+	# check if we have an initial update for the room
+	def have_room_initial(self, name):
+		return self.rooms[name].feedcollection.senderfeed.obj.head()
+
 
 
 	def get_room(self, name):

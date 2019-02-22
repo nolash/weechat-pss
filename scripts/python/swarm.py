@@ -180,13 +180,13 @@ class EventContext:
 		self.bufname = weechat.buffer_get_string(buf, "name")
 
 		flds = self.bufname.split(".")
-		for f in flds:
-			wOut(
-				PSS_BUFPFX_DEBUG,
-				[],
-				"",
-				"bufname parse fld: " + str(f)
-			)
+#		for f in flds:
+#			wOut(
+#				PSS_BUFPFX_DEBUG,
+#				[],
+#				"",
+#				"bufname parse fld: " + str(f)
+#			)
 		
 		# all pss context nodes have pss as the first field
 		if flds[0] != "pss":
@@ -311,7 +311,7 @@ def pss_connect(ctxid, status, tlsrc, sock, error, ip):
 
 _tmp_chat_queue_hash = {}
 _tmp_room_queue_hash = {}
-_tmp_room_dirty = False
+_tmp_room_initial = {}
 
 # handles all outgoing feed sends
 # \todo run in separate process with ipc
@@ -337,7 +337,8 @@ def processFeedOutQueue(pssName, _):
 				sys.stderr.write("update room " + roomname + ":" + room.feedcollection.senderfeed.obj.account.get_public_key().encode("hex") + "\naddr: " + room.feedcollection.senderfeed.obj.account.get_address().encode("hex") + "\n")
 				room.feedcollection.senderfeed.obj.update(room.feedcollection.senderfeed.lasthsh)
 				_tmp_room_queue_hash[roomname] = room.feedcollection.senderfeed.lasthsh
-				_tmp_room_dirty = True
+				_tmp_room_initial[roomname] = True
+
 		except Exception as e:
 			raise(e)
 	
@@ -347,15 +348,12 @@ def processFeedOutQueue(pssName, _):
 
 # \todo conceal feed queries in room obj
 def roomRead(pssName, _):
-#	global _tmp_room_dirty
-#
-#	if not _tmp_room_dirty:
-#		return weechat.WEECHAT_RC_OK
-#
-#	_tmp_room_dirty = False
+	global _tmp_room_initial
 
-	outbufs = []
 	for r in cache.rooms.values():
+
+		if not _tmp_room_initial[r.get_name()]:
+			continue
 
 		msgs = []
 
@@ -365,7 +363,7 @@ def roomRead(pssName, _):
 		r.feedcollection.gethead(cache.get_active_bzz())
 
 		msgs = r.feedcollection.get()
-		sys.stderr.write("getting feed for room: " + repr(r) + "\n" + "msglen" + repr(len(msgs)))
+		#sys.stderr.write("getting feed for room: " + repr(r) + ": " + "msglen" + repr(len(msgs)))
 
 		for m in msgs:
 
@@ -501,7 +499,7 @@ def msgPipeRead(pssName, fd):
 # creates if it doesn't exists
 # \todo rename bufname to more precise term
 def buf_get(ctx, known):
-	global _tmp_room_queue_hash, _tmp_room_dirty
+	global _tmp_room_queue_hash, _tmp_room_initial
 
 	haveBzz = False
 	# \todo integrity check of input data
@@ -569,9 +567,14 @@ def buf_get(ctx, known):
 
 			# create new room
 			(room, loaded) = cache.add_room(ctx.get_name(), ctx.get_node())
+			_tmp_room_initial[ctx.get_name()] = False
 			if loaded:
 				_tmp_room_queue_hash[ctx.get_name()] = room.feedcollection.senderfeed.lasthsh
-				_tmp_room_dirty = True
+				try:
+					cache.have_room_initial(ctx.get_name())
+					_tmp_room_initial[ctx.get_name()] = True
+				except Exception as e:
+					sys.stderr.write("no initial update, not pulling: " + repr(e) + "\n")
 
 			wOut(
 				PSS_BUFPFX_DEBUG,
