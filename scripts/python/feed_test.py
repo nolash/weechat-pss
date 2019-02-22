@@ -8,19 +8,13 @@ import random
 import struct
 import json
 
-from pss.bzz import feedRootTopic, FeedCollection
+from pss.bzz import feedRootTopic, FeedCollection, zerohsh, new_topic_mask
 from pss.room import Participant
 from pss.tools import clean_pubkey, now_int
 
 privkey = "2ea3f401733d3ecc1e18b305245adc98f3ffc4c6e46bf42f37001fb18b5a70ac"
 pubkey = "04b72985aa2104e41c1a2d40340c2b71a8d641bb6ac0f9fd7dc2dbbd48c0eaf172baa41456d252532db97704ea4949e1f42f66fd57de00f8f1f4514a2889f42df6"
 seedval = 13
-
-# \todo put in single test setup
-zerohsh = ""
-for i in range(32):
-	zerohsh += "00"
-
 
 class TestFeedRebuild(unittest.TestCase):
 
@@ -34,7 +28,6 @@ class TestFeedRebuild(unittest.TestCase):
 
 		self.sock = socket.create_connection(("127.0.0.1", "8500"), 20)
 		self.agent = pss.Agent("127.0.0.1", 8500, self.sock.fileno())
-		#s = socket.fromfd(self.sock.fileno(), socket.AF_INET, socket.SOCK_STREAM)
 		self.sock.settimeout(10.0)
 		self.bzz = pss.Bzz(self.agent)
 	
@@ -45,12 +38,10 @@ class TestFeedRebuild(unittest.TestCase):
 			hx = ""
 			for j in range(32):
 				hx += "{:02x}".format(random.randint(0, 255))
-			#print "#" + str(i) + " is using " + hx
 			self.privkeys.append(hx)
 			acc = pss.Account()
 			acc.set_key(pss.clean_privkey(self.privkeys[i]).decode("hex"))
 			self.accounts.append(acc)
-			#sys.stderr.write("added random (seed " + str(seedval) + " key " + self.privkeys[i] + " account " + self.accounts[i].get_address().encode("hex") + " pubkey " + self.accounts[i].publickeybytes.encode("hex") + "\n")
 
 		seedval += 1
 
@@ -60,35 +51,32 @@ class TestFeedRebuild(unittest.TestCase):
 	# create a linked list of three elements, retrieve in order and compare hashes
 	#@unittest.skip("skipping test_single_feed")
 	def test_single_feed(self):
-		global zerohsh
 
-		self.feeds.append(pss.Feed(self.bzz, self.accounts[0], "one", True))
+		self.feeds.append(pss.Feed(self.bzz, self.accounts[0], "one"))
 
 		hshfirst = self.bzz.add(zerohsh + "inky")
 		self.feeds[0].update(hshfirst)
 
-		hshsecond = self.bzz.add(hshfirst + "pinky")
+		hshsecond = self.bzz.add(hshfirst.decode("hex") + "pinky")
 		self.feeds[0].update(hshsecond)
 
-		hshthird = self.bzz.add(hshsecond + "blinky")
+		hshthird = self.bzz.add(hshsecond.decode("hex") + "blinky")
 		self.feeds[0].update(hshthird)
 
 		r = self.feeds[0].head()
 		self.assertEqual(r, hshthird)
 
 		r = self.bzz.get(hshthird)
-		self.assertEqual(r[:64], hshsecond)
-		self.assertEqual(r[64:], "blinky")
+		self.assertEqual(r[:32], hshsecond.decode("hex"))
+		self.assertEqual(r[32:], "blinky")
 		
-		r = self.bzz.get(r[:64])
-		#print r
-		self.assertEqual(r[:64], hshfirst)
-		self.assertEqual(r[64:], "pinky")
+		r = self.bzz.get(r[:32].encode("hex"))
+		self.assertEqual(r[:32], hshfirst.decode("hex"))
+		self.assertEqual(r[32:], "pinky")
 
-		r = self.bzz.get(r[:64])
-		#print r
-		self.assertEqual(r[:64], zerohsh)
-		self.assertEqual(r[64:], "inky")
+		r = self.bzz.get(r[:32].encode("hex"))
+		self.assertEqual(r[:32], zerohsh)
+		self.assertEqual(r[32:], "inky")
 
 
 	# create a collection of two feeds. 
@@ -97,7 +85,7 @@ class TestFeedRebuild(unittest.TestCase):
 	def test_feed_collection_ok(self):
 
 		for i in range(2):
-			self.feeds.append(pss.Feed(self.bzz, self.accounts[i], "one", True))
+			self.feeds.append(pss.Feed(self.bzz, self.accounts[i], "one"))
 
 		tim = pss.now_int()
 		timebytes = struct.pack(">I", tim)
@@ -108,13 +96,13 @@ class TestFeedRebuild(unittest.TestCase):
 		for i in range(len(self.feeds)):
 
 			# first hash in linked list is zerohash
-			lasthsh = zerohsh.decode("hex")
+			lasthsh = zerohsh
 
 			# create new feed with address only (no private key) for read
 			addr = self.feeds[i].account.get_address()
 			acc = pss.Account()
 			acc.set_address(addr)
-			outfeeds.append(pss.Feed(self.bzz, acc, "one", True))
+			outfeeds.append(pss.Feed(self.bzz, acc, "one"))
 
 			#print "set addr " +  str(i) + " " + addr.encode("hex")
 
@@ -147,10 +135,8 @@ class TestFeedRebuild(unittest.TestCase):
 		i = 0
 		for n in ["foo", "bar"]:
 			k = self.coll.feeds[n].obj.account.get_address()
-			#print "getting addr " + k.encode("hex")
 
 			# feed updates are indexed on user address, then time and index
-
 			v = msgs[k]
 			self.assertEqual(v[timebytes + "\x00"].content, "0x" + str(i*3))
 			self.assertEqual(v[timebytes + "\x00"].user, k)
@@ -168,19 +154,18 @@ class TestFeedRebuild(unittest.TestCase):
 
 		# same setup as previous test
 		for i in range(2):
-			self.feeds.append(pss.Feed(self.bzz, self.accounts[i], "one", True))
+			self.feeds.append(pss.Feed(self.bzz, self.accounts[i], "one"))
 
 		tim = pss.now_int()
 		timebytes = struct.pack(">I", tim)
 
 		outfeeds = []
 		for i in range(len(self.feeds)):
-			lasthsh = zerohsh.decode("hex")
+			lasthsh = zerohsh
 			addr = self.feeds[i].account.get_address()
 			acc = pss.Account()
 			acc.set_address(addr)
-			outfeeds.append(pss.Feed(self.bzz, acc, "one", True))
-			#print "set addr " +  str(i) + " " + addr.encode("hex")
+			outfeeds.append(pss.Feed(self.bzz, acc, "one"))
 			for j in range(3):
 				hsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex((i*3)+j))
 				byteshsh = hsh.decode("hex")
@@ -216,7 +201,7 @@ class TestFeedRebuild(unittest.TestCase):
 	#@unittest.skip("collection single gap")
 	def test_feed_collection_single_gap(self):
 
-		feed = pss.Feed(self.bzz, self.accounts[0], "one", True)
+		feed = pss.Feed(self.bzz, self.accounts[0], "one")
 
 		tim = pss.now_int()
 		timebytes = struct.pack(">I", tim)
@@ -232,8 +217,7 @@ class TestFeedRebuild(unittest.TestCase):
 		addr = feed.account.get_address()
 		acc = pss.Account()
 		acc.set_address(addr)
-		outfeed = pss.Feed(self.bzz, acc, "one", True)
-		#print "set addr " +  str(i) + " " + addr.encode("hex")
+		outfeed = pss.Feed(self.bzz, acc, "one")
 		for j in range(3):
 			hsh = self.bzz.add(lasthsh + timebytes  + chr(j) + hex(j))
 			hshbytes = hsh.decode("hex")
@@ -273,22 +257,19 @@ class TestFeedRebuild(unittest.TestCase):
 		nick = "bar"
 		r = pss.Room(self.bzz, roomname, self.accounts[0])
 		r.start(nick)
-		#addrhx = self.accounts[0].get_address().encode("hex")
-		#pubkeyhx = self.accounts[0].publickeybytes.encode("hex")
 
 		# create participant object to ensure correct representation of nick
-		#p = Participant(nick, pubkeyhx, addrhx, "04"+pubkey)
 		p = Participant(nick, pubkey)
 		p.set_public_key(self.accounts[0].get_public_key())
 
-		resulttopic = r.feedcollection_in.feeds[p.nick].obj.topic
+		resulttopic = r.feedcollection.feeds[p.nick].obj.topic
 
 		# the name will be xor'd to the leftmost bits in the topic byte array
 		# it will still be intact as a substring
 		self.assertEqual(resulttopic[0:len(roomname)], roomname)
 
 		# the last 12 bytes should be identical to the root topic
-		self.assertEqual(resulttopic[20:], feedRootTopic[20:])
+		self.assertEqual(resulttopic[20:], new_topic_mask(feedRootTopic, "", "\x06")[20:])
 		
 		
 
@@ -324,7 +305,7 @@ class TestFeedRebuild(unittest.TestCase):
 		return
 
 		# create feed with account from newly (re)created account
-		recreatedownerfeed = pss.Feed(self.bzz, acc, unserializedroom['name'], False)
+		recreatedownerfeed = pss.Feed(self.bzz, acc, unserializedroom['name'])
 
 		# instantiate room with feed recreated from saved state
 		rr = pss.Room(self.bzz, recreatedownerfeed)
@@ -390,7 +371,7 @@ class TestFeedRebuild(unittest.TestCase):
 		roomname = hex(now_int())
 
 		# room ctrl feed
-		#self.feeds.append(pss.Feed(self.bzz, self.accounts[0], roomname, False))
+		#self.feeds.append(pss.Feed(self.bzz, self.accounts[0], roomname))
 
 		nicks = ["0"]
 		r = pss.Room(self.bzz, roomname, self.accounts[0])

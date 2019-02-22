@@ -14,25 +14,12 @@ from message import Message
 
 # application-specific topic root
 # all topics used for feed updates are derived from this
-feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00psschats\x00\x00\x00\x01"
+feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00psschats\x00\x00\x00\x00"
 
 # a zerohash is used as a null-pointer in linked lists of swarm content
 zerohsh = ""
-for i in range(31):
-	zerohsh += "00"
-
-# bitmask for creating a chat feed topic
-chatnamehsh = zerohsh + "01"
-
-# bitmask for creating a room feed topic
-roomnamehsh = zerohsh + "02"
-
-zerohsh += "00"
-zerohshbytes = zerohsh.decode("hex")
-chatnamebytes = chatnamehsh.decode("hex")
-roomnamebytes = roomnamehsh.decode("hex")
-
-
+for i in range(32):
+	zerohsh += "\x00"
 
 # exception to specify error in swarm content retrieval
 class BzzRetrieveError(Exception):
@@ -73,7 +60,7 @@ class Bzz():
 class Feed():
 
 
-	def __init__(self, bzz, account, name, single=True):
+	def __init__(self, bzz, account, name):
 		self.tim = 0
 		self.lastepoch = 25
 		self.lastupdate = 0
@@ -83,11 +70,8 @@ class Feed():
 		self.bzz = bzz
 		if len(name) > 32 or len(name) == 0:
 			raise ValueError("invalid name length 0 < n <= 32")
-		for i in range( len(feedRootTopic)):
-			if i < len(name):
-				self.topic += chr(ord(feedRootTopic[i]) ^ ord(name[i]))
-			else:
-				self.topic += feedRootTopic[i]
+
+		self.topic = new_topic_mask(feedRootTopic, name, "")
 
 
 	# retrieve epoch and time next update belongs to
@@ -316,7 +300,7 @@ class FeedCollection:
 		msgs = {}
 
 		# we break out of loop when we reach the previous head	
-		while curhsh != targethsh and curhsh != zerohshbytes:
+		while curhsh != targethsh and curhsh != zerohsh:
 			try:
 				r = bzz.get(curhsh.encode("hex"))
 			except Exception as e:
@@ -375,6 +359,21 @@ def sign_digest(pk, digest):
 
 
 
+def new_topic_mask(base, prefix, postfix):
+	topic = ""
+	for i in range(32):
+		b = 0
+		if i < len(base):
+			b = b | ord(base[i])
+		if i < len(prefix):
+			b = ord(prefix[i]) | b
+		l = 32-len(postfix)
+		if i >= l:
+			b = ord(postfix[i-l]) | b
+		topic += chr(b)
+	return topic
+
+
 # check if input is valid feed topic
 def is_valid_topic(topic):
 	return len(topic) == 32
@@ -390,3 +389,4 @@ def is_valid_account(user):
 # check if input is a valid feed digest
 def is_digest(digest):
 	return len(digest) == 32
+

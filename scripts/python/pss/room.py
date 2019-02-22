@@ -3,8 +3,8 @@ import copy
 import struct
 import sys
 
-from user import PssContact, Account
-from bzz import FeedCollection, Feed, zerohsh
+from user import PssContact, Account, publickey_to_address
+from bzz import FeedCollection, Feed, zerohsh, new_topic_mask
 from tools import clean_pubkey, clean_name, now_int, clean_hex
 from message import is_message
 
@@ -34,41 +34,32 @@ class Room:
 
 
 	def __init__(self, bzz, name, acc):
-		roomname = clean_name(name)
-		self.name = copy.copy(roomname)
-		for i in range(32-len(roomname)):
-			roomname += "\x00"
-		roomnamelist = list(roomname)
-		roomnamelist[31] = "\x02"
-		roomname = "".join(roomnamelist)
-		self.feed_room = Feed(bzz, acc, roomname, False)
-		self.feed_out = None
-		self.agent = bzz.agent
+		self.name = clean_name(name)
+		topic = new_topic_mask(self.name, "", "\x02")
+		#sys.stderr.write("topic: " + topic.encode("hex") + "\n")
+		self.feed_room = Feed(bzz, acc, topic)
 		self.bzz = bzz
 		self.participants = {}
-		self.feedcollection_in = FeedCollection("name", acc)
-		self.hsh_out = zerohsh.decode("hex")
 		self.hsh_room = ""
-		self.lasttime = 0
 		
 
 	# sets the name and the room parameter feed
 	# used to instantiate a new room
 	# \todo valid src parameter
 	def start(self, nick, srckey=None):
+		#self.feed_out = Feed(self.bzz, self.feed_room.account, self.name, True)
+		senderfeed = Feed(self.bzz, self.feed_room.account, new_topic_mask(self.name, "", "\x06"))
+		self.feedcollection = FeedCollection("room:"+self.name, senderfeed)
+
 		participant = Participant(nick, srckey)
 		participant.set_from_account(self.feed_room.account)
 		self.add(nick, participant)
-		self.feed_out = Feed(self.bzz, self.feed_room.account, self.name, True)
-		self.hsh_room = self.save()
 
 		# create initial update so the feed lookup will succeed before first send
-		update = zerohsh
-		update += struct.pack(">I", now_int())
-		update += self.hsh_room
+		update = self.hsh_room
 		update += "\x00\x00\x00"
-		hsh = self.bzz.add(update)
-		self.feed_out.update(hsh.decode("hex"))
+		#hsh = self.bzz.add(update)
+		return self.feedcollection.write(update)
 
 	
 	def can_write(self):
@@ -80,6 +71,11 @@ class Room:
 		return self.feed_room.head()
 
 
+	
+	def get_participants(self):
+		return self.participants.values()
+
+
 
 	# loads a room from an existing saved record
 	# used to reinstantiate an existing room
@@ -88,48 +84,49 @@ class Room:
 	# \todo get output update head hash at time of load
 	def load(self, hsh, owneraccount=None):
 		savedJson = self.bzz.get(hsh.encode("hex"))
-		print "savedj " + repr(savedJson)
+		sys.stderr.write("savedj " + repr(savedJson) + " from hash " + hsh.encode("hex") + "\n")
 		self.hsh_room = hsh
 		r = json.loads(savedJson)
 		self.name = clean_name(r['name'])
-		for pubkeyhx in r['participants']:
-			acc = Account()
-			acc.set_public_key(clean_pubkey(pubkeyhx).decode("hex"))
-			nick = acc.address.encode("hex")
-			p = Participant(nick, None) # \todo what should the src be when room
-			self.add(nick, p)
 
 		# outgoing feed user is room publisher
 		if owneraccount == None:
 			owneraccount = self.feed_room.account
+		senderfeed = Feed(self.bzz, owneraccount, new_topic_mask(self.name, "", "\x06"))
+		self.feedcollection = FeedCollection("room:"+self.name, senderfeed)
 
-		self.feed_out = Feed(self.bzz, owneraccount, self.name, True)
-		hd = self.feed_out.head()
-		if len(hd) == 64:
-			self.hsh_out = hd.decode("hex")
+		for pubkeyhx in r['participants']:
+			pubkey = clean_pubkey(pubkeyhx).decode("hex")
+			nick = publickey_to_address(pubkey)
+			p = Participant(nick, None)
+			p.set_public_key(pubkey)
+			self.add(nick, p, False)
+
+		#hd = self.feed_out.head()
+		#if len(hd) == 64:
+		#	self.hsh_out = hd.decode("hex")
+
 
 
 	# adds a new participant to the room
 	# \todo do we really need nick in addition to participant.nick here
 	# \todo add save updated participant list to swarm
-	def add(self, nick, participant):
+	def add(self, nick, participant, save=True):
 
-		# incoming feed user is peer
-		participantfeed_in = Feed(self.agent, participant, self.name, False)
-		self.feedcollection_in.add(participant.nick, participantfeed_in)
+		topic = new_topic_mask(self.name, "", "\x06")
+		participantfeed = Feed(self.bzz, participant, topic)
+		self.feedcollection.add(participant.nick, participantfeed)
 		self.participants[nick] = participant
-		self.hsh_room = self.save()
+		if save:
+			self.hsh_room = self.save()
 
 
 
 	# create new update on outfeed
 	# an update has the following format, where p is number of participants:
-	# 0 - 31		swarm hash pointing to previous update
-	# 32 - 35		4 bytes time of update
-	# 36 			one byte serial
-	# 37 - 68		swarm hash pointing to participant list at time of the update
-	# 69 - (69+(p*3))	3 bytes data offset per participant
-	# (68+(p*3)) - 		tightly packed update data per participant, in order of offsets
+	# 0 - 31		swarm hash pointing to participant list at time of the update
+	# 32 - (32+(p*3))	3 bytes data offset per participant
+	# (32+(p*3)) - 		tightly packed update data per participant, in order of offsets
 	# 
 	# if filters are used, zero-length update entries will be made for the participants filtered out
 	def send(self, msg, fltrdefaultallow=True, fltr=[]):
@@ -137,14 +134,14 @@ class Room:
 			raise ValueError("invalid message")
 
 		# record update time
-		now = now_int()
+		#now = now_int()
 	
 		# update will hold the actual update data
-		update_header = self.hsh_out
-		update_header += struct.pack(">I", now)
+		#update_header = self.hsh_out
+		#update_header += struct.pack(">I", now)
 		# \todo implement serial
-		update_header += "\x00" 
-		update_header += self.hsh_room 
+		#update_header += "\x00" 
+		update_header = self.hsh_room 
 		
 		update_body = ""
 		crsr = 0
@@ -167,10 +164,11 @@ class Room:
 
 		#sys.stderr.write("group send header: " + update_header.encode("hex"))
 		#sys.stderr.write("group send body: " + update_body.encode("hex"))
-		hsh = self.bzz.add(update_header + update_body)
-		self.feed_out.update(hsh)
-		self.hsh_out = hsh.decode("hex")
-		self.lasttime = now
+		#hsh = self.bzz.add(update_header + update_body)
+		hsh = self.feedcollection.write(update_header + update_body)
+		#self.feed_out.update(hsh)
+		#self.hsh_out = hsh.decode("hex")
+		#self.lasttime = now
 		return hsh
 
 
@@ -242,7 +240,7 @@ class Room:
 	# \todo add save updated participant list to swarm
 	# \todo pass participant instead?
 	def remove(self, nick):
-		self.feedcollection_in.remove(nick)
+		self.feedcollection.remove(nick)
 		del self.participants[nick]
 		self.save()
 

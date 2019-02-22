@@ -4,7 +4,8 @@ import copy
 
 from tools import clean_pubkey, clean_overlay, Queue
 from user import PssContact
-from bzz import Feed, chatnamebytes, FeedCollection
+from bzz import Feed, FeedCollection
+from room import Room
 
 CACHE_CONTACT_STOREFILE = ".pss-contacts"
 
@@ -78,6 +79,47 @@ class Cache:
 		return self.feeds[publickey][name]
 
 
+
+	def add_room(self, name, nodename):
+		node = self.get_pss(nodename)
+		account = node.get_account()
+		room = Room(self.get_active_bzz(), name, account)
+
+		try:
+			roomhsh = room.get_state_hash()
+			room.load(roomhsh, account)
+		except Exception as e:
+			sys.stderr.write("can't find state for room " + name + ": " + repr(e) + "\n")
+
+		for k, p in room.participants.iteritems():
+			nick = ""
+			publickey = p.get_public_key()
+			if publickey == node.get_public_key():
+				nick = self.get_nodeself(nodename)
+			else:
+				if not publickey in nicks:
+					acc = Account()
+					try:
+						acc.set_public_key(publickey, p.get_address())
+						nicks[p.nick] = pss.PssContact(p.nick, p.src)
+						remotekeys[publickey] = p.nick
+					except RuntimeError as e:
+						wOut(PSS_BUFPFX_WARN, [], "", "public key does not match address")
+						continue
+
+				nick = nicks[publickey]
+
+		room.start(self.get_nodeself(nodename))
+		self.rooms[name] = room
+		return room
+			
+
+
+	def get_room(self, name):
+		return self.rooms[name]
+
+
+
 	def set_nodeself(self, nodename, nick):
 		self.selfs[nodename] = nick
 	
@@ -135,12 +177,12 @@ class Cache:
 		senderfeed = Feed(
 			self.get_active_bzz(),
 			srcnode.get_account(),
-			chatnamebytes
+			chattopic	
 		)
 		peerfeed = Feed(
 			self.get_active_bzz(),
 			contact,
-			chatnamebytes
+			chattopic
 		)
 
 		coll = FeedCollection(srcnode.get_name() + "." + contact.get_nick(), senderfeed)

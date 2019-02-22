@@ -67,10 +67,7 @@ class PssContact(Account):
 	def __init__(self, nick, src):
 		Account.__init__(self)
 
-		validnick = ""
-		validnick = clean_nick(nick)
-
-		self.nick = validnick
+		self.nick = nick #clean_nick(nick)
 		self.src = src
 		self.overlay = ""
 
