@@ -658,10 +658,11 @@ def buf_in(pssName, buf, inputdata):
 			return weechat.WEECHAT_RC_ERROR
 
 		peercontact = cache.get_contact_by_nick(ctx.get_name())
-		feedcoll = cache.chats[peercontact.get_public_key()][ctx.get_node()]
-		# \todo should not do direct write, should go via msg object
-		hsh = feedcoll.write(inputdata)
-		sys.stderr.write("wrote update to swarm, got " + hsh + "\n")
+		if peercontact.is_owner():
+			feedcoll = cache.chats[peercontact.get_public_key()][ctx.get_node()]
+			# \todo should not do direct write, should go via msg object
+			hsh = feedcoll.write(inputdata)
+			sys.stderr.write("wrote update to swarm, got " + hsh + "\n")
 
 
 	return weechat.WEECHAT_RC_OK

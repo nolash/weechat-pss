@@ -166,10 +166,10 @@ class Cache:
 			try:
 				self.add_contact_feed(contact, srcnode)
 			except AttributeError as e:
-				#sys.stderr.write("addcontact: " + repr(e))
+				sys.stderr.write("addcontactfeed: " + repr(e))
 				pass
 		except KeyError as e:
-			#sys.stderr.write("addcontact: " + repr(e))
+			sys.stderr.write("addcontact: " + repr(e))
 			pass
 
 
@@ -195,6 +195,7 @@ class Cache:
 		if not contact.get_public_key() in self.chats:
 			self.chats[contact.get_public_key()] = {}
 
+		sys.stderr.write("wrote to " + contact.get_nick())
 		self.chats[contact.get_public_key()][srcnode.get_name()] = coll
 
 
