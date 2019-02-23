@@ -324,7 +324,12 @@ def processFeedOutQueue(pssName, _):
 		try:
 			coll = cache.chats[publickey][pssName]
 			if _tmp_chat_queue_hash[pssName] != coll.senderfeed.lasthsh:
-				sys.stderr.write("update feed " + pssName + ":" + publickey.encode("hex") + "\naddr: " + cache.chats[publickey][pssName].senderfeed.obj.account.get_address().encode("hex") + "\n")
+				wOut(
+					PSS_BUFPFX_DEBUG,
+					[],
+					">>>",
+					"update feed " + pssName + ":" + pss.label(publickey.encode("hex")) + " addr: " + pss.label(cache.chats[publickey][pssName].senderfeed.obj.account.get_address().encode("hex"))
+				)
 				coll.senderfeed.obj.update(coll.senderfeed.lasthsh)
 				_tmp_chat_queue_hash[pssName] = coll.senderfeed.lasthsh
 		except:
@@ -334,7 +339,13 @@ def processFeedOutQueue(pssName, _):
 		try:
 			room = cache.get_room(roomname)
 			if _tmp_room_queue_hash[roomname] != room.feedcollection.senderfeed.lasthsh:
-				sys.stderr.write("update room " + roomname + ":" + room.feedcollection.senderfeed.obj.account.get_public_key().encode("hex") + "\naddr: " + room.feedcollection.senderfeed.obj.account.get_address().encode("hex") + "\n")
+				wOut(
+					PSS_BUFPFX_DEBUG,
+					[],
+					">>>",
+					"update room " + roomname + ": " + pss.label(room.feedcollection.senderfeed.obj.account.get_public_key().encode("hex")) + " addr: " + pss.label(room.feedcollection.senderfeed.obj.account.get_address().encode("hex"))
+				)
+				
 				room.feedcollection.senderfeed.obj.update(room.feedcollection.senderfeed.lasthsh)
 				_tmp_room_queue_hash[roomname] = room.feedcollection.senderfeed.lasthsh
 				_tmp_room_initial[roomname] = True
@@ -386,8 +397,8 @@ def roomRead(pssName, _):
 			wOut(
 				PSS_BUFPFX_DEBUG,
 				[],
-				"!!!",
-				"writing to room buf " + ctx.to_buffer_name() + " for room " + r.get_name()
+				">>>",
+				"write buf " + ctx.to_buffer_name() + " room " + r.get_name()
 			)
 			wOut(
 				PSS_BUFPFX_IN,
@@ -558,12 +569,6 @@ def buf_get(ctx, known):
 			
 			if cache.get_room_count() == 0:
 				hookTimers.append(weechat.hook_timer(PSS_ROOM_PERIOD, 0, 0, "roomRead", ctx.get_node()))
-			wOut(
-				PSS_BUFPFX_DEBUG,
-				[],
-				"roomdbg",
-				str(bufs[bufname])
-			)
 
 			# create new room
 			(room, loaded) = cache.add_room(ctx.get_name(), ctx.get_node())
@@ -584,7 +589,17 @@ def buf_get(ctx, known):
 			)
 
 			for p in room.get_participants():
-				buf_room_add(buf, p.get_nick())
+				pubkey = p.get_public_key()
+				if pubkey == ctx.get_pss().get_public_key():
+					continue
+				nick = ""
+				try:
+					c = cache.get_contact_by_public_key(pubkey)
+					nick = c.get_nick()
+					buf_room_add(buf, c.get_nick())
+				except:
+					nick = p.get_nick()
+				buf_room_add(buf, nick)
 
 		else:
 			raise RuntimeError("invalid buffer type")

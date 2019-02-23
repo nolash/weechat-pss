@@ -82,7 +82,7 @@ class Room:
 	# \todo get output update head hash at time of load
 	def load(self, hsh, owneraccount=None):
 		savedJson = self.bzz.get(hsh.encode("hex"))
-		sys.stderr.write("savedj " + repr(savedJson) + " from hash " + hsh.encode("hex") + "\n")
+		#sys.stderr.write("savedj " + repr(savedJson) + " from hash " + hsh.encode("hex") + "\n")
 		self.hsh_room = hsh
 		r = json.loads(savedJson)
 		self.name = clean_name(r['name'])
@@ -196,7 +196,6 @@ class Room:
 			savedroom = json.loads(roomhshhx)
 			participantcount = len(savedroom['participants'])
 			for p in savedroom['participants']:
-				sys.stderr.write("participant: " + repr(p) + "\n")
 				if clean_hex(p) == clean_pubkey(account.get_public_key().encode("hex")):
 					matchidx = idx
 				idx += 1

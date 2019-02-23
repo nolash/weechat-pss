@@ -92,7 +92,10 @@ class Cache:
 			for k, p in room.participants.iteritems():
 				publickey = p.get_public_key()
 				if publickey != node.get_public_key():
-					self.add_contact(p)
+					try:
+						self.add_contact(p)
+					except KeyError as e:
+						pass
 		except Exception as e:
 			sys.stderr.write("can't find state for room " + name + ": " + repr(e) + "\n")
 			room.start(self.get_nodeself(nodename))
@@ -133,10 +136,13 @@ class Cache:
 
 
 	# \todo handle source param, must be supplied	
-	def add_contact(self, contact, store=False):
+	def add_contact(self, contact, store=False, overwrite=False):
 
-		if contact.get_nick() in self.idx_nick_contact.keys():
+		if contact.get_nick() in self.idx_nick_contact.keys() and not overwrite:
 			raise KeyError("contact name '" + str(contact.get_nick()) + "' already in use")
+
+		if contact.get_public_key() in self.idx_publickey_contact and not overwrite:
+			raise KeyError("contact public '" + str(contact.get_public_key()) + "' already stored")
 
 		if contact.get_public_key() == "":
 			raise AttributeError("public key missing from contact")
