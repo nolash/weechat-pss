@@ -370,15 +370,19 @@ def roomRead(pssName, _):
 
 		ctx = EventContext()
 		ctx.reset(PSS_BUFTYPE_ROOM, pssName, r.get_name())
-		buf = weechat.buffer_search("python", ctx.to_buffer_name()) #bufname)
+		buf = weechat.buffer_search("python", ctx.to_buffer_name())
 
 		(_, fails) = r.feedcollection.gethead(cache.get_active_bzz(), True)
 		for f in fails:
+			nick = cache.get_contact_by_public_key(f.get_public_key()).get_nick()
+			nickbufp = weechat.nicklist_search_nick(buf, "", nick)
+			#weechat.nicklist_remove_nick(buf, nickbufp)
+			weechat.nicklist_nick_set(buf, nickbufp, "color", "240")
 			wOut(
 				PSS_BUFPFX_WARN,
 				[buf],
 				"---",
-				"Feed for '" + cache.get_contact_by_public_key(f.get_public_key()).get_nick() + "' timed out and has been deactivated. Read-add manually to reactivate"
+				"Feed for '" +  nick + "' timed out and has been deactivated. Read-add manually to reactivate"
 			)
 
 
@@ -699,7 +703,8 @@ def pss_invite(pssName, nick, room):
 def buf_room_add(buf, nick, groupname=""):
 	if weechat.nicklist_search_group(buf, "", "members") == "":
 		weechat.nicklist_add_group(buf, "", "members", "weechat.color.nicklist_group", 1)
-	weechat.nicklist_add_nick(buf, groupname, nick, "bar_fg", "", "bar_fg", 1)
+	nickbufp = weechat.nicklist_add_nick(buf, groupname, nick, "bar_fg", "", "bar_fg", 1)
+	weechat.nicklist_nick_set(buf, nickbufp, "color", "white")
 
 
 
