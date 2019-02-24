@@ -142,6 +142,8 @@ class FeedState:
 		self.lasttime = 0
 		self.lastseq = 0
 		self.orphans = {}
+		self.active = True
+
 
 	# increments last time of update. if same second as last, sequence number is incremented
 	def next(self):
@@ -218,6 +220,11 @@ class FeedCollection:
 		self.feeds[name] = FeedState(feed)
 
 
+	
+	def activate(self, name):
+		self.feeds[name].active = True
+
+
 
 	# removes a feed from the collection
 	def remove(self, name):
@@ -255,15 +262,21 @@ class FeedCollection:
 	# syncs all reader feeds with the latest updates and stored them in a buffer
 	# the messages can be retrieved with get()
 	#
+	# returns number of feeds have new messages, and an array of accounts for feeds that we w not retrievable
+	#
 	# \todo make sure this completes or fully abandons retrieves before returning
-	def gethead(self, bzz):
+	def gethead(self, bzz, deactivateonfail=True):
 
 		# hash map eth address => hash map serial to Message 
 		feedmsgs = {}
+		fails = []
 
 		for feedname in self.feeds.keys(): # feedstate in self.feeds.values():
-
+	
 			feedstate = self.feeds[feedname]
+			if not feedstate.active:
+				continue
+
 			# headhsh will be empty string 
 			# between completed retrieves
 			# we then need to get the new head hash
@@ -272,6 +285,9 @@ class FeedCollection:
 				try:
 					feedstate.headhsh = feedstate.obj.head()
 				except:
+					if deactivateonfail:
+						feedstate.active = False
+					fails.append(feedstate.obj.account)
 					continue
 
 			#sys.stderr.write("headhsh " + feedstate.headhsh.encode("hex") + "\n")
@@ -292,7 +308,7 @@ class FeedCollection:
 			feedstate.headhsh = ""
 	
 		self.retrievals.append(feedmsgs)
-		return len(self.retrievals)-1
+		return (len(self.retrievals)-1, fails)
 
 	
 	
@@ -397,4 +413,3 @@ def is_digest(digest):
 
 chattopic = new_topic_mask(zerohsh, "", "\x01")
 roomtopic = new_topic_mask(zerohsh, "", "\x02")
-

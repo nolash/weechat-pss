@@ -125,7 +125,8 @@ class TestFeedRebuild(unittest.TestCase):
 		# get the latest updates using the collection
 		# it iterates all feeds, gets the latest update
 		# and follows the linked hashes to retrieve all content
-		ridx = self.coll.gethead(self.bzz)
+		(ridx, fails) = self.coll.gethead(self.bzz)
+		self.assertEqual(len(fails), 0)
 
 		# one element in retrievals array contains all updates
 		# retrieved in one "gethead" call
@@ -174,7 +175,8 @@ class TestFeedRebuild(unittest.TestCase):
 
 		self.coll.add("foo", outfeeds[0])
 		self.coll.add("bar", outfeeds[1])
-		self.coll.gethead(self.bzz)
+		(_, fails) = self.coll.gethead(self.bzz)
+		self.assertEqual(len(fails), 0)
 		
 		msgs = self.coll.get()
 
@@ -231,7 +233,8 @@ class TestFeedRebuild(unittest.TestCase):
 		# as this is the key for the resulting dead end entry
 		# \todo this is not theoretically safe on a busy node, as things may change between, but in controlled test should be ok
 		headhsh = feed.head()
-		ridx = self.coll.gethead(self.bzz)
+		(ridx, fails) = self.coll.gethead(self.bzz)
+		self.assertEqual(len(fails), 0)
 		upd = self.coll.retrievals.pop(ridx)
 
 		try:

@@ -6,7 +6,7 @@ import sys
 import pss # plugin package, nothing official
 
 # consts
-PSS_VERSION = "0.4.0"
+PSS_VERSION = "0.4.1"
 PSS_BUFPFX_OK = 0
 PSS_BUFPFX_ERROR = 1
 PSS_BUFPFX_WARN = 2
@@ -370,8 +370,17 @@ def roomRead(pssName, _):
 
 		ctx = EventContext()
 		ctx.reset(PSS_BUFTYPE_ROOM, pssName, r.get_name())
+		buf = weechat.buffer_search("python", ctx.to_buffer_name()) #bufname)
 
-		r.feedcollection.gethead(cache.get_active_bzz())
+		(_, fails) = r.feedcollection.gethead(cache.get_active_bzz(), True)
+		for f in fails:
+			wOut(
+				PSS_BUFPFX_WARN,
+				[buf],
+				"---",
+				"Feed for '" + cache.get_contact_by_public_key(f.get_public_key()).get_nick() + "' timed out and has been deactivated. Read-add manually to reactivate"
+			)
+
 
 		msgs = r.feedcollection.get()
 		#sys.stderr.write("getting feed for room: " + repr(r) + ": " + "msglen" + repr(len(msgs)))
@@ -393,7 +402,6 @@ def roomRead(pssName, _):
 
 			msg = r.extract_message(m.content, contact)
 
-			buf = weechat.buffer_search("python", ctx.to_buffer_name()) #bufname)
 			wOut(
 				PSS_BUFPFX_DEBUG,
 				[],
@@ -677,6 +685,8 @@ def buf_close(pssName, buf):
 
 # \todo broken
 def pss_invite(pssName, nick, room):
+
+
 	#bufname = buf_generate_name(pssName, "room", nick)
 	#feeds[bufname] = pss.Feed(bzzs[pssName].agent, psses[pssName].get_account(), "d" + pss.publickey_to_address(remotekeys[nick]))
 	contact = cache.get_contact_by_nick(nick)

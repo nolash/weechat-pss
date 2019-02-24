@@ -11,7 +11,7 @@ Please note that this project is meant to be something of a reference implementa
 
 ## Version
 
-0.4.0 alpha
+0.4.1 alpha
 
 
 ## Development
@@ -221,6 +221,8 @@ GPLv3
 
 ## Changelog
 
+* v0.4.1:
+    - Deactivate unretrievable feeds in chat rooms
 * v0.4.0:
     - Improve separation between plugin and library code
     - Introduce cache object to handle in-memory state of session
