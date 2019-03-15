@@ -16,7 +16,7 @@ class Participant(PssContact):
 		self.trusted = trusted
 		PssContact.__init__(self, nick, src)
 
-# Room represents a multi-user chat room
+## Room represents a multi-user chat room
 #
 # A multi-user chat room is defined solely by a 1-32 byte name, within one single name space,
 #
@@ -32,21 +32,30 @@ class Participant(PssContact):
 # \todo consider using feed name for room name
 class Room:
 
-
-	def __init__(self, bzz, name, acc):
+	## \brief Sets up new feed for room
+	#
+	# Creates a Feed object from given parameters
+	#
+	# \param bzz Bzz handler object
+	# \param name Name for feed (used as value in high-order bytes of feed topic)
+	# \param account Account object containing the key to create the feed with
+	def __init__(self, bzz, name, account):
 		self.name = clean_name(name)
 		topic = new_topic_mask(self.name, "", "\x02")
-		self.feed_room = Feed(bzz, acc, topic)
+		self.feed_room = Feed(bzz, account, topic)
 		self.bzz = bzz
 		self.participants = {}
 		self.hsh_room = ""
 		
 
+	## \brief Activates room
+	#
+	# Sets up FeedCollection object for the participants' feeds, and publishes participant list (with self as participant)
+	# 
 	# sets the name and the room parameter feed
-	# used to instantiate a new room
-	# \todo valid src parameter
+	# \param nick Name to advertise for self
+	# \param srckey Public key to register for the outgoing feed for self
 	def start(self, nick, srckey=None):
-		#self.feed_out = Feed(self.bzz, self.feed_room.account, self.name, True)
 		senderfeed = Feed(self.bzz, self.feed_room.account, new_topic_mask(self.name, "", "\x06"))
 		self.feedcollection = FeedCollection("room:"+self.name, senderfeed)
 
@@ -55,31 +64,44 @@ class Room:
 		self.add(nick, participant)
 
 
+	## Human name of room
+	#
+	#\return take a wild guess...
 	def get_name(self):
 		return self.name
 
 
-	
+	## Check if write to room is possible
+	#
+	# \return True; if private key for room is available
 	def can_write(self):
 		return self.feed_room.account.is_owner()
 
 
 
+	## Swarm hash of current participant list
+	#
+	## \return hash, binary format
 	def get_state_hash(self):
 		return self.feed_room.head()
 
 
-	
+	## \brief Get all participants in your participant list for the room
+	#
+	# \return Array of Participant objects	
 	def get_participants(self):
 		return self.participants.values()
 
 
 
-	# loads a room from an existing saved record
+	## Loads a room from an existing saved record
+	#
 	# used to reinstantiate an existing room
-	# hsh is binary hash
+	# \param hsh Swarm hash of participant list in binary
+	# \param owneraccount If Account object with private key write access will be enabled
 	# \todo avoid double encoding of account address
 	# \todo get output update head hash at time of load
+	# \todo evaluate whether these todos are stale :D
 	def load(self, hsh, owneraccount=None):
 		savedJson = self.bzz.get(hsh.encode("hex"))
 		#sys.stderr.write("savedj " + repr(savedJson) + " from hash " + hsh.encode("hex") + "\n")
@@ -105,9 +127,14 @@ class Room:
 				
 		
 
-	# adds a new participant to the room
+	## Add new participant to room
+	#
+	# \param nick Name to add participant under
+	# \param participant Participant object containing public key of new participant
+	# \param save True; save participant list to swarm
 	# \todo do we really need nick in addition to participant.nick here
-	# \todo add save updated participant list to swarm
+	# \todo is nick relevant here? it's not stored in participant list
+	# \todo evaluate whether these todos are stale, too
 	def add(self, nick, participant, save=True):
 
 		topic = new_topic_mask(self.name, "", "\x06")
@@ -119,13 +146,23 @@ class Room:
 
 
 
-	# create new update on outfeed
-	# an update has the following format, where p is number of participants:
+	## \brief Create new update in room
+	#
+	# Adds a new update to the room feed.
+	#
+	# An update has the following format, where p is number of participants:
 	# 0 - 31		swarm hash pointing to participant list at time of the update
 	# 32 - (32+(p*3))	3 bytes data offset per participant
 	# (32+(p*3)) - 		tightly packed update data per participant, in order of offsets
 	# 
 	# if filters are used, zero-length update entries will be made for the participants filtered out
+	# \param msg Raw message data
+	# \param filtrdefaultallow True; activate filter
+	# \param fltr Participants Array of Participant objects to omit updates to
+	# \todo implement content filtering
+	# \todo evaluate if fltrdefaultallow is needed (why not just empty array)
+	# \todo filtered content should be 0x800000 in content length instead (that would allow for updates up to 8MB, which is plenty more than should be posted
+	# \return Swarm chunk hash of update, binary format
 	def send(self, msg, fltrdefaultallow=True, fltr=[]):
 		if not is_message(msg):
 			raise ValueError("invalid message")
@@ -156,7 +193,10 @@ class Room:
 		return hsh
 
 
-	# returns a tuple with previous update hash (in binary) and last time (8 byte int)
+	## Extract metadata from response body
+	#
+	# \param body Raw response body data to parse
+	# \return a tuple with previous update hash (in binary), timestamp (4 byte int) and serial (sub-timestamp sequence)
 	def extract_meta(self, body):
 		# two hashes, 8 byte time, 3 byte offset (and no data)
 		if len(body) < 72: 
@@ -168,16 +208,19 @@ class Room:
 		return hsh, tim, serial
 
 
-	# extracts an update message matching the recipient pubkey
+	## \brief Extract a participant's message
+	# 
+	# Extracts an update message matching the recipient pubkey
+	#
+	# \param body Raw response body data to parse
+	# \param account Account with participant's key
+	# \return Ciphertext of message (plaintext message as long as crypto is not implemented)
 	# \todo do not use string literals of offset calcs
 	def extract_message(self, body, account):
 		participantcount = 0
 		payloadoffset = -1
 		payloadlength = 0
 		ciphermsg = ""
-
-		# retrieve update from swarm
-		# body = self.bzz.get(hsh.encode("hex"))
 
 		# if recipient list for the update matches the one in memory
 		# we use the position of the participant in the list as the body offset index
@@ -221,9 +264,10 @@ class Room:
 
 
 	
-	# removes a participant from the room
-	# \todo add save updated participant list to swarm
-	# \todo pass participant instead?
+	## Remove participant from room
+	#
+	# \param nick Name key of participant to remove
+	# \todo pass participant instead
 	def remove(self, nick):
 		self.feedcollection.remove(nick)
 		del self.participants[nick]
@@ -231,8 +275,12 @@ class Room:
 
 
 
+	## \brief Create participant list data
+	#
 	# outputs the serialized format in which the room parameters are stored in swarm
-	# \todo proper nested json serialize
+	#
+	# \return json string of participant list  
+	# \todo binary serialization instead of json
 	def serialize(self):
 		jsonStr = """{
 	"name":\"""" + self.name + """\",
@@ -249,7 +297,9 @@ class Room:
 		return jsonStr
 
 
-
+	## Save current participant list to swarm
+	#	
+	# \return New swarm hash of participant list
 	def save(self):
 		s = self.serialize()
 		self.hsh_room = self.bzz.add(s).decode("hex")

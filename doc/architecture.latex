@@ -56,7 +56,7 @@ A group chat update is a message being sent to the participant of the group chat
 
 The payload contains one copy of the update content per participant in the room at the time of the update. It also contains a pointer to the participant list.
 
-The data offsets of the respective participant copies are in the same order as the participant list. The offsets are calculated from the start of the update data content
+The data offsets of the respective participant copies are in the same order as the participant list. The offsets are calculated from the start of the update data content. Zero-length content means content was filtered out for that participant.
 
 The update data content will be individually encrypted.
 
@@ -92,7 +92,7 @@ Data should be stored in binary instead of json
 \hline 
 \rowcolor{lightgray} \textbf{key} & \textbf{description} \\
 \hline
-name & Name of room \\
+name & Participant list owner's published nick for self \\
 \rowcolor{llgray} pubkey & Public key\tablefootnote{0x prefixedh hex. The key data also includes the 0x04 ECDSA public key prefix} of the room user this participant list was published by \\
 \verb|[]participants| & Array of public keys of participants \\
 \hline

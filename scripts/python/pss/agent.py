@@ -12,8 +12,14 @@ REQUEST_TIMEOUT = 30.0
 regexStatusLine = re.compile("^HTTP/1.1 (\d{3}) (.+)\n", re.M)
 
 
+## \brief Agent handles HTTP requests and responses for swarm
 class Agent:
 
+	## Connects to swarm and sets up base request headers
+	#
+	# \param host swarm host
+	# \param port swarm port
+	# \param sock socket.socket object for connection. If None creates a new socket
 	def __init__(self, host="127.0.0.1", port=8500, sock=None):
 		# common request params
 		if sock == None:
@@ -33,7 +39,7 @@ class Agent:
 		self.basereq.add_header("Content-type", "application/x-www-form-urlencoded")
 		self.basereq.add_header("Accept", "*/*")
 			
-
+	## creates an urllib2.Request object with necessary headers
 	def new_request(self):
 		req = urllib2.Request("http://" + self.host + ":" + self.port)
 		req.add_header("Connection", "keep-alive")
@@ -81,6 +87,11 @@ class Agent:
 		return body
 
 
+	## performs a HTTP GET to swarm
+	#
+	# \param path the path to GET
+	# \param querystring query string to add
+	# \return response body
 	def get(self, path, querystring=""):
 		req = self.new_request()
 		requeststring = path
@@ -91,6 +102,13 @@ class Agent:
 		return self._write(requeststring)
 
 
+	## performs a HTTP POST to Swarm
+	#
+	# \param path the path to POST
+	# \param data data payload
+	# \param querystring query string to add
+	# \return response body
+	# \todo check if we use querystring here
 	def send(self, path, data, querystring=""):
 
 		req = self.new_request()
@@ -109,6 +127,7 @@ class Agent:
 		return self._write(requeststring)
 
 
+	## close the TCP socket connection to Swarm
 	def close():
 		self._sock.close()
 		self.debugfile.close()	

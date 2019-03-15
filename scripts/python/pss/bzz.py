@@ -10,10 +10,9 @@ from tools import now_int
 from message import Message
 
 
+# this is not used for swarm feeds for the time being
 # signPrefix = "\x19Ethereum Signed Message:\x0a\x20" # for 32 byte hashes
 
-# application-specific topic root
-# all topics used for feed updates are derived from this
 feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00psschats\x00\x00\x00\x00"
 
 # a zerohash is used as a null-pointer in linked lists of swarm content
@@ -21,9 +20,15 @@ zerohsh = ""
 for i in range(32):
 	zerohsh += "\x00"
 
-# exception to specify error in swarm content retrieval
+# the last topic byte is used as bitflag to allow to determine context from the topic
+chattopic = new_topic_mask(zerohsh, "", "\x01")
+roomtopic = new_topic_mask(zerohsh, "", "\x02")
+
+## Exception to specify error in swarm content retrieval
 class BzzRetrieveError(Exception):
 
+	## \param hsh Swarm hash error occurred for
+	# \param reason Error string
 	def __init__(self, hsh, reason):
 		super(BzzRetrieveError, self).__init__(reason)
 		self.hsh = hsh
@@ -31,6 +36,8 @@ class BzzRetrieveError(Exception):
 	pass
 
 
+## \brief Swarm context for HTTP
+#
 # Bzz is a convenience wrapper for making swarm store and retrieve calls over http
 class Bzz():
 
@@ -39,27 +46,45 @@ class Bzz():
 		self.agent = httpagent
 
 
+	## Create new raw data chunk
+	#
+	# \param data binary data to post
+	# \return Swarm chunk hash, binary format
 	def add(self, data):
 		return self.agent.send("/bzz-raw:/", data)
 
 
+	## Retrieve raw data chunk
+	#
+	# \param hsh Swarm hash to retrieve, binary format
+	# \return Raw response data
 	def get(self, hsh):
 		return self.agent.get("/bzz-raw:/" + hsh + "/")
 
 
+	## \brief close connection
+	#
+	# \todo is currently noop
 	def close(self):
 		pass
 	
 
 
-# Feed represents a single swarm feed
+## A single Swarm Feed
 #
 # It can represent both a consumer and publisher feed.
 #
 # To create a feed to which updates may be posted, the account passed to the constructor must contain the private key for the feed account.
+#
+# All feeds in this application use topics that are derived from the following base topic:
+#
+# 0x0000000000000000000000000000000000000000707373636861747300000000
 class Feed():
 
 
+	## \param bzz Swarm transport object
+	# \param account Account object containing key to use for Feed (must have private key for write access)
+	# \param name Human name of feed, XORed with high-order bits of base topic to create feed topic, up to 31 bytes
 	def __init__(self, bzz, account, name):
 		self.tim = 0
 		self.lastepoch = 25
@@ -68,13 +93,17 @@ class Feed():
 
 		self.account = account
 		self.bzz = bzz
-		if len(name) > 32 or len(name) == 0:
-			raise ValueError("invalid name length 0 < n <= 32")
+		if len(name) > 31 or len(name) == 0:
+			raise ValueError("invalid name length 0 < n <= 31")
 
 		self.topic = new_topic_mask(feedRootTopic, name, "")
 
 
-	# retrieve epoch and time next update belongs to
+	## Get epoch and time for next update
+	#
+	# retrieve epoch and time next update belongs to from swarm node
+	#
+	# \return Tuple; (time, level), numerical
 	# \todo client side should calculate this after initial state gotten from feed
 	def info(self):
 		q = {
@@ -94,8 +123,11 @@ class Feed():
 		return (r['epoch']['time'], r['epoch']['level'])
 			
 
-	# update the feed
-	# data is raw bytes
+	## Add new update to feed
+	#
+	# \param data raw byte data to post as update
+	# \return (unsure)
+	# \todo find out what this returns
 	def update(self, data):
 		(tim, epoch) = self.info()
 		d = compile_digest(self.topic, self.account.address, data, int(tim), int(epoch))
@@ -117,7 +149,9 @@ class Feed():
 		return r
 
 
-	# get the last update of a feed
+	## Get latest feed update
+	#
+	# \return Update content, binary format
 	def head(self):
 		q = {
 			'user': '0x' + self.account.address.encode("hex"),
@@ -129,9 +163,13 @@ class Feed():
 		
 
 
-# wrapper for individual feeds in collections
-# contains index keeping track of position of last lookup
-# it also keeps track of broken links
+## \brief Individual feed metadata for collections
+#
+# FeedState is a wrapper for individual feeds in a FeedCollection object
+#
+# It holds an index keeping track of position of last lookup
+#
+# It also keeps track of broken links for the purpose of later retries
 #
 # \todo the use of this object is slightly different in reader and sender context, should be revised to make the use identical
 class FeedState:
@@ -145,7 +183,9 @@ class FeedState:
 		self.active = True
 
 
-	# increments last time of update. if same second as last, sequence number is incremented
+	## \brief Get next update index
+	#
+	# Sets the last update timestamp to current time. If same timestamp as last update, serial is incremented.
 	def next(self):
 		tim = now_int()
 		seq = 0
@@ -155,27 +195,34 @@ class FeedState:
 			self.lasttime = tim
 			self.lastseq = 0
 
+	## \brief Serialize update index
+	#
+	# \return 5 bytes; 4 byte little-endian timestamp, 1 byte serial
 	def serial(self):
-		return struct.pack(">I", self.lasttime) + struct.pack("B", self.lastseq)
+		return struct.pack("<I", self.lasttime) + struct.pack("B", self.lastseq)
 
 
 
-# Convenience class for handling feed aggregation and content linking 
+## Convenience class for handling feed aggregation and content linking 
+#
 # A collection may have many feeds for reading, for which all new updates can be retrieved by one single method call
+#
 # The collection may also have a sender feed, through which updates may be sent. This requires an account object with a private key set.
 #
 # Updates handled through the feedcollection object are linked lists. The feed update points to swarm content, and the payload of the swarm content is:
+#
 # [00 - 31]: swarm hash of previous update
 # [32 - 36]: serial number; 4 byte timestamp (seconds) + 1 byte sequence number (in increments for updates within same timestamps)
 # [37 - n ]: content; arbitrary bytes
 #
 # The state of sender and reader feeds is the last swarm hash seen. It is stored for every retrieval or send. 
+#
 # Upon retrieval all new updates will be retrieved until the last seen hash is encountered, and the state is reset to the hash of the newest update.
 class FeedCollection:
 
 
 
-	# if senderfeed is passed, writing to this collection is enabled
+	## \param name Name of collection later if senderfeed is passed, writing to this collection is enabled
 	def __init__(self, name, senderfeed=None):
 		self.name = name
 		self.feeds = {}
@@ -185,14 +232,24 @@ class FeedCollection:
 
 
 
-	# returns the name of the collection
+	## \brief Get name of collection
+	#
+	# \return Name stirng
+	# \todo not needed
 	def get_name(self):
 		return self.name
 
 
 
-	# makes a single update with the passed data
-	# the update will contain a link to the previous update
+	## \brief Post update to room
+	#
+	# Makes a single update with the passed data
+	#
+	# The update will contain a link to the previous update
+	#
+	# \param data raw data to post 
+	# \bug headhsh will always be empty for rooms, but will have last hash for chats. headhsh needs to be renamed to not mistake it for pointing to head position at all times
+	# \todo evaluate whether bug is stale
 	def write(self, data):
 
 		senderstate = self.senderfeed
@@ -202,7 +259,6 @@ class FeedCollection:
 		if not senderstate.obj.account.is_owner():
 			raise RuntimeError("private key required")
 				
-		# \todo this is wrong - headhsh will always be empty for rooms, but will have last hash for chats. headhsh needs to be renamed to not mistake it for pointing to head position at all times
 		lasthsh = senderstate.lasthsh
 		senderstate.next()
 		headhsh = senderstate.obj.bzz.add(lasthsh + senderstate.serial() + data)	
@@ -212,7 +268,13 @@ class FeedCollection:
 
 
 
-	# adds a feed to the collection
+	## \brief Add feed to the collection
+	# 
+	# This adds a feed to the collection of feeds to be polled for updates. 
+	#
+	# \see FeedCollection.activate
+	# \param name Internal key to store feed under
+	# \param feed Feed object
 	def add(self, name, feed):
 		if name in self.feeds:
 			raise Exception("feed already exists with name '" + repr(name) + "'")
@@ -220,21 +282,37 @@ class FeedCollection:
 		self.feeds[name] = FeedState(feed)
 
 
-	
+
+	## \brief Activate feed in collection
+	# 
+	# After this is called, the selected feed will be polled for updates
+	#
+	# \param name Internal key of feed
 	def activate(self, name):
 		self.feeds[name].active = True
 
 
 
-	# removes a feed from the collection
+	## \brief Remove feed from collection
+	# 
+	# \param name Internal key of feed
 	def remove(self, name):
 		del self.feeds[name]
 
 
 
-	# get all updates retrieved by last syncings
-	# the array of messages is an aggregate of all reader feeds, sorted by time of update 
-	# the call will remove the updates from the buffer
+	## \brief Drain latest update buffer
+	#
+	# Gets all updates retrieved by last syncings
+	#
+	# The array of messages is an aggregate of all reader feeds, sorted by time of update 
+	#
+	# Removes the updates from the buffer
+	#
+	# \param idx Array index to start retrieval from
+	# \return Array of message objects
+	# \see FeedCollection.gethead
+	# \todo evaulate if idx is useful
 	def get(self, idx=-1):
 
 		msgs = {}
@@ -259,11 +337,16 @@ class FeedCollection:
 
 
 
-	# syncs all reader feeds with the latest updates and stored them in a buffer
-	# the messages can be retrieved with get()
+	## \brief Retrieve latest updates to buffer
 	#
-	# returns number of feeds have new messages, and an array of accounts for feeds that we w not retrievable
+	# Ssyncs all reader feeds with the latest updates and stored them in a buffer
+	# 
+	# The messages can be retrieved with get()
 	#
+	# \param bzz Swarm connection object
+	# \param deactivateonfail Deactivates a feed if updates can't be retrieved for it
+	# \return Tuple; number of feeds have new messages, and an array of accounts for feeds that we w not retrievable
+	# \see FeedCollection.get
 	# \todo make sure this completes or fully abandons retrieves before returning
 	def gethead(self, bzz, deactivateonfail=True):
 
@@ -340,8 +423,18 @@ class FeedCollection:
 
 
 
-# create a message digest to be signed for feed update
-# input here is raw bytes not hex
+## \brief Create Swarm Feed message digest
+# 
+# Create a message digest to be signed for feed update
+#
+# \param topic Swarm Feed 32-byte topic
+# \param user Account object 
+# \param inputdata Binary data to create digest for
+# \param tim Timestamp for update
+# \param epoch Epoch for update
+# \return Swarm Feed digest hash, binary format
+# \see sign_digest
+# \todo should take Account instead of "user" bytes
 def compile_digest(topic, user, inputdata, tim, epoch=1):
 
 	# protocolversion + padding 7 bytes
@@ -371,7 +464,7 @@ def compile_digest(topic, user, inputdata, tim, epoch=1):
 
 
 
-# sign a digest with given private key to use for feed update
+## sign a digest with given private key to use for feed update
 def sign_digest(pk, digest):
 	sig = pk.ecdsa_sign_recoverable(digest, raw=True)
 	s, r =  pk.ecdsa_recoverable_serialize(sig)
@@ -380,6 +473,13 @@ def sign_digest(pk, digest):
 
 
 
+## \brief Generate Swarm Feed topic
+#
+# Derive a new Swarm feed topic from an existing topic using XOR
+#
+# \param base Topic bytes to derive from
+# \param prefix High-order bytes to XOR
+# \param postfix Low-order bytes to XOR
 def new_topic_mask(base, prefix, postfix):
 	topic = ""
 	for i in range(32):
@@ -395,21 +495,25 @@ def new_topic_mask(base, prefix, postfix):
 	return topic
 
 
-# check if input is valid feed topic
+## Check if input is valid feed topic
+#
+# \return True; valid topic
 def is_valid_topic(topic):
 	return len(topic) == 32
 
 
 
-# check if input is a valid feed account address
+## Check if input is a valid feed account address
+# 
+# \return True; valid address
 def is_valid_account(user):
 	return len(user) == 20
 
 
 
-# check if input is a valid feed digest
+## Check if input is a valid feed digest
+#
+# \return True; valid digest
 def is_digest(digest):
 	return len(digest) == 32
 
-chattopic = new_topic_mask(zerohsh, "", "\x01")
-roomtopic = new_topic_mask(zerohsh, "", "\x02")
