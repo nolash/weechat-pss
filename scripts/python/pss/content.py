@@ -1,5 +1,6 @@
 import json
 
+## Lowlevel handler for JSONRPC responses
 class Stream:
 	buf = ""
 	depth = 0

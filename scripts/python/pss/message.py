@@ -3,7 +3,7 @@ import struct
 
 rMsg = re.compile("\S")
 
-
+## Base type for all user-generated message updates
 class Message:
 	
 	def __init__(self, serial, acc, content):

@@ -10,6 +10,8 @@ from room import Room
 CACHE_CONTACT_STOREFILE = ".pss-contacts"
 
 
+## Provides API for UI
+#
 # \todo abstract NODE to create a more intuitive structure of feeds under it
 class Cache:
 	

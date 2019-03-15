@@ -16,14 +16,19 @@ Please note that this project is meant to be something of a reference implementa
 
 ## Development
 
-If you want to help debugging this project I would greatly appreciate it. **You can help merely by trying to use it. No need to read code etc**
+If you want to help debugging this project I would greatly appreciate it. **You can help merely by trying to use it. No need to read code etc**. Let me know.
 
-Please let me know if you do:
+### Contact
 
-* email: dev@holbrook.no
+* email: accounts-swarmchat@holbrook.no
+* mailing list: swarmchat@holbrook.no (Mailman)
 * XMPP: lash@pimux.de
-* gitter: @nolash
 
+### Documentation
+
+Some code documentation is available inline for [Doxygen](http://doxygen.nl/), config file is in [/scripts/python/](https://github.com/nolash/weechat-pss/blob/master/scripts/python/Doxyfile).
+
+A LaTeX document stub starting to explain the architecture [is available in /doc](https://github.com/nolash/weechat-pss/blob/master/doc/architecture.latex).
 
 #### Feedback
 

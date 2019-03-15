@@ -99,6 +99,7 @@ class Room:
 	# used to reinstantiate an existing room
 	# \param hsh Swarm hash of participant list in binary
 	# \param owneraccount If Account object with private key write access will be enabled
+	# \exception Exception on load fail
 	# \todo avoid double encoding of account address
 	# \todo get output update head hash at time of load
 	# \todo evaluate whether these todos are stale :D
@@ -132,6 +133,7 @@ class Room:
 	# \param nick Name to add participant under
 	# \param participant Participant object containing public key of new participant
 	# \param save True; save participant list to swarm
+	# \exception ValueError if Feed instantiate fails
 	# \todo do we really need nick in addition to participant.nick here
 	# \todo is nick relevant here? it's not stored in participant list
 	# \todo evaluate whether these todos are stale, too
@@ -197,6 +199,7 @@ class Room:
 	#
 	# \param body Raw response body data to parse
 	# \return a tuple with previous update hash (in binary), timestamp (4 byte int) and serial (sub-timestamp sequence)
+	# \exception ValueError on invalid update data
 	def extract_meta(self, body):
 		# two hashes, 8 byte time, 3 byte offset (and no data)
 		if len(body) < 72: 
@@ -215,6 +218,7 @@ class Room:
 	# \param body Raw response body data to parse
 	# \param account Account with participant's key
 	# \return Ciphertext of message (plaintext message as long as crypto is not implemented)
+	# \exception ValueError if participant doesn't exist in update
 	# \todo do not use string literals of offset calcs
 	def extract_message(self, body, account):
 		participantcount = 0

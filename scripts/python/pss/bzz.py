@@ -339,7 +339,7 @@ class FeedCollection:
 
 	## \brief Retrieve latest updates to buffer
 	#
-	# Ssyncs all reader feeds with the latest updates and stored them in a buffer
+	# Syncs all reader feeds with the latest updates and stored them in a buffer
 	# 
 	# The messages can be retrieved with get()
 	#

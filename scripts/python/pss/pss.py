@@ -9,7 +9,8 @@ from user import PssContact, Account
 topic = "0xdeadbee2"
 
 
-# object encapsulating pss node connection
+## Handles connection and transactions for a pss node
+#
 # \todo remove direct websocket comms and get node key and addr from background process
 class Pss:
 	

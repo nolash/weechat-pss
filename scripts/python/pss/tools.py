@@ -1,3 +1,4 @@
+## \package pss This package provides connectivity, transactions and tooling for interacting with Ethereum Swarm, including normal content, Swarm Feeds and pss
 import re
 import time
 
@@ -8,8 +9,11 @@ regexValidNick = re.compile("^[\w\d_]$")
 
 
 
-# check validity of private key
-# length and valid hex check
+## Check validity of private key
+#
+# \param key Key to check, hex format
+# \return Standardized hex
+# \exception ValueError if invalid
 # \todo add unit test 
 def clean_privkey(key):
 	keyhex = clean_hex(key)
@@ -21,8 +25,11 @@ def clean_privkey(key):
 
 
 
-# check validity of ethereum address 
-# length and valid hex check
+## Check validity of ethereum address 
+#
+# \param addr Address to check, hex format
+# \return Standardized hex
+# \exception ValueError if invalid
 # \todo add unit test 
 def clean_address(addr):
 	addrhex = clean_hex(addr)
@@ -34,8 +41,11 @@ def clean_address(addr):
 
 
 
-# check validity of swarm overlay address
-# length and valid hex check
+## Check validity of swarm overlay address
+#
+# \param addr Address to check, hex format
+# \return Standardized hex
+# \exception ValueError if invalid
 # \todo add unit test 
 def clean_overlay(addr):
 	addrhex = clean_hex(addr)
@@ -47,8 +57,11 @@ def clean_overlay(addr):
 
 
 
-# check validity of key format
-# length and valid hex check
+## check validity of public key format
+#
+# \param pubkey Key to check, hex format
+# \return Standardized hex
+# \exception ValueError if invalid
 # \todo add unit test 
 def clean_pubkey(pubkey):
 	keyhex = clean_hex(pubkey)
@@ -60,7 +73,12 @@ def clean_pubkey(pubkey):
 
 
 
-# check if nick can be used
+## Check if nick can be used
+#
+# \param pubkey Key to check, hex format
+# \return Standardized hex
+# \exception ValueError if invalid
+# \param nick Nick string to check
 def clean_nick(s):
 	validnick = ""
 	try:
@@ -135,6 +153,7 @@ def now_int():
 
 
 
+## Fixed capacity FIFO buffer
 class Queue:
 	store = []
 	capacity = 0

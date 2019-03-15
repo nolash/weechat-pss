@@ -5,8 +5,13 @@ from Crypto.Hash import keccak
 from tools import clean_pubkey, clean_address, clean_nick
 
 
-# holds ethereum account
-# \todo move out of pss to enable sync comms even though crypto modules doesn't exist
+## \brief Ethereum account object
+#
+# If private key is set, public key and address is derived from it.
+#
+# If public key is explicitly set, address is derived from it.
+#
+# Address can also be explicitly set.
 class Account:
 
 
@@ -56,8 +61,10 @@ class Account:
 
 
 
-# object representing a single recipient
+## \brief pss context for Account
+#
 # \todo extend account
+# \todo rename to Contact
 class PssContact(Account):
 
 
