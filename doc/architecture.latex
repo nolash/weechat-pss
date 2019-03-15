@@ -1,0 +1,120 @@
+\documentclass[a4paper, 10pt]{article}
+\author{lash}
+\title{Group chat using swarm feeds}
+\pagestyle{headings}
+\usepackage{fullpage}
+\usepackage{colortbl}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tcolorbox}
+\usepackage{listings}
+\usepackage{tablefootnote}
+\usepackage{caption}
+\captionsetup{font=footnotesize}
+\definecolor{llgray}{gray}{0.95}
+\begin{document}
+\title{Multi-user chat using pss and Swarm Feeds}
+\date{\today\\ v0.4.1 alpha}
+\maketitle
+
+\section{Data structures}
+
+Updates are linked lists of "raw" swarm data chunks. The list pointer is the swarm hash in the first 32 bytes of the header. A swarm hash value of \texttt{0x00} marks that the first update in the list has been reached.
+
+\begin{table}[h]
+\centering
+\begin{tt}
+\begin{tabular}{|l|l|l|}
+\hline 
+\rowcolor{lightgray} \textbf{start} & {end} & \textbf{description} \\
+\hline 
+00 & 31 & Swarm hash of previous update \\
+\rowcolor{llgray} 32 & 35 & Little-endian 4-byte timestamp (in seconds) \\
+36 & 36 & > 0 if more updates exists within the same timestamp \\
+\rowcolor{llgray} 37 & 37+n & Payload data of arbitrary length \emph{n} \\
+\hline
+\end{tabular}
+\end{tt}
+\caption{Common header for all feed updates}
+\end{table}
+
+\subsection{Update data}
+
+Swarm Feeds are used to point to the most recent update. The swarm chunk the update points to is retrieved, and the linked list from the pointer in that update chunk is consequently traversed.
+
+This enables sub-second resolution in spite of Swarm Feed limitation of one per second.
+
+\begin{figure}[h]
+\noindent
+\begin{center}
+\includegraphics[width=0.5\paperwidth]{/home/lash/tmp/feed.jpg}
+\end{center}
+\caption{Feed pointer organization}
+\end{figure}
+
+A group chat update is a message being sent to the participant of the group chat.
+
+The payload contains one copy of the update content per participant in the room at the time of the update. It also contains a pointer to the participant list.
+
+The data offsets of the respective participant copies are in the same order as the participant list. The offsets are calculated from the start of the update data content
+
+The update data content will be individually encrypted.
+
+\begin{table}[h]
+\centering
+\begin{tt}
+\begin{tabular}{|l|l|l|}
+\hline 
+\rowcolor{lightgray} \textbf{start} & \textbf{end} & \textbf{description} \\
+\hline
+00 & 31 & Swarm hash of participant list valid for this update \\
+\rowcolor{llgray} 32 & 32+(p*3) & 3 little-endian bytes data offset per \emph{p} participants \\
+32+(p*3) & \verb|32+(p*3)+(n*3)| & Tightly packed update data content of length \emph{n} per participant \\
+\hline 
+\end{tabular}
+\end{tt}
+\caption{Room message payload}
+\end{table}
+
+\subsection{Room participant list}
+
+The participant list is the updater's subjective version of the list. At the time of the update this list may differ from that of other participants. Furthermore, between updates from the same participant, the list may have changed. Therefore all room updates must contain a pointer to the 
+
+\begin{tcolorbox}[colback=yellow!10,colframe=yellow!20!red,title=TODO]
+Name and pubkey should itself be a pointer and not be duplicated on each room update. \\
+
+Data should be stored in binary instead of json
+\end{tcolorbox}
+
+\begin{table}[h]
+\begin{tt}
+\begin{tabular}{|l|l|l|}
+\hline 
+\rowcolor{lightgray} \textbf{key} & \textbf{description} \\
+\hline
+name & Name of room \\
+\rowcolor{llgray} pubkey & Public key\tablefootnote{0x prefixedh hex. The key data also includes the 0x04 ECDSA public key prefix} of the room user this participant list was published by \\
+\verb|[]participants| & Array of public keys of participants \\
+\hline
+\end{tabular}
+\end{tt}
+\caption{Room participant list - key/value pairs}
+\end{table}
+
+\scriptsize
+\begin{lstlisting}[caption=Room participlant list json example,captionpos=b]
+{
+	"name":"A room name",
+	"pubkey":"0x04abcdef1234567890...",
+	"participants":[
+		"0x040101010...",
+		"0x040202020...",
+		"0x040303030...",
+	]
+}
+\end{lstlisting}
+\normalsize
+
+
+\end{document}
+
