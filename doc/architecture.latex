@@ -69,7 +69,7 @@ The update data content will be individually encrypted.
 \hline
 00 & 31 & Swarm hash of participant list valid for this update \\
 \rowcolor{llgray} 32 & 32+(p*3) & 3 little-endian bytes data offset per \emph{p} participants \\
-32+(p*3) & \verb|32+(p*3)+(n*3)| & Tightly packed update data content of length \emph{n} per participant \\
+32+(p*3) & \verb|32+(p*3)+(n*p)| & Tightly packed update data content of length \emph{n} per participant \\
 \hline 
 \end{tabular}
 \end{tt}
@@ -78,7 +78,7 @@ The update data content will be individually encrypted.
 
 \subsection{Room participant list}
 
-The participant list is the updater's subjective version of the list. At the time of the update this list may differ from that of other participants. Furthermore, between updates from the same participant, the list may have changed. Therefore all room updates must contain a pointer to the 
+The participant list is the updater's subjective version of the list. At the time of the update this list may differ from that of other participants. Furthermore, between updates from the same participant, the list may have changed. Therefore all room updates must contain a pointer to the participant list at the time of the update.
 
 \begin{tcolorbox}[colback=yellow!10,colframe=yellow!20!red,title=TODO]
 Name and pubkey should itself be a pointer and not be duplicated on each room update. \\
@@ -104,7 +104,7 @@ name & Participant list owner's published nick for self \\
 \scriptsize
 \begin{lstlisting}[caption=Room participlant list json example,captionpos=b]
 {
-	"name":"A room name",
+	"name":"<Participant nickname>",
 	"pubkey":"0x04abcdef1234567890...",
 	"participants":[
 		"0x040101010...",
