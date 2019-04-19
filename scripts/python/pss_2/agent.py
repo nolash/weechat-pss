@@ -1,4 +1,4 @@
-from urllib.request import Request
+import urllib2 
 import copy
 import re
 import os
@@ -32,16 +32,16 @@ class Agent:
 		self.port = str(port)
 		self.up = False
 
-		self.debugfile = open("debugsock.log", "a")
+		self.debugfile = open("debugsock.log", "a", 0500)
 
-		self.basereq = Request("http://" + host + ":" + str(port) + "/")
+		self.basereq = urllib2.Request("http://" + host + ":" + str(port) + "/")
 		self.basereq.add_header("Connection", "keep-alive")
 		self.basereq.add_header("Content-type", "application/x-www-form-urlencoded")
 		self.basereq.add_header("Accept", "*/*")
 			
-	## creates an urllib.request object with necessary headers
+	## creates an urllib2.Request object with necessary headers
 	def new_request(self):
-		req = Request("http://" + self.host + ":" + self.port)
+		req = urllib2.Request("http://" + self.host + ":" + self.port)
 		req.add_header("Connection", "keep-alive")
 		req.add_header("Content-type", "application/x-www-form-urlencoded")
 		req.add_header("Accept", "*/*")
@@ -74,17 +74,16 @@ class Agent:
 					break
 		r = os.read(self.sock, 4104)
 		self.debugfile.write("[" + str(id(self)) + "] response: " + repr(r) + "\n")
-		rdata = r.decode("ascii")
-		m = regexStatusLine.match(rdata)
+		m = regexStatusLine.match(r)
 		if m.group(1) != "200":
-			print(r)
+			print r
 			raise Exception("HTTP send to swarm failed: " + str(m.group(0)))
 
 		body = ""
 		try:
-			(_, body) = rdata.split("\x0a\x0a")
+			(_, body) = r.split("\x0a\x0a")
 		except:
-			(_, body)  = rdata.split("\x0d\x0a\x0d\x0a")
+			(_, body)  = r.split("\x0d\x0a\x0d\x0a")
 		return body
 
 
@@ -113,18 +112,18 @@ class Agent:
 	def send(self, path, data, querystring=""):
 
 		req = self.new_request()
-		req.data = data
 		req.add_header("Content-length", str(len(data)))
+		req.add_data(data)
 
 		requeststring = path
 		if querystring != "":
 			requeststring += "?" + querystring
 		
-		requeststring = bytearray(req.get_method() + " " + requeststring, "ascii")
-		requeststring += bytearray(" HTTP/1.1\nHost: " + req.host + "\n", "ascii")
+		requeststring = req.get_method() + " " + requeststring
+		requeststring += " HTTP/1.1\nHost: " + req.get_host() + "\n"
 		for (k, v) in req.header_items():
-			requeststring += bytearray(k + ": " + v + "\n", "ascii")
-		requeststring += b"\n" + req.data
+			requeststring += k + ": " + v + "\n"
+		requeststring += "\n" + req.get_data()
 		return self._write(requeststring)
 
 

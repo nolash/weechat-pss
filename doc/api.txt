@@ -1,0 +1,69 @@
+reference bits:
+
+00-02 error enum (0 = send, 1 = ok)
+03-15 local id 
+
+local ids are used for API request-response. All requests must have local id > 1. response to request includes same id. 
+API server may send with local id 0 which means independent event 
+event queue will have max 4095 items
+
+===
+
+send context bits:
+0 - peer		add (in)/remove (out) peer
+1 - comm		send msg (0)/set perms (1)
+2 - content		send (0)/retrieve (1) content 
+3 - tag			add (in)/remove (out) tag on peer
+4 - (unused)
+5 - (unused)
+6 - bank		modifies behavior of bits
+7 - mode		single = 0, multi = 1
+
+----
+
+0 - peer
+
+bank 0/1 (add/remove)
+single: public key
+multi: public key | room name
+
+----
+
+1 - comm
+
+bank 0 (send)
+single: public key | 4 byte content length | content
+multi: 1 byte room name length | room name | 4 byte content length | content
+
+bank 1 (set)
+single: public key | bit field
+multi: 1 byte room name length | room name | bit field
+
+----
+
+2 - content
+
+bank 0 (send)
+single/multi: 4 byte content length | request
+
+bank 1 (retrieve)
+single/multi: request
+
+content requests need to provide:
+* storage layer (bzz,ipfs...) -> multiaddress?
+* content type (mime) -> standard types with enum field + one custom?
+
+----
+
+3 - tag
+
+bank (0) add
+single: public key | 4 byte name length | name
+multi: public key | 1 byte room name length | room name | name
+
+bank (1) remove
+single: public key
+multi: public key | room name
+
+----
+

@@ -317,7 +317,7 @@ _tmp_room_initial = {}
 # \todo run in separate process with ipc
 # \todo provide and use proper accessors for chats and rooms
 def processFeedOutQueue(pssName, _):
-	global  _tmp_chat_queue_hash, _tmp_room_dirty
+	global  _tmp_chat_queue_hash
 
 	# \todo change to lasthsh
 	for publickey in cache.chats.keys():

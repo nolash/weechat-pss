@@ -4,10 +4,10 @@ import sys
 import copy
 
 from Crypto.Hash import keccak
-from urllib.parse import urlencode
+from urllib import urlencode
 
-from .tools import now_int
-from .message import Message
+from tools import now_int
+from message import Message
 
 
 # this is not used for swarm feeds for the time being
@@ -19,29 +19,6 @@ feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0
 zerohsh = ""
 for i in range(32):
 	zerohsh += "\x00"
-
-
-## \brief Generate Swarm Feed topic
-#
-# Derive a new Swarm feed topic from an existing topic using XOR
-#
-# \param base Topic bytes to derive from
-# \param prefix High-order bytes to XOR
-# \param postfix Low-order bytes to XOR
-def new_topic_mask(base, prefix, postfix):
-	topic = ""
-	for i in range(32):
-		b = 0
-		if i < len(base):
-			b = b | ord(base[i])
-		if i < len(prefix):
-			b = ord(prefix[i]) | b
-		l = 32-len(postfix)
-		if i >= l:
-			b = ord(postfix[i-l]) | b
-		topic += chr(b)
-	return topic
-
 
 # the last topic byte is used as bitflag to allow to determine context from the topic
 chattopic = new_topic_mask(zerohsh, "", "\x01")
@@ -494,6 +471,28 @@ def sign_digest(pk, digest):
 	s += chr(r)
 	return s
 
+
+
+## \brief Generate Swarm Feed topic
+#
+# Derive a new Swarm feed topic from an existing topic using XOR
+#
+# \param base Topic bytes to derive from
+# \param prefix High-order bytes to XOR
+# \param postfix Low-order bytes to XOR
+def new_topic_mask(base, prefix, postfix):
+	topic = ""
+	for i in range(32):
+		b = 0
+		if i < len(base):
+			b = b | ord(base[i])
+		if i < len(prefix):
+			b = ord(prefix[i]) | b
+		l = 32-len(postfix)
+		if i >= l:
+			b = ord(postfix[i-l]) | b
+		topic += chr(b)
+	return topic
 
 
 ## Check if input is valid feed topic
