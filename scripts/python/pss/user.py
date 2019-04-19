@@ -2,7 +2,7 @@ import json
 import secp256k1
 from Crypto.Hash import keccak
 
-from tools import clean_pubkey, clean_address, clean_nick
+from .tools import clean_pubkey, clean_address, clean_nick
 
 
 ## \brief Ethereum account object

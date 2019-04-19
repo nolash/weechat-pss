@@ -15,6 +15,7 @@ regexStatusLine = re.compile("^HTTP/1.1 (\d{3}) (.+)\n", re.M)
 ## \brief Agent handles HTTP requests and responses for swarm
 class Agent:
 
+
 	## Connects to swarm and sets up base request headers
 	#
 	# \param host swarm host
@@ -25,9 +26,8 @@ class Agent:
 		if sock == None:
 			self._sock = socket.create_connection((host,port))
 			sock = self._sock.fileno()
-		s = socket.fromfd(sock, socket.AF_INET, socket.SOCK_STREAM)
-		s.setblocking(1)
-		self.sock = sock	
+		self.fileno = sock
+		self._sock.settimeout(None)
 		self.host = host
 		self.port = str(port)
 		self.up = False
@@ -38,7 +38,12 @@ class Agent:
 		self.basereq.add_header("Connection", "keep-alive")
 		self.basereq.add_header("Content-type", "application/x-www-form-urlencoded")
 		self.basereq.add_header("Accept", "*/*")
-			
+
+	def __del__(self):
+		self._sock.close()
+		self.debugfile.close()	
+	
+	
 	## creates an urllib.request object with necessary headers
 	def new_request(self):
 		req = Request("http://" + self.host + ":" + self.port)
@@ -52,16 +57,16 @@ class Agent:
 	def _write(self, requeststring):
 		self.debugfile.write("[" + str(id(self)) + "] request: " + repr(requeststring) + "\n")
 		self.debugfile.flush()
-		select.select([], [self.sock], [], REQUEST_TIMEOUT)
+		select.select([], [self.fileno], [], REQUEST_TIMEOUT)
 		towrite = len(requeststring)
 		while towrite > 0:
-			written = os.write(self.sock, requeststring)
+			written = os.write(self.fileno, requeststring)
 			towrite -= written
 		# \todo sleep interrupts on select fail signals, need better mechanism for waits (while waiting for external process for handling the io)
 		for i in range(100):
 			time.sleep(1)
 			try:
-				select.select([self.sock], [], [], REQUEST_TIMEOUT)
+				select.select([self.fileno], [], [], REQUEST_TIMEOUT)
 				#sys.stderr.write("success\n")
 				break
 			except OSError as e:
@@ -72,7 +77,7 @@ class Agent:
 				#sys.stderr.write("othererror: " + repr(e) + "\n")
 				if e[0] != 4:
 					break
-		r = os.read(self.sock, 4104)
+		r = os.read(self.fileno, 4104)
 		self.debugfile.write("[" + str(id(self)) + "] response: " + repr(r) + "\n")
 		rdata = r.decode("ascii")
 		m = regexStatusLine.match(rdata)
@@ -129,6 +134,5 @@ class Agent:
 
 
 	## close the TCP socket connection to Swarm
-	def close():
-		self._sock.close()
-		self.debugfile.close()	
+	def close(self):
+		pass

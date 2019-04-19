@@ -79,6 +79,13 @@ class ApiServer:
 		self.thread_handle.start()
 
 
+	def __del__(self):
+		print("closing")
+		self.lock_main.acquire()
+		self.agent.close()
+		self.lock_main.release()
+
+
 	def process(self):
 		while True:
 			self.lock_i.acquire()
@@ -100,7 +107,7 @@ class ApiServer:
 				if _flag_ctx_multi & data[2] > 0:
 					sys.stdout.write("|multi")
 				print()
-				print("ok: {}".format(self.bzz.add(data)))
+				#print("ok: {}".format(self.bzz.add(data)))
 			elif not self.running:
 				return
 			time.sleep(0.1)
@@ -147,18 +154,3 @@ class ApiServer:
 		self.thread_handle.join()
 		self.thread_process.join()
 
-
-if __name__ == "__main__":
-	obj = ApiServer()
-	c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-	time.sleep(1.0)
-	obj.connect(c)
-	print("sending on addr:{} sock:{}\n".format(obj.sockaddr, c))
-	select.select([], [c.fileno()], [])
-	c.send(b"\x00\x08\x01\x00\x00\x00\x03\x66\x6f\x6f")
-	select.select([], [c.fileno()], [])
-	c.send(b"\x30\x00\x42\x00\x00\x00\x04\x62\x61\x72\x20")
-	select.select([], [c.fileno()], [])
-	c.send(b"\x10\x01\x88\x00\x00\x00\x05\x78\x79\x7a\x7a\x79")
-	time.sleep(1.0)
-	obj.stop()
