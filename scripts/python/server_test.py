@@ -10,7 +10,7 @@ class TestServer(unittest.TestCase):
 
 
 	def setUp(self):
-		self.obj = api.ApiServer()
+		self.obj = api.ApiServer("foo")
 		self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 		self.fileno = self.sock.fileno()
 		time.sleep(1.0)

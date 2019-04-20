@@ -1,9 +1,9 @@
 import websocket
 
-from tools import clean_pubkey, clean_overlay, rpchex
-from error import *
-from content import rpc_call, rpc_parse
-from user import PssContact, Account
+from .tools import clean_pubkey, clean_overlay, rpchex
+from .error import *
+from .content import rpc_call, rpc_parse
+from .user import PssContact, Account
 
 # topic we will be using for this messenger service
 topic = "0xdeadbee2"

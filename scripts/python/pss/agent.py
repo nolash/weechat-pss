@@ -13,6 +13,8 @@ regexStatusLine = re.compile("^HTTP/1.1 (\d{3}) (.+)\n", re.M)
 
 
 ## \brief Agent handles HTTP requests and responses for swarm
+#
+# \todo handle with bytes methods only, not string
 class Agent:
 
 

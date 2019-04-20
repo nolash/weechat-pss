@@ -9,6 +9,7 @@ import os
 import struct
 import sys
 import pss
+import uuid
 
 _flag_ctx_peer = 1 << 0
 _flag_ctx_comm = 1 << 1
@@ -17,6 +18,7 @@ _flag_ctx_tag = 1 << 3
 _flag_ctx_bank = 1 << 6
 _flag_ctx_multi = 1 << 7
 
+_flag_error_format = 0x02
 
 class ApiItem:
 
@@ -24,6 +26,7 @@ class ApiItem:
 		self.id = itemid
 		self.err = 0
 		self.data = b''
+		self.datalengthsize = 0
 
 
 class ApiParser:
@@ -39,10 +42,11 @@ class ApiParser:
 		if self.item == None:
 			itemid = (data[0] & 31) << 8
 			itemid += data[1]
-			#err = data[0] >> 5
 			self.item = ApiItem(itemid)
 			self.remaining = struct.unpack(">I", data[3:7])[0]
 			self.item.data += data[:7]
+			(datalength) = struct.unpack(">I", data[3:7])
+			self.item.datalength = datalength
 			data = data[7:]
 
 		cap = len(data)
@@ -60,14 +64,26 @@ class ApiParser:
 class ApiServer: 
 
 
-	def __init__(self):
-		self.agent = pss.Agent("127.0.0.1", 8500)
-		self.bzz = pss.Bzz(self.agent)
-		self.queue_i = pss.Queue((1<<13)-1)
-		self.queue_o = pss.Queue((1<<13)-1)
+	def __init__(self, name, host="127.0.0.1", wsport="8546", bzzport="8500"):
+
 		self.lock_i = threading.Lock() 
 		self.lock_o = threading.Lock()
 		self.lock_main = threading.Lock()
+		self.agent = None
+		self.pss = None
+
+		if name == "":
+			self.name = str(uuid.uuid4())
+		else:
+			self.name = name
+
+		self.pss = pss.Pss(name, host, wsport)
+		if not self.pss.connect():
+			raise Exception(self.pss.errstr)
+		self.agent = pss.Agent(host, bzzport)
+		self.bzz = pss.Bzz(self.agent)
+		self.queue_i = pss.Queue((1<<13)-1)
+		self.queue_o = pss.Queue((1<<13)-1)
 		self.running = True
 		self.thread_process = threading.Thread(None, self.process, "process")
 		self.thread_process.start()
@@ -77,9 +93,32 @@ class ApiServer:
 		self.thread_in = threading.Thread(None, self.handle_in, "handle_in")
 		self.thread_in.start()
 
+		# cached objects
+		self.contacts = []
+		self.chats = {}
+		self.rooms = {}
+
+		# cache lookup indices
+		self.idx_publickey_contact = {}
+		self.idx_publickey_pss = {}
+		self.idx_nick_contact = {}
+		self.idx_src_contacts = {}
+		self.idx_room_contacts = {}
+		self.idx_contacts_rooms = {}
+
+
 	def __del__(self):
 		self.lock_main.acquire()
-		self.agent.close()
+		if self.agent != None:
+			self.agent.close()
+		if self.pss != None:
+			self.pss.close()
+		self.lock_main.release()
+
+
+	def connect(self, c):
+		self.lock_main.acquire()
+		c.connect(self.sockaddr)
 		self.lock_main.release()
 
 
@@ -97,68 +136,71 @@ class ApiServer:
 		pass
 
 
+	## synchronously process one instruction
 	def process(self):
 		while True:
 			self.lock_i.acquire()
 			item = self.queue_i.get()
 			self.lock_i.release()
 			if item != None: 
-				data = item.data
-				typ = ""
-				bank = False
-				multi = False
-				sys.stdout.write("data {}".format(data[7:]))
-				if _flag_ctx_peer & data[2] > 0:
-					typ = "peer"
-				elif _flag_ctx_comm & data[2] > 0:
-					typ = "comm"
-				elif _flag_ctx_content & data[2] > 0:
-					typ = "content"
-				elif _flag_ctx_tag & data[2] > 0:
-					typ = "tag"	
-				if _flag_ctx_bank & data[2] > 0:
-					bank = True	
-				if _flag_ctx_multi & data[2] > 0:
-					multi = True
-				# short circuit
-				h = self.newheader(item.id, 1, typ, item.data, bank, multi)
+
+				# build what we can of the the header before data length
 				outitem = ApiItem(item.id)
-				print("hhdd", hex(h[0]), hex(h[1]), hex(h[2]))
-				h += item.data[7:]
-				outitem.data =  h
+				firstbyte = item.data[0] & 0x1f 
+				#outitem.data = firstbyte.to_bytes(1, sys.byteorder)
+				#outitem.data += item.data[1:2]
+				#outheader = bytearray([firstbyte.to_bytes(1, sys.byteorder), item.data[1:2]])	
+				outheader = bytearray(b'')
+				outheader += firstbyte.to_bytes(1, sys.byteorder)
+				outheader += item.data[1:2]
+				# empty data	
+				outdata = bytearray(b'')
+				error = 0x01
+
+				try:
+					# peer instruction
+					if _flag_ctx_peer & item.data[2] > 0:
+						
+						# room context
+						if _flag_ctx_multi & item.data[2] > 0:
+							pass
+
+						# chat context
+						else:
+							# remove peer
+							if _flag_ctx_bank & item.data[2] > 0:
+								pass
+
+							# add peer
+							else:
+								# check that data is correct
+								if item.datalength != 65:
+									error = _flag_error_format
+									raise ValueError("pubkey")
+								if self.idx_publickey_contact[item.data[7:]] != None:
+									error = _flag_error_exist
+									raise ValueError("pubkey")
+
+					# ok status does not append data
+					outheader = to_error(error, outheader, "")
+					outdata += to_data(outdata)
+					outitem.data = outheader.append(outdata)
+
+				except Exception as e:
+					print("process err ", str(e))
+					outheader = to_error(error, outheader)
+					outitem.data += outheader
+			
+	
 				self.lock_o.acquire()
 				self.queue_o.add(outitem)
 				self.lock_o.release()
+
 			elif not self.running:
 				return
 			time.sleep(0.1)
 
 
-	def newheader(self, seq, err, typ, data, bank=False, multi=False):
-		h = bytearray(7)
-		h[0] = err << 5
-		h[0] |= (seq >> 8) & 0x1f 
-		print("hh", h[0])
-		h[1] = seq & 0xff
-		if typ == "comm":
-			h[2] = _flag_ctx_comm
-		elif typ == "peer":
-			h[2] = _flag_ctx_peer
-		elif typ == "tag":
-			h[2] = _flag_ctx_tag
-		elif typ == "content":
-			h[2] = _flag_ctx_content
-		if bank:
-			h[2] |= 0x40
-		if multi:
-			h[2] |= 0x80
-		(lenbytes) = struct.pack(">I", len(data)-7)
-		i = 3
-		for l in lenbytes:
-			h[i] = l
-			i+=1
-		return h
-	
 	
 	def handle_in(self):
 		self.sock.listen(0)
@@ -186,12 +228,6 @@ class ApiServer:
 		os.unlink(self.sockaddr)
 
 
-	def connect(self, c):
-		self.lock_main.acquire()
-		c.connect(self.sockaddr)
-		self.lock_main.release()
-
-
 	def stop(self):
 		self.lock_main.acquire()
 		self.running = False
@@ -200,3 +236,20 @@ class ApiServer:
 		self.thread_out.join()
 		self.thread_process.join()
 
+
+## add given error to data
+#
+# \param error one byte error flag, byte aligned
+# \param data bytearray of data to manipulate
+def to_error(error, data):
+	data[0] &= 0x1f
+	data[0] |= error << 5
+	data += b'\x00\x00\x00\x00'
+	return data	
+
+
+## returns new reference to data prefixed with serialized data length 
+def to_data(indata):
+	(outdata) = struct.pack(">I", len(indata))
+	outdata += indata
+	return outdata
