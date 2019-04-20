@@ -3,10 +3,10 @@ import copy
 import struct
 import sys
 
-from user import PssContact, Account, publickey_to_address
-from bzz import FeedCollection, Feed, zerohsh, new_topic_mask
-from tools import clean_pubkey, clean_name, now_int, clean_hex
-from message import is_message
+from .user import PssContact, Account, publickey_to_address
+from .bzz import FeedCollection, Feed, zerohsh, new_topic_mask
+from .tools import clean_pubkey, clean_name, now_int, clean_hex
+from .message import is_message
 
 
 class Participant(PssContact):

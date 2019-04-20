@@ -117,7 +117,7 @@ class Feed():
 		self.account = account
 		self.bzz = bzz
 		if len(name) > 31 or len(name) == 0:
-			raise ValueError("invalid name length 0 < n <= 31")
+			raise ValueError("invalid name length 0 < n <= 31 {}", name)
 
 		self.topic = new_topic_mask(feedRootTopic, name, "")
 

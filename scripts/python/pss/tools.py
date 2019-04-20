@@ -90,7 +90,8 @@ def clean_nick(s):
 	if validnick == "":
 		raise ValueError("invalid characters in nick")
 
-	return s.encode("ascii")	
+	#return s.encode("ascii")	
+	return s
 
 
 
@@ -190,10 +191,18 @@ class Queue:
 
 
 
+## converts bytes to hexstring
+#
+# \param b bytes to convert
+# \return resulting hexstring
 def rpchex(b):
-	return "0x" + b.encode("hex")	
+	return "0x" + codecs.encode(b, "hex").decode("ascii")
 
 
+## decodes hex string to bytes
+#
+# \param hx hex string to decode
+# \return resulting bytes
 def decodehex(hx):
 	try:
 		return codecs.decode(hx, "hex")

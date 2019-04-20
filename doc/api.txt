@@ -19,6 +19,8 @@ send context bits:
 6 - bank		modifies behavior of bits
 7 - mode		single = 0, multi = 1
 
+if all context bits are 0, set private key
+
 ----
 
 0 - peer
@@ -61,9 +63,6 @@ bank (0) add
 single: public key | 4 byte name length | name
 multi: public key | 1 byte room name length | room name | name
 
-bank (1) remove
-single: public key
-multi: public key | room name
+bank (1) (unused)
 
 ----
-

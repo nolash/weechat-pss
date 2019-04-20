@@ -10,6 +10,7 @@ import struct
 import sys
 import pss
 import uuid
+import codecs
 
 _flag_ctx_peer = 1 << 0
 _flag_ctx_comm = 1 << 1
@@ -20,6 +21,13 @@ _flag_ctx_multi = 1 << 7
 
 _flag_error_format = 0x02
 _flag_error_exist = 0x04
+
+
+class ApiLogger:
+
+	def __init__(self, filename):
+		pass	
+
 
 class ApiItem:
 
@@ -81,6 +89,10 @@ class ApiServer:
 		self.pss = pss.Pss(name, host, wsport)
 		if not self.pss.connect():
 			raise Exception(self.pss.errstr)
+
+		# perhaps account show be supplied to pss obj and not the other way around
+		self.contact = pss.PssContact(self.name, self.pss.account)
+
 		self.agent = pss.Agent(host, bzzport)
 		self.bzz = pss.Bzz(self.agent)
 		self.queue_i = pss.Queue((1<<13)-1)
@@ -167,6 +179,17 @@ class ApiServer:
 				error = 0x01
 
 				try:
+
+					# set private key
+					# for now cannot be changed without restarting the server
+					if item.data[2] == 0:
+						if len(item.data) != 39:
+							error = _flag_error_format
+							raise ValueError("privatekey wrong length")
+						pk = item.data[7:39]
+						self.pss.set_account_write(pk)
+						self.add_contact_feed(self.contact)
+	
 					# peer instruction
 					if _flag_ctx_peer & item.data[2] > 0:
 						
@@ -183,18 +206,47 @@ class ApiServer:
 							# add peer
 							else:
 								# check that data is correct
-								print(repr(item.datalength))
-								if item.datalength != 65:
+								if item.datalength < 66:
 									error = _flag_error_format
 									raise ValueError("pubkey", item.datalength)
-								if item.data[7:] in self.idx_publickey_contact:
-									error = _flag_error_exist
-									raise ValueError("pubkey")
-								# create contact and add to cache
-								newcontact = pss.PssContact("", self.name)
-								newcontact.set_public_key(item.data[7:])
+								newcontact = None
+								address = b''
+								pubkey = item.data[7:72]
+								overlaylength = item.data[72]
+
+								# retrieve contact object if already exists
+								if pubkey in self.idx_publickey_contact:
+									newcontact = self.idx_publickey_contact[pubkey]
+								else:
+									newcontact = pss.PssContact("", self.name)
+
+								# if overlay address is specified then set it
+								if overlaylength > 0:
+									address += item.data[73:73+overlaylength]
+									newcontact.set_overlay(address)
+
+
+								# if there is data left on input that's the nick. add it
+								# delete the existing nick to contact index entry if it exists
+								if len(item.data) > 74+overlaylength:	
+									if newcontact.nick in self.idx_nick_contact:
+										del self.idx_nick_contact[newcontact.nick]
+									newcontact.nick = pss.clean_nick(item.data[73+overlaylength:].decode("ascii"))
+									self.idx_nick_contact[newcontact.nick] = newcontact
+
+
+								# add to cache
+								newcontact.set_public_key(pubkey)
 								self.contacts.append(newcontact)
-								self.idx_publickey_contact[item.data[7:]] = newcontact
+								self.idx_publickey_contact[pubkey] = newcontact
+
+								# add the peer to pss node
+								self.pss.add(newcontact)
+
+								try:
+									self.add_contact_feed(newcontact)
+								except:
+									print("feed not possible")
 
 					# ok status does not append data
 					outheader = to_error(error, outheader)
@@ -212,6 +264,7 @@ class ApiServer:
 
 			elif not self.running:
 				return
+
 			time.sleep(0.1)
 
 
@@ -242,6 +295,36 @@ class ApiServer:
 		os.unlink(self.sockaddr)
 
 
+
+	## 
+	#
+	# \todo chattopic must be changed to correct topic for contact feed
+	def add_contact_feed(self, contact):
+		if not self.pss.can_write():
+			raise AttributeError("can't create contact feed for '" + contact.get_nick() + "@" + self.name + ", missing private key")
+
+		senderfeed = pss.Feed(
+			self.bzz,
+			self.pss.get_account(),
+			pss.chattopic[:31]
+		)
+		peerfeed = pss.Feed(
+			self.bzz,
+			contact,
+			pss.chattopic[:31]
+		)
+
+		coll = pss.FeedCollection(self.pss.get_name() + "." + contact.get_nick(), senderfeed)
+		coll.add(contact.get_nick(), peerfeed)
+
+		if not contact.get_public_key() in self.chats:
+			self.chats[contact.get_public_key()] = {}
+
+		sys.stderr.write("wrote to " + contact.get_nick())
+		self.chats[contact.get_public_key()][self.name] = coll
+
+
+
 	def stop(self):
 		self.lock_main.acquire()
 		self.running = False
@@ -266,3 +349,4 @@ def to_data(indata):
 	outdata = struct.pack(">I", len(indata))
 	outdata += indata
 	return outdata
+
