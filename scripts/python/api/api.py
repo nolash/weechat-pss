@@ -19,6 +19,7 @@ _flag_ctx_bank = 1 << 6
 _flag_ctx_multi = 1 << 7
 
 _flag_error_format = 0x02
+_flag_error_exist = 0x04
 
 class ApiItem:
 
@@ -26,7 +27,7 @@ class ApiItem:
 		self.id = itemid
 		self.err = 0
 		self.data = b''
-		self.datalengthsize = 0
+		self.datalength = 0
 
 
 class ApiParser:
@@ -45,8 +46,8 @@ class ApiParser:
 			self.item = ApiItem(itemid)
 			self.remaining = struct.unpack(">I", data[3:7])[0]
 			self.item.data += data[:7]
-			(datalength) = struct.unpack(">I", data[3:7])
-			self.item.datalength = datalength
+			datalength = struct.unpack(">I", data[3:7])
+			self.item.datalength = datalength[0]
 			data = data[7:]
 
 		cap = len(data)
@@ -122,6 +123,9 @@ class ApiServer:
 		self.lock_main.release()
 
 
+	## loop sending output queue entries to socket
+	#
+	# \todo partial send handling
 	def handle_out(self, sock):
 		while True:
 			self.lock_o.acquire()
@@ -129,7 +133,12 @@ class ApiServer:
 			self.lock_o.release()
 			if item != None:
 				select.select([], [sock.fileno()], [])
-				sock.send(item.data)
+				c = sock.send(item.data)
+				if c == 0:
+					print("fail send", c, item.data)
+					self.lock_o.acquire()
+					self.queue_o.add(item)
+					self.lock_o.release()
 			elif not self.running:
 				return
 			time.sleep(0.1)	
@@ -152,7 +161,7 @@ class ApiServer:
 				#outheader = bytearray([firstbyte.to_bytes(1, sys.byteorder), item.data[1:2]])	
 				outheader = bytearray(b'')
 				outheader += firstbyte.to_bytes(1, sys.byteorder)
-				outheader += item.data[1:2]
+				outheader += item.data[1:3]
 				# empty data	
 				outdata = bytearray(b'')
 				error = 0x01
@@ -174,24 +183,29 @@ class ApiServer:
 							# add peer
 							else:
 								# check that data is correct
+								print(repr(item.datalength))
 								if item.datalength != 65:
 									error = _flag_error_format
-									raise ValueError("pubkey")
-								if self.idx_publickey_contact[item.data[7:]] != None:
+									raise ValueError("pubkey", item.datalength)
+								if item.data[7:] in self.idx_publickey_contact:
 									error = _flag_error_exist
 									raise ValueError("pubkey")
+								# create contact and add to cache
+								newcontact = pss.PssContact("", self.name)
+								newcontact.set_public_key(item.data[7:])
+								self.contacts.append(newcontact)
+								self.idx_publickey_contact[item.data[7:]] = newcontact
 
 					# ok status does not append data
-					outheader = to_error(error, outheader, "")
-					outdata += to_data(outdata)
-					outitem.data = outheader.append(outdata)
+					outheader = to_error(error, outheader)
+					outdata = to_data(outdata)
+					outitem.data = outheader + outdata
 
 				except Exception as e:
-					print("process err ", str(e))
+					print("process err ", error, str(e))
 					outheader = to_error(error, outheader)
 					outitem.data += outheader
 			
-	
 				self.lock_o.acquire()
 				self.queue_o.add(outitem)
 				self.lock_o.release()
@@ -243,13 +257,12 @@ class ApiServer:
 # \param data bytearray of data to manipulate
 def to_error(error, data):
 	data[0] &= 0x1f
-	data[0] |= error << 5
-	data += b'\x00\x00\x00\x00'
+	data[0] |= (error & 0xff) << 5
 	return data	
 
 
 ## returns new reference to data prefixed with serialized data length 
 def to_data(indata):
-	(outdata) = struct.pack(">I", len(indata))
+	outdata = struct.pack(">I", len(indata))
 	outdata += indata
 	return outdata

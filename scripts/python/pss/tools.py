@@ -1,6 +1,7 @@
 ## \package pss This package provides connectivity, transactions and tooling for interacting with Ethereum Swarm, including normal content, Swarm Feeds and pss
 import re
 import time
+import codecs
 
 # \todo make clean functions for non-hex data
 
@@ -123,7 +124,7 @@ def clean_hex(hx):
 
 	if len(decodedHex) > 0:
 		try:
-			decodedHex.decode("hex")
+			decodehex(decodedHex)
 		except Exception as e:
 			raise ValueError("invalid hex '" + decodedHex + "': " + str(e))
 
@@ -191,3 +192,10 @@ class Queue:
 
 def rpchex(b):
 	return "0x" + b.encode("hex")	
+
+
+def decodehex(hx):
+	try:
+		return codecs.decode(hx, "hex")
+	except:
+		raise ValueError("invalid hex")

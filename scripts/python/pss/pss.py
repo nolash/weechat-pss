@@ -1,6 +1,6 @@
 import websocket
 
-from .tools import clean_pubkey, clean_overlay, rpchex
+from .tools import clean_pubkey, clean_overlay, rpchex, decodehex
 from .error import *
 from .content import rpc_call, rpc_parse
 from .user import PssContact, Account
@@ -88,10 +88,10 @@ class Pss:
 
 		# verify address
 		try:
-			overlay = clean_overlay(resp['result']).decode("hex")
+			overlay = decodehex(clean_overlay(resp['result']))
 		except ValueError as e:
 			self.err = PSS_EREMOTEINVAL
-			self.errstr = "received bogus base address " + resp['result']
+			self.errstr = "received bogus base address " + resp['result'] + "; " + str(e)
 			return False
 		
 		# retrieve the node key	data
@@ -101,10 +101,10 @@ class Pss:
 	
 		# verify key
 		try: 
-			key = clean_pubkey(resp['result']).decode("hex")
+			key = decodehex(clean_pubkey(resp['result']))
 		except ValueError as e:
 			self.err = PSS_EREMOTEINVAL
-			self.errstr = "received bogus pubkey " + resp['result']
+			self.errstr = "received bogus pubkey " + resp['result'] + "; " + str(e)
 			return False
 
 		# subscribe to incoming
