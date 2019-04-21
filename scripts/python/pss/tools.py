@@ -196,7 +196,8 @@ class Queue:
 # \param b bytes to convert
 # \return resulting hexstring
 def rpchex(b):
-	return "0x" + codecs.encode(b, "hex").decode("ascii")
+	return "0x" + b.hex() #codecs.encode(b, "hex").decode("ascii")
+	#return "0x" + codecs.encode(b, "hex").decode("ascii")
 
 
 ## decodes hex string to bytes

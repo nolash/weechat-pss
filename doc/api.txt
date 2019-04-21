@@ -41,7 +41,7 @@ multi: public key | room name
 1 - comm
 
 bank 0 (send)
-single: public key | 4 byte content length | content
+single: public key | content
 multi: 1 byte room name length | room name | 4 byte content length | content
 
 bank 1 (set)

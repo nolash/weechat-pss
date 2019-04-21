@@ -20,7 +20,7 @@ _flag_ctx_bank = 1 << 6
 _flag_ctx_multi = 1 << 7
 
 _flag_error_format = 0x02
-_flag_error_exist = 0x04
+_flag_error_entity = 0x04
 
 
 class ApiLogger:
@@ -74,7 +74,24 @@ class ApiParser:
 		return (None, None)
 
 
-class ApiServer: 
+class ApiStore:
+
+	def __init__(self):
+		# cached objects
+		self.contacts = []
+		self.chats = {}
+		self.rooms = {}
+
+		# cache lookup indices
+		self.idx_publickey_contact = {}
+		self.idx_publickey_pss = {}
+		self.idx_nick_contact = {}
+		self.idx_src_contacts = {}
+		self.idx_room_contacts = {}
+		self.idx_contacts_rooms = {}
+
+
+class ApiServer(ApiStore): 
 
 
 	def __init__(self, name, host="127.0.0.1", wsport="8546", bzzport="8500"):
@@ -109,19 +126,9 @@ class ApiServer:
 		self.sock.bind(self.sockaddr)
 		self.thread_in = threading.Thread(None, self.handle_in, "handle_in")
 		self.thread_in.start()
-
-		# cached objects
-		self.contacts = []
-		self.chats = {}
-		self.rooms = {}
-
-		# cache lookup indices
-		self.idx_publickey_contact = {}
-		self.idx_publickey_pss = {}
-		self.idx_nick_contact = {}
-		self.idx_src_contacts = {}
-		self.idx_room_contacts = {}
-		self.idx_contacts_rooms = {}
+	
+		# initialize the store	
+		super(ApiServer, self).__init__()
 
 
 	def __del__(self):
@@ -190,6 +197,26 @@ class ApiServer:
 							raise ValueError("privatekey wrong length")
 						self.pss.set_account_write(item.data)
 						self.add_contact_feed(self.contact)
+
+					# comms instruction
+					if _flag_ctx_comm & item.header[2] > 0:
+
+						# room context
+						if _flag_ctx_multi & item.header[2] > 0:
+							pass
+
+						# chat context
+						else:
+							# settings
+							if _flag_ctx_bank & item.header[2] > 0:
+								pass
+
+							# send
+							else:
+								pubkey = item.data[:65]
+								payload = item.data[65:]
+								contact = self.idx_publickey_contact[pubkey]
+								self.pss.send(contact, payload)
 	
 					# peer instruction
 					if _flag_ctx_peer & item.header[2] > 0:

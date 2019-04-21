@@ -171,7 +171,7 @@ class Pss:
 			raise IOError("not connected")
 
 		# send the message
-		self.ws.send(rpc_call(self.seq, "sendAsym", [rpchex(contact.get_public_key()), topic, "0x" + msg.encode("hex")]))
+		self.ws.send(rpc_call(self.seq, "sendAsym", [rpchex(contact.get_public_key()), topic, "0x" + msg.hex()]))
 		self.seq += 1
 
 
