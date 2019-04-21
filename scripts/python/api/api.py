@@ -121,6 +121,7 @@ class ApiServer(ApiCache):
 		self.lock_feed = threading.Lock()
 		self.agent = None
 		self.pss = None
+		self.stream = pss.Stream()
 
 		if name == "":
 			self.name = str(uuid.uuid4())
@@ -153,6 +154,8 @@ class ApiServer(ApiCache):
 		self.thread_in.start()
 		self.thread_feed_out = threading.Thread(None, self.feed_out, "feed_out")
 		self.thread_feed_out.start()
+		self.thread_pss = threading.Thread(None, self.pss_in, "pss_in")
+		self.thread_pss.start()
 	
 
 
@@ -170,6 +173,37 @@ class ApiServer(ApiCache):
 		c.connect(self.sockaddr)
 		self.lock_main.release()
 
+
+	def pss_in(self):
+		while self.running:
+			os.set_blocking(self.pss.get_fd(), os.O_NONBLOCK & 0xff)
+			msg = ""	
+			try:
+				msg = os.read(self.pss.get_fd(), 1024)
+			except:	
+				print("pss noread", msg)
+				time.sleep(1.0)
+				continue
+
+			#processed = self.stream.process(self.pss.ws.recv())
+			processed = self.stream.process(msg)
+			for o in processed['results']:
+				try:
+					r = pss.rpc_parse(o)
+					_ = r["params"]["result"]
+				except Exception as e:
+					try:
+						error = r["error"]
+						print("error!!!", r["error"]["message"])
+						continue
+					except:	
+						print("ws skip invalid receive", r, o, e)
+						continue
+
+				print("msg from", r["params"]["result"]["Key"])
+
+			time.sleep(3.0)
+		print("pss in exit")
 
 	## post new head hashes of all feed chat linked lists
 	#

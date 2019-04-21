@@ -28,7 +28,7 @@ class TestServer(unittest.TestCase):
 		self.obj.stop()
 
 
-	#@unittest.skip("skip test_room")
+	@unittest.skip("skip test_room")
 	def test_room(self):
 		self.obj.connect(self.sock)
 		print("sending on addr:{} sock:{}\n".format(self.obj.sockaddr, self.sock))

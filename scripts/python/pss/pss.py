@@ -159,8 +159,6 @@ class Pss:
 		call = rpc_call(self.seq, "setPeerPublicKey", [pubkeyhx, topic, overlayhx])
 		print("ws send", call)
 		self.ws.send(call)
-		d = self.ws.recv()
-		print("ws recv", d)
 		self.seq += 1
 
 
@@ -197,3 +195,4 @@ class Pss:
 		self.connected = False
 		self.run = False
 		self.ws.close()
+

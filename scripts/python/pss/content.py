@@ -2,7 +2,7 @@ import json
 
 ## Lowlevel handler for JSONRPC responses
 class Stream:
-	buf = ""
+	buf = bytearray()
 	depth = 0
 
 	def process(self, data):
@@ -28,20 +28,22 @@ class Stream:
 		last = 0
 		for i in range(0, n):
 
-			if ord(data[i]) == 0x7b:
+			#if ord(data[i]) == 0x7b:
+			if data[i] == 0x7b:
 				self.depth += 1
-				self.buf += data[i]
-			elif ord(data[i]) == 0x7d:
+				self.buf.append(data[i])
+			#elif ord(data[i]) == 0x7d:
+			elif data[i] == 0x7d:
 				self.depth -= 1
 				if self.depth == 0:
-					self.buf += data[i]
-					r['results'].append(self.buf)
-					self.buf = ""
+					self.buf.append(data[i])
+					r['results'].append(self.buf.decode("utf-8"))
+					self.buf = bytearray()
 					last = i
 				else:
-					self.buf += data[i]
+					self.buf.append(data[i])
 			elif self.depth > 0:
-				self.buf += data[i]
+				self.buf.append(data[i])
 
 		if self.depth > 0:
 			r['processing'] = True
