@@ -23,12 +23,14 @@ _flag_error_format = 0x02
 _flag_error_entity = 0x04
 
 
+## Debug logging
 class ApiLogger:
 
 	def __init__(self, filename):
 		pass	
 
 
+## Represents one individual command
 class ApiItem:
 
 	def __init__(self, itemid):
@@ -40,6 +42,7 @@ class ApiItem:
 		self.src = b''
 
 
+## Assembles individual commands from the socket data stream
 class ApiParser:
 
 
@@ -47,6 +50,10 @@ class ApiParser:
 		self.item = None
 
 
+	## Process input data
+	#
+	# \param data input
+	# \return tuple: (ApiItem, remaining data) if a complete command is parsed, (None, None) if end of command not found (or 0-length data)
 	def put(self, data):
 		if len(data) == 0:
 			return (None, None)
@@ -74,6 +81,7 @@ class ApiParser:
 		return (None, None)
 
 
+## Encapsulates all cached objects and lookup indices for the ApiServer
 class ApiCache:
 
 	def __init__(self):
@@ -96,6 +104,12 @@ class ApiCache:
 		self.hsh_dirty = False
 
 
+## \brief Command handler and muxer
+# 
+# Top level object handling local socket i/o and all threads interfacing swarm node
+# Commands are sent to the server on the local socket. 
+# Uses separate threads for queueing commands, processing commands and transmitting queued replies
+# Updates to feeds representing linked list updates are also handled in separate threads
 class ApiServer(ApiCache): 
 
 
@@ -289,9 +303,11 @@ class ApiServer(ApiCache):
 							else:
 								roomnamelength = item.data[0]
 								pubkey = None
+								nick = None
 								if item.datalength > roomnamelength+1:
 									try:
-										pubkey = item.data[1+roomdatalength:66+roomdatalength]
+										pubkey = item.data[1+roomnamelength:66+roomnamelength]
+										nick = item.data[66+roomnamelength:]
 									except:
 										error = _flag_error_format
 										raise ValueError("wrong pubkey length")
@@ -312,14 +328,20 @@ class ApiServer(ApiCache):
 									publickey = p.get_public_key()
 									if publickey != self.contact.get_public_key():
 										try:
-											print("todo add contact", p)
-											#self.add_contact(p)
+											#print("todo add contact", p)
+											self.add_contact(p)
 										except KeyError as e:
 											pass
 							except Exception as e:
 								sys.stderr.write("can't find state for room " + roomname.decode("ascii") + ": " + repr(e) + "\n")
 								room.start(self.name)
 
+							if pubkey != None:
+								print("adding participant", pubkey, nick)
+								strnick = pss.clean_nick(nick.decode("ascii"))
+								newcontact = pss.PssContact(strnick, self.name)
+								newcontact.set_public_key(pubkey)
+								self.add_contact(newcontact)
 
 						# chat context
 						else:
@@ -336,7 +358,7 @@ class ApiServer(ApiCache):
 								newcontact = None
 								address = b''
 								pubkey = item.data[:65]
-								overlaylength = item.data[65]
+								#overlaylength = item.data[65]
 
 								# retrieve contact object if already exists
 								if pubkey in self.idx_publickey_contact:
@@ -345,33 +367,26 @@ class ApiServer(ApiCache):
 									newcontact = pss.PssContact("", self.name)
 
 								# if overlay address is specified then set it
-								if overlaylength > 0:
-									address += item.data[66:66+overlaylength]
-									newcontact.set_overlay(address)
+								#if overlaylength > 0:
+								#	address += item.data[66:66+overlaylength]
+								#	newcontact.set_overlay(address)
 
 
 								# if there is data left on input that's the nick. add it
 								# delete the existing nick to contact index entry if it exists
-								if len(item.data) > 66+overlaylength:	
+								#if len(item.data) > 66+overlaylength:	
+								if len(item.data) > 65:
 									if newcontact.nick in self.idx_nick_contact:
 										del self.idx_nick_contact[newcontact.nick]
-									newcontact.nick = pss.clean_nick(item.data[66+overlaylength:].decode("ascii"))
+									#newcontact.nick = pss.clean_nick(item.data[66+overlaylength:].decode("ascii"))
+									newcontact.nick = pss.clean_nick(item.data[65:].decode("ascii"))
 									self.idx_nick_contact[newcontact.nick] = newcontact
 
 
 								# add to cache
 								newcontact.set_public_key(pubkey)
-								self.contacts.append(newcontact)
-								self.idx_publickey_contact[pubkey] = newcontact
-
-								# add the peer to pss node
-								self.pss.add(newcontact)
-
-								try:
-									self.add_contact_feed(newcontact)
-								except:
-									print("feed not possible")
-
+								self.add_contact(newcontact)
+					
 					# ok status does not append data
 					outheader = to_error(error, outheader)
 					outdata = to_data(outdata)
@@ -418,6 +433,33 @@ class ApiServer(ApiCache):
 		self.sock.close()
 		os.unlink(self.sockaddr)
 
+
+
+	# \todo handle source param, must be supplied	
+	#def add_contact(self, contact, store=False, overwrite=False):
+	def add_contact(self, contact, overwrite=True):
+
+		if contact.get_nick() in self.idx_nick_contact.keys() and not overwrite:
+			raise KeyError("contact name '" + str(contact.get_nick()) + "' already in use")
+
+		if contact.get_public_key() in self.idx_publickey_contact and not overwrite:
+			raise KeyError("contact public '" + str(contact.get_public_key()) + "' already stored")
+
+		if contact.get_public_key() == "":
+			raise AttributeError("public key missing from contact")
+
+		# take over the reference of contact, caller can drop var
+		self.contacts.append(contact)
+		self.idx_publickey_contact[contact.get_public_key()] = contact
+		self.idx_nick_contact[contact.get_nick()] = contact
+
+		# \todo probably we shouldn't pass on all exceptions here
+		try:
+			self.pss.add(contact)
+			self.add_contact_feed(contact)
+		except AttributeError as e:
+			sys.stderr.write("addcontactfeed: " + repr(e))
+			pass
 
 
 	## 

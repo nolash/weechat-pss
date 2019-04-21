@@ -44,12 +44,24 @@ class TestServer(unittest.TestCase):
 
 		# join room (no public key = do not add peer to room)
 		select.select([], [self.fileno], [])
-		datasend = b"\x00\x02\x81\x00\x00\x00\x06\x05pinkc"
+		datasend = b"\x00\x02\x81\x00\x00\x00\x06\x05pinky"
 		dataexpect = b"\x20\x02\x81\x00\x00\x00\x00"
 		self.sock.send(datasend)
 		select.select([self.fileno], [], [])
 		datarecv = self.sock.recv(1024)
 		self.assertEqual(dataexpect, datarecv)
+
+		# join room (no public key = do not add peer to room)
+		select.select([], [self.fileno], [])
+		datasend = b"\x00\x02\x81\x00\x00\x00\x4a\x05pinky"
+		datasend += decodehex(to_pubkey)
+		datasend += b"meh"	
+		dataexpect = b"\x20\x02\x81\x00\x00\x00\x00"
+		self.sock.send(datasend)
+		select.select([self.fileno], [], [])
+		datarecv = self.sock.recv(1024)
+		self.assertEqual(dataexpect, datarecv)
+
 
 	#@unittest.skip("skip test_contact_single")
 	def test_contact_single(self):
@@ -70,7 +82,8 @@ class TestServer(unittest.TestCase):
 		select.select([], [self.fileno], [])
 		datasend = b"\x00\x08\x01"
 		bytedata = decodehex(to_pubkey)
-		bytedata += b'\x04\x01\x02\x03\x04inky'
+		#bytedata += b'\x04\x01\x02\x03\x04inky'
+		bytedata += b'inky'
 		(datalengthserialized) = struct.pack(">I", len(bytedata))
 		datasend += datalengthserialized
 		datasend += bytedata

@@ -155,7 +155,9 @@ class Pss:
 		# add to node and object cache
 		pubkeyhx = rpchex(contact.get_public_key())
 		overlayhx = rpchex(contact.get_overlay())
-		self.ws.send(rpc_call(self.seq, "setPeerPublicKey", [pubkeyhx, topic, overlayhx]))
+		call = rpc_call(self.seq, "setPeerPublicKey", [pubkeyhx, topic, overlayhx])
+		print("ws send", call)
+		self.ws.send(call)
 		d = self.ws.recv()
 		print("ws recv", d)
 		self.seq += 1

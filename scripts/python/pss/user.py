@@ -76,7 +76,7 @@ class PssContact(Account):
 
 		self.nick = nick #clean_nick(nick)
 		self.src = src
-		self.overlay = ""
+		self.overlay = b''
 
 
 	# \todo proper nested json serialize

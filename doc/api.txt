@@ -33,8 +33,8 @@ single/multi: private key
 0 - peer
 
 bank 0/1 (add/remove)
-single: public key
-multi: 1 byte room name | room name [| public key]
+single: public key | nick 
+multi: 1 byte room name | room name [ | public key | nick ]
 
 ----
 
@@ -66,10 +66,10 @@ content requests need to provide:
 
 3 - tag
 
-bank (0) add
-single: public key | 4 byte name length | name
+bank (0) add/remove
+single: public key encoding | public key location | 1 byte overlay length | overlay
 multi: public key | 1 byte room name length | room name | name
 
-bank (1) (unused)
+bank 1 (remove)
 
 ----
