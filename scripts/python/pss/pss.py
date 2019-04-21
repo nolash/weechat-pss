@@ -53,7 +53,6 @@ class Pss:
 		self.account.set_key(privkeybytes)
 
 
-
 	def get_account(self):
 		return self.account
 

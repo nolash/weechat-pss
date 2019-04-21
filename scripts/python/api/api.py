@@ -74,7 +74,7 @@ class ApiParser:
 		return (None, None)
 
 
-class ApiStore:
+class ApiCache:
 
 	def __init__(self):
 		# cached objects
@@ -90,8 +90,13 @@ class ApiStore:
 		self.idx_room_contacts = {}
 		self.idx_contacts_rooms = {}
 
+		# feed pointers
+		self.hsh_feed_chats = {}
+		self.hsh_feed_room = {}
+		self.hsh_dirty = False
 
-class ApiServer(ApiStore): 
+
+class ApiServer(ApiCache): 
 
 
 	def __init__(self, name, host="127.0.0.1", wsport="8546", bzzport="8500"):
@@ -99,6 +104,7 @@ class ApiServer(ApiStore):
 		self.lock_i = threading.Lock() 
 		self.lock_o = threading.Lock()
 		self.lock_main = threading.Lock()
+		self.lock_feed = threading.Lock()
 		self.agent = None
 		self.pss = None
 
@@ -112,23 +118,28 @@ class ApiServer(ApiStore):
 			raise Exception(self.pss.errstr)
 
 		# perhaps account show be supplied to pss obj and not the other way around
-		self.contact = pss.PssContact(self.name, self.pss.account)
+		self.contact = pss.PssContact(self.name, self.name)
 
 		self.agent = pss.Agent(host, bzzport)
 		self.bzz = pss.Bzz(self.agent)
 		self.queue_i = pss.Queue((1<<13)-1)
 		self.queue_o = pss.Queue((1<<13)-1)
 		self.running = True
-		self.thread_process = threading.Thread(None, self.process, "process")
-		self.thread_process.start()
+
 		self.sockaddr = "tmp_{:}.sock".format(uuid.uuid4())
 		self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 		self.sock.bind(self.sockaddr)
+
+		# initialize the cache
+		super(ApiServer, self).__init__()
+
+		self.thread_process = threading.Thread(None, self.process, "process")
+		self.thread_process.start()
 		self.thread_in = threading.Thread(None, self.handle_in, "handle_in")
 		self.thread_in.start()
+		self.thread_feed_out = threading.Thread(None, self.feed_out, "feed_out")
+		self.thread_feed_out.start()
 	
-		# initialize the store	
-		super(ApiServer, self).__init__()
 
 
 	def __del__(self):
@@ -145,6 +156,31 @@ class ApiServer(ApiStore):
 		c.connect(self.sockaddr)
 		self.lock_main.release()
 
+
+	## post new head hashes of all feed chat linked lists
+	#
+	# \todo better sleep calculation so is run every second
+	def feed_out(self):
+		while True:
+			if not self.hsh_dirty and not self.running:
+				sys.stderr.write("feed_out exiting")
+				return
+			updates = 0
+			for k in self.chats.keys():
+				if k in self.hsh_feed_chats:
+					self.lock_feed.acquire()
+					feedhash = self.chats[k].senderfeed.lasthsh
+					actualhash = self.hsh_feed_chats[k]
+					self.lock_feed.release()
+					if feedhash != actualhash:
+						updates += 1
+						threading.Thread(None, self.chats[k].senderfeed.obj.update, "update_feed_" + str(k), [codecs.encode(actualhash, "ascii")]).start()	
+			sys.stderr.write("feed_out complete {}".format(updates))
+			self.lock_feed.acquire()
+			self.hsh_dirty = False
+			self.lock_feed.release()
+			time.sleep(1.0)
+	
 
 	## loop sending output queue entries to socket
 	#
@@ -169,6 +205,8 @@ class ApiServer(ApiStore):
 
 
 	## synchronously process one instruction
+	#
+	# \todo use same object for account in pss node as in self.contact
 	def process(self):
 		while True:
 			self.lock_i.acquire()
@@ -196,6 +234,7 @@ class ApiServer(ApiStore):
 							error = _flag_error_format
 							raise ValueError("privatekey wrong length")
 						self.pss.set_account_write(item.data)
+						self.contact.set_key(item.data)
 						self.add_contact_feed(self.contact)
 
 					# comms instruction
@@ -217,6 +256,14 @@ class ApiServer(ApiStore):
 								payload = item.data[65:]
 								contact = self.idx_publickey_contact[pubkey]
 								self.pss.send(contact, payload)
+	
+								# update the outgoing feed
+								if self.contact.is_owner():
+									hsh = self.chats[pubkey].write(payload)
+									self.lock_feed.acquire()
+									self.hsh_feed_chats[pubkey] = hsh
+									self.hsh_dirty = True
+									self.lock_feed.release()
 	
 					# peer instruction
 					if _flag_ctx_peer & item.header[2] > 0:
@@ -345,11 +392,14 @@ class ApiServer(ApiStore):
 		coll = pss.FeedCollection(self.pss.get_name() + "." + contact.get_nick(), senderfeed)
 		coll.add(contact.get_nick(), peerfeed)
 
-		if not contact.get_public_key() in self.chats:
-			self.chats[contact.get_public_key()] = {}
+		#if not contact.get_public_key() in self.chats:
+		#	self.chats[contact.get_public_key()] = {}
 
 		sys.stderr.write("wrote to " + contact.get_nick())
-		self.chats[contact.get_public_key()][self.name] = coll
+		# originally node name, change to peer name as we want to maintain feeds per peer instead, should be public key keyed
+		#self.chats[contact.get_public_key()][self.name] = coll
+		#self.chats[contact.get_public_key()][contact.get_nick()] = coll
+		self.chats[contact.get_public_key()] = coll
 
 
 

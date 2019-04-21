@@ -2,6 +2,7 @@ import struct
 import json
 import sys
 import copy
+import codecs
 
 from Crypto.Hash import keccak
 from urllib.parse import urlencode
@@ -102,6 +103,8 @@ class Bzz():
 # All feeds in this application use topics that are derived from the following base topic:
 #
 # 0x0000000000000000000000000000000000000000707373636861747300000000
+#
+# \todo use bytes instead of str for topics
 class Feed():
 
 
@@ -130,8 +133,8 @@ class Feed():
 	# \todo client side should calculate this after initial state gotten from feed
 	def info(self):
 		q = {
-			'user': '0x' + self.account.address.encode("hex"),
-			'topic': '0x' + self.topic.encode("hex"),
+			'user': '0x' + self.account.address.hex(), #codecs.encode(self.account.address, "hex")),
+			'topic': '0x' + bytes(self.topic, "ascii").hex(),
 			'meta': '1',
 		}
 		querystring = urlencode(q)
@@ -156,14 +159,15 @@ class Feed():
 		d = compile_digest(self.topic, self.account.address, data, int(tim), int(epoch))
 		s = sign_digest(self.account.privatekey, d)
 		q = {
-			'user': "0x" + self.account.address.encode("hex"),
-			'topic': "0x" + self.topic.encode("hex"),
-			'signature': "0x" + s.encode("hex"),
+			'user': "0x" + self.account.address.hex(),
+			'topic': "0x" + bytes(self.topic, "ascii").hex(),
+			'signature': "0x" + s.hex(),
 			'level': epoch,
 			'time': tim,
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
+		print("data", data)
 		r = self.bzz.agent.send(sendpath, data, querystring)
 	
 		self.lastupdate = tim
@@ -241,6 +245,7 @@ class FeedState:
 # The state of sender and reader feeds is the last swarm hash seen. It is stored for every retrieval or send. 
 #
 # Upon retrieval all new updates will be retrieved until the last seen hash is encountered, and the state is reset to the hash of the newest update.
+# \todo python3 refactor; use bytes instead of string to store hashes
 class FeedCollection:
 
 
@@ -284,8 +289,9 @@ class FeedCollection:
 				
 		lasthsh = senderstate.lasthsh
 		senderstate.next()
-		headhsh = senderstate.obj.bzz.add(lasthsh + senderstate.serial() + data)	
-		senderstate.lasthsh = headhsh.decode("hex")
+		writedata = lasthsh.encode("ascii") + senderstate.serial() + data
+		headhsh = senderstate.obj.bzz.add(writedata)
+		senderstate.lasthsh = codecs.decode(headhsh, "hex")
 	
 		return headhsh
 
@@ -458,13 +464,14 @@ class FeedCollection:
 # \return Swarm Feed digest hash, binary format
 # \see sign_digest
 # \todo should take Account instead of "user" bytes
+# \todo inputs should be bytes not string
 def compile_digest(topic, user, inputdata, tim, epoch=1):
 
 	# protocolversion + padding 7 bytes
-	data = "\x00\x00\x00\x00\x00\x00\x00\x00"
+	data = b'\x00\x00\x00\x00\x00\x00\x00\x00'
 
 	# topic bytes
-	data += topic
+	data += codecs.encode(topic, "ascii")
 
 	# user account bytes
 	data += user
@@ -472,10 +479,10 @@ def compile_digest(topic, user, inputdata, tim, epoch=1):
 	# time now little endian
 	# time is 7 bytes, actually
 	data += struct.pack("<L", tim)
-	data += "\x00\x00\x00"
+	data += b'\x00\x00\x00'
 
 	# ... so we put the epoch on the eigth
-	data += chr(epoch)
+	data += epoch.to_bytes(1, sys.byteorder)
 
 	# add the data itself
 	data += inputdata
@@ -491,7 +498,7 @@ def compile_digest(topic, user, inputdata, tim, epoch=1):
 def sign_digest(pk, digest):
 	sig = pk.ecdsa_sign_recoverable(digest, raw=True)
 	s, r =  pk.ecdsa_recoverable_serialize(sig)
-	s += chr(r)
+	s += r.to_bytes(1, sys.byteorder)
 	return s
 
 

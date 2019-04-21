@@ -31,7 +31,17 @@ class TestServer(unittest.TestCase):
 		self.obj.connect(self.sock)
 		print("sending on addr:{} sock:{}\n".format(self.obj.sockaddr, self.sock))
 
-		# basic check for echo
+		# add private key
+		select.select([], [self.fileno], [])
+		datasend = b"\x00\x01\x00\x00\x00\x00\x20"
+		datasend += decodehex(privkey)
+		dataexpect = b"\x20\x01\x00\x00\x00\x00\x00"
+		self.sock.send(datasend)
+		select.select([self.fileno], [], [])
+		datarecv = self.sock.recv(1024)
+		self.assertEqual(dataexpect, datarecv)
+
+		# add peer
 		select.select([], [self.fileno], [])
 		datasend = b"\x00\x08\x01"
 		bytedata = decodehex(to_pubkey)
@@ -46,17 +56,7 @@ class TestServer(unittest.TestCase):
 		self.assertEqual(dataexpect, datarecv)
 		self.assertEqual(0x20, datarecv[0] & 0xe0)
 
-		# check that the error (erroneously) sent does not come back
-		select.select([], [self.fileno], [])
-		datasend = b"\x00\x01\x00\x00\x00\x00\x20"
-		datasend += decodehex(privkey)
-		dataexpect = b"\x20\x01\x00\x00\x00\x00\x00"
-		self.sock.send(datasend)
-		select.select([self.fileno], [], [])
-		datarecv = self.sock.recv(1024)
-		self.assertEqual(dataexpect, datarecv)
-
-		# check that the error (erroneously) sent does not come back
+		# send a message, expect success
 		select.select([], [self.fileno], [])
 		datasend = b"\x00\x02\x02"
 		datasend += struct.pack(">I", 65+3)

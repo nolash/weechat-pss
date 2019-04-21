@@ -105,8 +105,8 @@ class Agent:
 		requeststring = path
 		if querystring != "":
 			requeststring += "?" + querystring
-		requeststring = req.get_method() + " " + requeststring
-		requeststring += " HTTP/1.1\nHost: " + req.get_host() + "\n\n"
+		requeststring = bytearray(req.get_method() + " " + requeststring, "ascii")
+		requeststring += bytearray(" HTTP/1.1\nHost: " + req.host + "\n\n", "ascii")
 		return self._write(requeststring)
 
 
