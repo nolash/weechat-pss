@@ -84,6 +84,8 @@ class Bzz():
 	# \param hsh Swarm hash to retrieve, binary format
 	# \return Raw response data
 	def get(self, hsh):
+		if len(hsh) > 64:
+			raise ValueError("wrong hash {}".format(hsh))
 		return self.agent.get("/bzz-raw:/" + hsh + "/")
 
 

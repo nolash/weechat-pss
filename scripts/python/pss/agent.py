@@ -6,6 +6,7 @@ import select
 import sys
 import socket
 import time
+import threading
 
 REQUEST_TIMEOUT = 30.0
 
@@ -24,6 +25,9 @@ class Agent:
 	# \param port swarm port
 	# \param sock socket.socket object for connection. If None creates a new socket
 	def __init__(self, host="127.0.0.1", port=8500, sock=None):
+
+		self.lock = threading.Lock()
+
 		# common request params
 		if sock == None:
 			self._sock = socket.create_connection((host,port))
@@ -40,6 +44,7 @@ class Agent:
 		self.basereq.add_header("Connection", "keep-alive")
 		self.basereq.add_header("Content-type", "application/x-www-form-urlencoded")
 		self.basereq.add_header("Accept", "*/*")
+
 
 	def __del__(self):
 		self._sock.close()
@@ -62,6 +67,7 @@ class Agent:
 		self.debugfile.flush()
 		select.select([], [self.fileno], [], REQUEST_TIMEOUT)
 		towrite = len(requeststring)
+		self.lock.acquire()
 		while towrite > 0:
 			written = os.write(self.fileno, requeststring)
 			towrite -= written
@@ -81,6 +87,7 @@ class Agent:
 				if e[0] != 4:
 					break
 		r = os.read(self.fileno, 4104)
+		self.lock.release()
 		self.debugfile.write("[" + str(id(self)) + "] response: " + repr(r) + "\n")
 		try:
 			(head, body) = r.split(b"\x0d\x0a\x0d\x0a")
