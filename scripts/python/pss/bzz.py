@@ -185,10 +185,11 @@ class Feed():
 			'topic': '0x' + bytes(self.topic, "ascii").hex(),
 		}
 		# jeez...
-		querystring = urlencode(q)
+		#querystring = urlencode(q)
+		querystring = codecs.decode(urlencode(q).encode("utf-8"), "ascii")
 		sendpath = "/bzz-feed:/"
 		d = self.bzz.agent.get(sendpath, querystring)
-		print("topic", self.topic, querystring)
+		print("head topic", self.topic, querystring)
 		return d
 		
 
@@ -202,6 +203,7 @@ class Feed():
 # It also keeps track of broken links for the purpose of later retries
 #
 # \todo the use of this object is slightly different in reader and sender context, should be revised to make the use identical
+# \todo use bytes not strings for hashes
 class FeedState:
 	def __init__(self, feed):
 		self.obj = feed
@@ -437,7 +439,7 @@ class FeedCollection:
 		# we break out of loop when we reach the previous head	
 		while curhsh != targethsh and curhsh != zerohsh:
 			try:
-				r = bzz.get(curhsh.encode("hex"))
+				r = bzz.get(curhsh.hex())
 			except Exception as e:
 				sys.stderr.write("request fail: " + repr(e) + "\n")
 				return (msgs, curhsh)

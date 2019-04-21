@@ -11,7 +11,8 @@ class Message:
 			raise ValueError("wrong serial length")
 
 		self.timestamp = struct.unpack(">I", serial[0:4])
-		self.seq = struct.unpack("B", serial[len(serial)-1])
+		#self.seq = struct.unpack("B", serial[len(serial)-1].to_int)
+		self.seq = serial[len(serial)-1] & 0xff
 		self.key = acc.publickeybytes
 		self.user = acc.address
 		self.content = content
@@ -24,5 +25,7 @@ class Message:
 		return serial
 
 
+# \todo reimplement
 def is_message(content):
-	return rMsg.search(content) != None
+	#return rMsg.search(content) != None
+	return content

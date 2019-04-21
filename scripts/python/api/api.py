@@ -11,6 +11,7 @@ import sys
 import pss
 import uuid
 import codecs
+import traceback
 
 _flag_ctx_peer = 1 << 0
 _flag_ctx_comm = 1 << 1
@@ -116,6 +117,9 @@ class ApiCache:
 		# feed pointers
 		self.hsh_feed_chats = {}
 		self.hsh_feed_rooms = {}
+
+		# feed states	
+		self.feed_rooms_initial = {}
 		self.hsh_dirty = False
 
 
@@ -170,6 +174,9 @@ class ApiServer(ApiCache):
 		self.thread_feed_out = threading.Thread(None, self.feed_out, "feed_out")
 		self.thread_feed_out.start()
 
+		self.thread_feed_in = threading.Thread(None, self.feed_in, "feed_in")
+		self.thread_feed_in.start()
+
 		os.set_blocking(self.pss.get_fd(), os.O_NONBLOCK & 0xff)
 		self.thread_pss = threading.Thread(None, self.pss_in, "pss_in", [self.pss.get_fd()])
 		self.thread_pss.start()
@@ -189,6 +196,30 @@ class ApiServer(ApiCache):
 		self.lock_main.acquire()
 		c.connect(self.sockaddr)
 		self.lock_main.release()
+
+
+	# \todo thread lookups
+	def feed_in(self):
+		while self.running:
+			for r in self.rooms.values():
+				#(_, fails) = r.feedcollection.gethead(self.bzz)
+				(_, fails) = r.feedcollection.gethead(self.bzz, False)
+				for f in fails:
+					print("feed read fail", f)
+
+				msgs = r.feedcollection.get()
+				for m in msgs:
+					contact = None
+					nick = ""
+					if self.contact.get_public_key() == m.key:
+						contact = self.contact
+						nick = self.name
+					else:
+						contact = self.idx_publickey_contact(m.key)
+						nick = contact.get_nick()
+					msg = r.extract_message(m.content, contact)	
+					print("got msg", msg)
+			time.sleep(1.0)
 
 
 	def pss_in(self, fd):
@@ -218,7 +249,6 @@ class ApiServer(ApiCache):
 
 				response = ApiItem(0)
 				pubkey = codecs.decode(pss.clean_hex(r["params"]["result"]["Key"]), "hex")
-				#payload = codecs.decode(pss.clean_hex(r["params"]["result"]["Msg"]), "hex")
 				payload = codecs.encode(r["params"]["result"]["Msg"], "utf-8")
 				response.put(pubkey)
 				response.put(payload)
@@ -250,6 +280,15 @@ class ApiServer(ApiCache):
 					if feedhash != actualhash:
 						updates += 1
 						threading.Thread(None, self.chats[k].senderfeed.obj.update, "update_feed_" + str(k), [actualhash]).start()	
+						#self.chats[k].senderfeed.obj.update(actualhash)
+
+			for k, room in self.rooms.items():
+				if self.hsh_feed_rooms != room.feedcollection.senderfeed.lasthsh:
+					room.feedcollection.senderfeed.obj.update(codecs.encode(room.feedcollection.senderfeed.lasthsh, "ascii"))
+					self.hsh_feed_rooms[k] = room.feedcollection.senderfeed.lasthsh
+					self.feed_rooms_initial[k] = True	
+	
+
 			sys.stderr.write("feed_out complete {}".format(updates))
 			self.lock_feed.acquire()
 			self.hsh_dirty = False
@@ -354,6 +393,7 @@ class ApiServer(ApiCache):
 								roomnamelength = item.data[0]
 								roomname = item.data[1:1+roomnamelength]
 								payload = item.data[1+roomnamelength:]
+								print("room send", payload)
 								self.rooms[roomname].send(payload)
 									
 						# chat context
@@ -423,6 +463,9 @@ class ApiServer(ApiCache):
 								sys.stderr.write("can't find state for room " + roomname.decode("ascii") + ": " + repr(e) + "\n")
 								room.start(self.name)
 
+			
+							self.rooms[roomname] = room
+
 							if pubkey != None:
 								print("adding participant", pubkey, nick)
 								strnick = pss.clean_nick(nick.decode("ascii"))
@@ -466,20 +509,15 @@ class ApiServer(ApiCache):
 								newcontact.set_public_key(pubkey)
 								self.add_contact(newcontact)
 					
-					# ok status does not append data
-					#outheader = to_error(error, outheader)
-					#outdata = to_data(outdata)
-					outitem.err = error
 					outitem.put(outdata)
-					#outitem.data = outheader + outdata
-					outitem.finalize(outheader[2])
 
-				except KeyError as e:
-					print("process err ", error, str(e))
-					#outheader = to_error(error, outheader)
-					#outitem.data += outheader
+				except Exception as e:
+					tb = traceback.format_exc()
+					print("process err ", error, str(e), tb)
+			
+				finally:
 					outitem.err = error
-					outitem.finalize()
+					outitem.finalize(outheader[2])
 			
 				self.lock_o.acquire()
 				self.queue_o.add(outitem)
@@ -572,7 +610,6 @@ class ApiServer(ApiCache):
 		self.chats[contact.get_public_key()] = coll
 
 
-
 	def stop(self):
 		self.lock_main.acquire()
 		self.running = False
@@ -580,6 +617,8 @@ class ApiServer(ApiCache):
 		self.thread_in.join()
 		self.thread_out.join()
 		self.thread_process.join()
+		self.thread_feed_in.join()
+		self.thread_pss.join()
 
 
 ## add given error to data

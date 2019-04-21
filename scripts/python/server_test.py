@@ -32,7 +32,7 @@ class TestServer(unittest.TestCase):
 
 
 	
-	#@unittest.skip("skip test_room")
+	@unittest.skip("skip test_room")
 	# \todo verify json payload correct
 	def test_pss_in(self):
 		self.obj.connect(self.sock)
@@ -66,7 +66,7 @@ class TestServer(unittest.TestCase):
 		self.assertEqual(dataexpect, datarecv)
 
 
-	@unittest.skip("skip test_room")
+	#@unittest.skip("skip test_room")
 	def test_room(self):
 
 		self.obj.connect(self.sock)
@@ -100,6 +100,16 @@ class TestServer(unittest.TestCase):
 		select.select([self.fileno], [], [])
 		datarecv = self.sock.recv(1024)
 		self.assertEqual(dataexpect, datarecv)
+
+		# send to room
+		select.select([], [self.fileno], [])
+		datasend = b"\x00\x02\x82\x00\x00\x00\x09\x05pinkyfoo"
+		dataexpect = b"\x20\x02\x82\x00\x00\x00\x00"
+		self.sock.send(datasend)
+		select.select([self.fileno], [], [])
+		datarecv = self.sock.recv(1024)
+		self.assertEqual(dataexpect, datarecv)
+
 
 
 	@unittest.skip("skip test_contact_single")
@@ -156,7 +166,7 @@ class TestServer(unittest.TestCase):
 		datarecv = self.sock.recv(1024)
 		self.assertEqual(dataexpect, datarecv)
 
-		time.sleep(1.0)
+		time.sleep(2.0)
 
 
 if __name__ == "__main__":

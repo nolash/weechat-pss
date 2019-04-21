@@ -174,8 +174,9 @@ class Room:
 		# update will hold the actual update data
 		update_header = self.hsh_room 
 		
-		update_body = ""
+		update_body = b''
 		crsr = 0
+
 
 		for k, v in self.participants.items():
 			ciphermsg = ""
@@ -185,13 +186,16 @@ class Room:
 			elif not fltrdefaultallow and not k in fltr:
 				filtered = True
 			if filtered:	
-				sys.stderr.write("Skipping filtered " + k) 
+				sys.stderr.write("Skipping filtered " + repr(k))
 			else:
 				ciphermsg = v.encrypt_to(msg)
+
+			print("writedata", repr(update_header))
 
 			update_header += struct.pack("<I", crsr)[:3]
 			update_body += ciphermsg
 			crsr += len(ciphermsg)
+
 
 		hsh = self.feedcollection.write(update_header + update_body)
 		return hsh

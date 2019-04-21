@@ -56,7 +56,7 @@ class Agent:
 
 
 	# \todo add retries on select
-	# \todo split response on bytes not string + return bytes
+	# \bug must stop read on response threshold!!
 	def _write(self, requeststring):
 		self.debugfile.write("[" + str(id(self)) + "] request: " + repr(requeststring) + "\n")
 		self.debugfile.flush()
@@ -85,7 +85,11 @@ class Agent:
 		try:
 			(head, body) = r.split(b"\x0d\x0a\x0d\x0a")
 		except:
-			(head, body) = r.split(b"\x0a\x0a")
+			try:
+				(head, body) = r.split(b"\x0a\x0a")
+			except:
+				raise ValueError("invalid http body", r)
+
 		rhead = head.decode("ascii")
 		m = regexStatusLine.match(rhead)
 		if m.group(1) != "200":
