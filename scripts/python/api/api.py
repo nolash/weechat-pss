@@ -92,7 +92,7 @@ class ApiCache:
 
 		# feed pointers
 		self.hsh_feed_chats = {}
-		self.hsh_feed_room = {}
+		self.hsh_feed_rooms = {}
 		self.hsh_dirty = False
 
 
@@ -242,8 +242,18 @@ class ApiServer(ApiCache):
 
 						# room context
 						if _flag_ctx_multi & item.header[2] > 0:
-							pass
-
+					
+							# settings
+							if _flag_ctx_bank & item.header[2] > 0:
+								pass
+				
+							# send	
+							else:
+								roomnamelength = item.data[0]
+								roomname = item.data[1:1+roomnamelength]
+								payload = item.data[1+roomnamelength:]
+								self.rooms[roomname].send(payload)
+									
 						# chat context
 						else:
 							# settings
@@ -270,7 +280,46 @@ class ApiServer(ApiCache):
 						
 						# room context
 						if _flag_ctx_multi & item.header[2] > 0:
-							pass
+
+							# remove from room / exit room
+							if _flag_ctx_bank & item.header[2] > 0:
+								pass
+
+							# add peer to room / join room
+							else:
+								roomnamelength = item.data[0]
+								pubkey = None
+								if item.datalength > roomnamelength+1:
+									try:
+										pubkey = item.data[1+roomdatalength:66+roomdatalength]
+									except:
+										error = _flag_error_format
+										raise ValueError("wrong pubkey length")
+								try:
+									roomname = item.data[1:1+roomnamelength]
+								except:
+										error = _flag_error_format
+										raise ValueError("wrong roomname length")
+								self.hsh_feed_rooms[roomname] = pss.zerohsh
+
+							room = pss.Room(self.bzz, roomname, self.contact)
+							loaded = False
+							try:
+								roomhsh = room.get_state_hash()
+								room.load(roomhsh, self.contact)
+								loaded = True
+								for k, p in room.participants.iteritems():
+									publickey = p.get_public_key()
+									if publickey != node.get_public_key():
+										try:
+											print("todo add contact", p)
+											#self.add_contact(p)
+										except KeyError as e:
+											pass
+							except Exception as e:
+								sys.stderr.write("can't find state for room " + roomname.decode("ascii") + ": " + repr(e) + "\n")
+								room.start(self.name)
+
 
 						# chat context
 						else:
@@ -328,7 +377,7 @@ class ApiServer(ApiCache):
 					outdata = to_data(outdata)
 					outitem.data = outheader + outdata
 
-				except Exception as e:
+				except KeyError as e:
 					print("process err ", error, str(e))
 					outheader = to_error(error, outheader)
 					outitem.data += outheader
@@ -392,13 +441,8 @@ class ApiServer(ApiCache):
 		coll = pss.FeedCollection(self.pss.get_name() + "." + contact.get_nick(), senderfeed)
 		coll.add(contact.get_nick(), peerfeed)
 
-		#if not contact.get_public_key() in self.chats:
-		#	self.chats[contact.get_public_key()] = {}
-
 		sys.stderr.write("wrote to " + contact.get_nick())
 		# originally node name, change to peer name as we want to maintain feeds per peer instead, should be public key keyed
-		#self.chats[contact.get_public_key()][self.name] = coll
-		#self.chats[contact.get_public_key()][contact.get_nick()] = coll
 		self.chats[contact.get_public_key()] = coll
 
 

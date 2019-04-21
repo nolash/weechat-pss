@@ -2,6 +2,7 @@ import json
 import copy
 import struct
 import sys
+import codecs
 
 from .user import PssContact, Account, publickey_to_address
 from .bzz import FeedCollection, Feed, zerohsh, new_topic_mask
@@ -39,8 +40,9 @@ class Room:
 	# \param bzz Bzz handler object
 	# \param name Name for feed (used as value in high-order bytes of feed topic)
 	# \param account Account object containing the key to create the feed with
+	# \todo use bytes for name
 	def __init__(self, bzz, name, account):
-		self.name = clean_name(name)
+		self.name = clean_name(codecs.decode(name, "ascii"))
 		topic = new_topic_mask(self.name, "", "\x02")
 		self.feed_room = Feed(bzz, account, topic)
 		self.bzz = bzz
@@ -288,11 +290,11 @@ class Room:
 	def serialize(self):
 		jsonStr = """{
 	"name":\"""" + self.name + """\",
-	"pubkey":\"0x""" + self.feed_room.account.publickeybytes.encode("hex") + """\",
+	"pubkey":\"0x""" + self.feed_room.account.publickeybytes.hex() + """\",
 	"participants":["""
 		#participantList = ""
-		for k, p in self.participants.iteritems():
-			jsonStr += "\"" + p.get_public_key().encode("hex") + "\",\n"
+		for k, p in self.participants.items():
+			jsonStr += "\"" + p.get_public_key().hex() + "\",\n"
 		#	participantList += p.serialize()
 		jsonStr = jsonStr[0:len(jsonStr)-2]
 		jsonStr += """
@@ -306,6 +308,8 @@ class Room:
 	# \return New swarm hash of participant list
 	def save(self):
 		s = self.serialize()
-		self.hsh_room = self.bzz.add(s).decode("hex")
+		requestbytes = bytes(s, "utf-8")
+		hashstr = self.bzz.add(requestbytes)
+		self.hsh_room = codecs.decode(hashstr, "hex")
 		self.feed_room.update(self.hsh_room)
 		return self.hsh_room

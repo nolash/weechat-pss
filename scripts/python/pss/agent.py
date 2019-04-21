@@ -56,6 +56,7 @@ class Agent:
 
 
 	# \todo add retries on select
+	# \todo split response on bytes not string + return bytes
 	def _write(self, requeststring):
 		self.debugfile.write("[" + str(id(self)) + "] request: " + repr(requeststring) + "\n")
 		self.debugfile.flush()
@@ -102,11 +103,10 @@ class Agent:
 	# \return response body
 	def get(self, path, querystring=""):
 		req = self.new_request()
-		requeststring = path
+		requestpath = path
 		if querystring != "":
-			requeststring += "?" + querystring
-		requeststring = bytearray(req.get_method() + " " + requeststring, "ascii")
-		requeststring += bytearray(" HTTP/1.1\nHost: " + req.host + "\n\n", "ascii")
+			requestpath += "?" + querystring
+		requeststring = serialize_request(req, requestpath)	
 		return self._write(requeststring)
 
 
@@ -123,18 +123,29 @@ class Agent:
 		req.data = data
 		req.add_header("Content-length", str(len(data)))
 
-		requeststring = path
+		requestpath = path
 		if querystring != "":
-			requeststring += "?" + querystring
-		
-		requeststring = bytearray(req.get_method() + " " + requeststring, "ascii")
-		requeststring += bytearray(" HTTP/1.1\nHost: " + req.host + "\n", "ascii")
-		for (k, v) in req.header_items():
-			requeststring += bytearray(k + ": " + v + "\n", "ascii")
-		requeststring += b"\n" + req.data
+			requestpath += "?" + querystring
+		requeststring = serialize_request(req, requestpath)	
 		return self._write(requeststring)
 
 
 	## close the TCP socket connection to Swarm
 	def close(self):
 		pass
+
+
+## returns Request object serialized as literal HTTP request in bytes object
+#
+# \param req Request object
+# \return HTTP request in bytes
+def serialize_request(req, path):
+	requeststring = bytes(req.get_method() + " " + path, "ascii")
+	requeststring += bytes(" HTTP/1.1\nHost: " + req.host + "\n", "ascii")
+	for (k, v) in req.header_items():
+		requeststring += bytes(k + ": " + v + "\n", "ascii")
+	if req.data != None:
+		requeststring += b"\n" + req.data
+	else:
+		requeststring += b"\n"
+	return requeststring

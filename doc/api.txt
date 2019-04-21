@@ -34,7 +34,7 @@ single/multi: private key
 
 bank 0/1 (add/remove)
 single: public key
-multi: public key | room name
+multi: 1 byte room name | room name [| public key]
 
 ----
 
@@ -42,7 +42,7 @@ multi: public key | room name
 
 bank 0 (send)
 single: public key | content
-multi: 1 byte room name length | room name | 4 byte content length | content
+multi: 1 byte room name length | room name | content
 
 bank 1 (set)
 single: public key | bit field

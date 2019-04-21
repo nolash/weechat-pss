@@ -74,6 +74,7 @@ class Bzz():
 	#
 	# \param data binary data to post
 	# \return Swarm chunk hash, binary format
+	# \todo translate hex string to bytes before return
 	def add(self, data):
 		return self.agent.send("/bzz-raw:/", data)
 
@@ -119,8 +120,8 @@ class Feed():
 
 		self.account = account
 		self.bzz = bzz
-		if len(name) > 31 or len(name) == 0:
-			raise ValueError("invalid name length 0 < n <= 31 {}", name)
+		if len(name) > 32 or len(name) == 0:
+			raise ValueError("invalid name length 0 < n <= 32 {}", name)
 
 		self.topic = new_topic_mask(feedRootTopic, name, "")
 
@@ -167,7 +168,6 @@ class Feed():
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
-		print("data", data)
 		r = self.bzz.agent.send(sendpath, data, querystring)
 	
 		self.lastupdate = tim
@@ -181,8 +181,8 @@ class Feed():
 	# \return Update content, binary format
 	def head(self):
 		q = {
-			'user': '0x' + self.account.address.encode("hex"),
-			'topic': '0x' + self.topic.encode("hex"),
+			'user': '0x' + self.account.address.hex(), 
+			'topic': '0x' + bytes(self.topic, "ascii").hex(),
 		}
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
