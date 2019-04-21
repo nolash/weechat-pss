@@ -34,8 +34,10 @@ class ApiItem:
 	def __init__(self, itemid):
 		self.id = itemid
 		self.err = 0
+		self.header = b''
 		self.data = b''
 		self.datalength = 0
+		self.src = b''
 
 
 class ApiParser:
@@ -53,7 +55,8 @@ class ApiParser:
 			itemid += data[1]
 			self.item = ApiItem(itemid)
 			self.remaining = struct.unpack(">I", data[3:7])[0]
-			self.item.data += data[:7]
+			self.item.header = data[:3]
+			self.item.src = data[:7]
 			datalength = struct.unpack(">I", data[3:7])
 			self.item.datalength = datalength[0]
 			data = data[7:]
@@ -62,6 +65,7 @@ class ApiParser:
 		if cap > self.remaining:
 			cap = self.remaining
 		self.item.data += data[:cap]
+		self.item.src += data[:cap]
 		self.remaining -= cap
 		if self.remaining == 0:
 			item = self.item
@@ -167,14 +171,12 @@ class ApiServer:
 
 				# build what we can of the the header before data length
 				outitem = ApiItem(item.id)
-				firstbyte = item.data[0] & 0x1f 
-				#outitem.data = firstbyte.to_bytes(1, sys.byteorder)
-				#outitem.data += item.data[1:2]
-				#outheader = bytearray([firstbyte.to_bytes(1, sys.byteorder), item.data[1:2]])	
+				firstbyte = item.header[0] & 0x1f 
 				outheader = bytearray(b'')
 				outheader += firstbyte.to_bytes(1, sys.byteorder)
-				outheader += item.data[1:3]
-				# empty data	
+				outheader += item.header[1:3]
+
+				# start with empty data	
 				outdata = bytearray(b'')
 				error = 0x01
 
@@ -182,25 +184,24 @@ class ApiServer:
 
 					# set private key
 					# for now cannot be changed without restarting the server
-					if item.data[2] == 0:
-						if len(item.data) != 39:
+					if item.header[2] == 0:
+						if item.datalength != 32:
 							error = _flag_error_format
 							raise ValueError("privatekey wrong length")
-						pk = item.data[7:39]
-						self.pss.set_account_write(pk)
+						self.pss.set_account_write(item.data)
 						self.add_contact_feed(self.contact)
 	
 					# peer instruction
-					if _flag_ctx_peer & item.data[2] > 0:
+					if _flag_ctx_peer & item.header[2] > 0:
 						
 						# room context
-						if _flag_ctx_multi & item.data[2] > 0:
+						if _flag_ctx_multi & item.header[2] > 0:
 							pass
 
 						# chat context
 						else:
 							# remove peer
-							if _flag_ctx_bank & item.data[2] > 0:
+							if _flag_ctx_bank & item.header[2] > 0:
 								pass
 
 							# add peer
@@ -211,8 +212,8 @@ class ApiServer:
 									raise ValueError("pubkey", item.datalength)
 								newcontact = None
 								address = b''
-								pubkey = item.data[7:72]
-								overlaylength = item.data[72]
+								pubkey = item.data[:65]
+								overlaylength = item.data[65]
 
 								# retrieve contact object if already exists
 								if pubkey in self.idx_publickey_contact:
@@ -222,16 +223,16 @@ class ApiServer:
 
 								# if overlay address is specified then set it
 								if overlaylength > 0:
-									address += item.data[73:73+overlaylength]
+									address += item.data[66:66+overlaylength]
 									newcontact.set_overlay(address)
 
 
 								# if there is data left on input that's the nick. add it
 								# delete the existing nick to contact index entry if it exists
-								if len(item.data) > 74+overlaylength:	
+								if len(item.data) > 66+overlaylength:	
 									if newcontact.nick in self.idx_nick_contact:
 										del self.idx_nick_contact[newcontact.nick]
-									newcontact.nick = pss.clean_nick(item.data[73+overlaylength:].decode("ascii"))
+									newcontact.nick = pss.clean_nick(item.data[66+overlaylength:].decode("ascii"))
 									self.idx_nick_contact[newcontact.nick] = newcontact
 
 

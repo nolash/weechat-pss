@@ -23,6 +23,13 @@ if all context bits are 0, set private key
 
 ----
 
+x - private key
+
+bank x
+single/multi: private key 
+
+----
+
 0 - peer
 
 bank 0/1 (add/remove)
