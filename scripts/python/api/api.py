@@ -174,7 +174,7 @@ class ApiServer(ApiCache):
 					self.lock_feed.release()
 					if feedhash != actualhash:
 						updates += 1
-						threading.Thread(None, self.chats[k].senderfeed.obj.update, "update_feed_" + str(k), [codecs.encode(actualhash, "ascii")]).start()	
+						threading.Thread(None, self.chats[k].senderfeed.obj.update, "update_feed_" + str(k), [actualhash]).start()	
 			sys.stderr.write("feed_out complete {}".format(updates))
 			self.lock_feed.acquire()
 			self.hsh_dirty = False
@@ -308,9 +308,9 @@ class ApiServer(ApiCache):
 								roomhsh = room.get_state_hash()
 								room.load(roomhsh, self.contact)
 								loaded = True
-								for k, p in room.participants.iteritems():
+								for k, p in room.participants.items():
 									publickey = p.get_public_key()
-									if publickey != node.get_public_key():
+									if publickey != self.contact.get_public_key():
 										try:
 											print("todo add contact", p)
 											#self.add_contact(p)

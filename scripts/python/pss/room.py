@@ -106,7 +106,7 @@ class Room:
 	# \todo get output update head hash at time of load
 	# \todo evaluate whether these todos are stale :D
 	def load(self, hsh, owneraccount=None):
-		savedJson = self.bzz.get(hsh.encode("hex"))
+		savedJson = self.bzz.get(hsh.hex()) #encode("hex"))
 		#sys.stderr.write("savedj " + repr(savedJson) + " from hash " + hsh.encode("hex") + "\n")
 		self.hsh_room = hsh
 		r = json.loads(savedJson)
@@ -119,14 +119,14 @@ class Room:
 		self.feedcollection = FeedCollection("room:"+self.name, senderfeed)
 
 		for pubkeyhx in r['participants']:
-			pubkey = clean_pubkey(pubkeyhx).decode("hex")
+			pubkey = codecs.decode(clean_pubkey(pubkeyhx), "hex")
 			nick = publickey_to_address(pubkey)
-			p = Participant(nick.encode("hex"), None)
+			p = Participant(nick.hex(), None)
 			p.set_public_key(pubkey)
 			try:
 				self.add(nick, p, False)
 			except Exception as e:
-				sys.stderr.write("skipping already added feed: '" + pubkey.encode("hex"))
+				sys.stderr.write("skipping already added feed: '" + pubkey.hex())
 				
 		
 
@@ -177,7 +177,7 @@ class Room:
 		update_body = ""
 		crsr = 0
 
-		for k, v in self.participants.iteritems():
+		for k, v in self.participants.items():
 			ciphermsg = ""
 			filtered = False
 			if k in fltr and fltrdefaultallow:
@@ -241,17 +241,17 @@ class Room:
 		# if not we need to retrieve the one that was relevant at the time of update
 		# and match the index against that
 		else:
-			roomhshhx = self.bzz.get(body[:32].encode("hex"))
+			roomhshhx = self.bzz.get(body[:32].hex())
 			savedroom = json.loads(roomhshhx)
 			participantcount = len(savedroom['participants'])
 			for p in savedroom['participants']:
-				if clean_hex(p) == clean_pubkey(account.get_public_key().encode("hex")):
+				if clean_hex(p) == clean_pubkey(account.get_public_key().hex()):
 					matchidx = idx
 				idx += 1
 
 		# if no matches then this pubkey is not relevant for the room at that particular update	
 		if matchidx == -1:
-			raise ValueError("pubkey " + account.get_public_key().encode("hex") + " not valid for this update")
+			raise ValueError("pubkey " + account.get_public_key().hex() + " not valid for this update")
 	
 		# parse the position of the update and extract it
 		payloadthreshold = 32+(participantcount*3)

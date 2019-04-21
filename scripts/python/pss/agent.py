@@ -82,17 +82,15 @@ class Agent:
 					break
 		r = os.read(self.fileno, 4104)
 		self.debugfile.write("[" + str(id(self)) + "] response: " + repr(r) + "\n")
-		rdata = r.decode("ascii")
-		m = regexStatusLine.match(rdata)
+		try:
+			(head, body) = r.split(b"\x0d\x0a\x0d\x0a")
+		except:
+			(head, body) = r.split(b"\x0a\x0a")
+		rhead = head.decode("ascii")
+		m = regexStatusLine.match(rhead)
 		if m.group(1) != "200":
-			print(r)
 			raise Exception("HTTP send to swarm failed: " + str(m.group(0)))
 
-		body = ""
-		try:
-			(_, body) = rdata.split("\x0a\x0a")
-		except:
-			(_, body)  = rdata.split("\x0d\x0a\x0d\x0a")
 		return body
 
 
@@ -106,7 +104,7 @@ class Agent:
 		requestpath = path
 		if querystring != "":
 			requestpath += "?" + querystring
-		requeststring = serialize_request(req, requestpath)	
+		requeststring = serialize_request(req, requestpath)
 		return self._write(requeststring)
 
 

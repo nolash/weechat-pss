@@ -27,6 +27,7 @@ class TestServer(unittest.TestCase):
 		self.obj.stop()
 
 
+	@unittest.skip("skip test_room")
 	def test_room(self):
 		self.obj.connect(self.sock)
 		print("sending on addr:{} sock:{}\n".format(self.obj.sockaddr, self.sock))
@@ -43,15 +44,14 @@ class TestServer(unittest.TestCase):
 
 		# join room (no public key = do not add peer to room)
 		select.select([], [self.fileno], [])
-		datasend = b"\x00\x02\x81\x00\x00\x00\x06\x05pinkb"
+		datasend = b"\x00\x02\x81\x00\x00\x00\x06\x05pinkc"
 		dataexpect = b"\x20\x02\x81\x00\x00\x00\x00"
 		self.sock.send(datasend)
 		select.select([self.fileno], [], [])
 		datarecv = self.sock.recv(1024)
 		self.assertEqual(dataexpect, datarecv)
 
-
-	@unittest.skip("skip test_contact_single")
+	#@unittest.skip("skip test_contact_single")
 	def test_contact_single(self):
 		self.obj.connect(self.sock)
 		print("sending on addr:{} sock:{}\n".format(self.obj.sockaddr, self.sock))

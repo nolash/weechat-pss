@@ -138,7 +138,7 @@ class Feed():
 			'topic': '0x' + bytes(self.topic, "ascii").hex(),
 			'meta': '1',
 		}
-		querystring = urlencode(q)
+		querystring = codecs.decode(urlencode(q).encode("utf-8"), "ascii")
 		sendpath = "/bzz-feed:/"
 		rstr = self.bzz.agent.get(sendpath, querystring)
 		r = ""
@@ -166,7 +166,7 @@ class Feed():
 			'level': epoch,
 			'time': tim,
 		}
-		querystring = urlencode(q)
+		querystring = codecs.decode(urlencode(q).encode("utf-8"), "ascii")
 		sendpath = "/bzz-feed:/"
 		r = self.bzz.agent.send(sendpath, data, querystring)
 	
@@ -184,9 +184,12 @@ class Feed():
 			'user': '0x' + self.account.address.hex(), 
 			'topic': '0x' + bytes(self.topic, "ascii").hex(),
 		}
+		# jeez...
 		querystring = urlencode(q)
 		sendpath = "/bzz-feed:/"
-		return self.bzz.agent.get(sendpath, querystring)
+		d = self.bzz.agent.get(sendpath, querystring)
+		print("topic", self.topic, querystring)
+		return d
 		
 
 
@@ -356,7 +359,7 @@ class FeedCollection:
 
 		# \todo refactor to use keys function in sorted
 		for k in feedmsgs.keys():
-			for s, m in feedmsgs[k].iteritems():
+			for s, m in feedmsgs[k].items():
 				msgs[str(s) + k] = m
 
 		for m in sorted(msgs):
