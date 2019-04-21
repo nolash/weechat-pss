@@ -11,6 +11,7 @@ from pss import decodehex
 privkey = "2ea3f401733d3ecc1e18b305245adc98f3ffc4c6e46bf42f37001fb18b5a70ac"
 pubkey = "04b72985aa2104e41c1a2d40340c2b71a8d641bb6ac0f9fd7dc2dbbd48c0eaf172baa41456d252532db97704ea4949e1f42f66fd57de00f8f1f4514a2889f42df6"
 to_pubkey = "0462eb15eb2b940742eda35065f7b38f3ebe17328bf905cac6f7a0af0f323834d2362c0699a18592b2077f6c98d6bfce38773ffcc0ed3361db4db0ae085b9c866a"
+loc_pubkey = "0408e4c47b5f5e18e4d4e5f5fbbbee7b0d90147ed50a85ef81bacb98935ac47a1aa72ac853d456a43872cfc731e7ffff9884237afd7fde74270d486cb038724017"
 
 class TestServer(unittest.TestCase):
 
@@ -27,7 +28,7 @@ class TestServer(unittest.TestCase):
 		self.obj.stop()
 
 
-	@unittest.skip("skip test_room")
+	#@unittest.skip("skip test_room")
 	def test_room(self):
 		self.obj.connect(self.sock)
 		print("sending on addr:{} sock:{}\n".format(self.obj.sockaddr, self.sock))
@@ -80,19 +81,30 @@ class TestServer(unittest.TestCase):
 
 		# add peer
 		select.select([], [self.fileno], [])
-		datasend = b"\x00\x08\x01"
+		datasend = b"\x00\x02\x01"
 		bytedata = decodehex(to_pubkey)
-		#bytedata += b'\x04\x01\x02\x03\x04inky'
 		bytedata += b'inky'
 		(datalengthserialized) = struct.pack(">I", len(bytedata))
 		datasend += datalengthserialized
 		datasend += bytedata
-		dataexpect = b"\x20\x08\x01\x00\x00\x00\x00"
+		dataexpect = b"\x20\x02\x01\x00\x00\x00\x00"
 		self.sock.send(datasend)
 		select.select([self.fileno], [], [])
 		datarecv = self.sock.recv(1024)
 		self.assertEqual(dataexpect, datarecv)
 		self.assertEqual(0x20, datarecv[0] & 0xe0)
+
+		# tag peer location
+		select.select([], [self.fileno], [])
+		datasend = b"\x00\x03\x08\x00\x00\x00\x86"
+		datasend += decodehex(to_pubkey)
+		datasend += decodehex(loc_pubkey)
+		datasend += b"\x01\x02\x03\x04"
+		dataexpect = b"\x20\x03\x08\x00\x00\x00\x00"
+		self.sock.send(datasend)
+		select.select([self.fileno], [], [])
+		datarecv = self.sock.recv(1024)
+		self.assertEqual(dataexpect, datarecv)
 
 		# send a message, expect success
 		select.select([], [self.fileno], [])

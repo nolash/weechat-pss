@@ -66,10 +66,10 @@ content requests need to provide:
 
 3 - tag
 
-bank (0) add/remove
-single: public key encoding | public key location | 1 byte overlay length | overlay
-multi: public key | 1 byte room name length | room name | name
+bank (0) add
+single/multi: public key identity | public key location | overlay
 
-bank 1 (remove)
+bank (1) (remove)
+single/multi: public key identity 
 
 ----

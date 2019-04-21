@@ -251,6 +251,33 @@ class ApiServer(ApiCache):
 						self.contact.set_key(item.data)
 						self.add_contact_feed(self.contact)
 
+					# tag instruction
+					if _flag_ctx_tag & item.header[2] > 0:
+						
+						# room context
+						if _flag_ctx_multi & item.header[2] > 0:
+					
+							# unused
+							if _flag_ctx_bank & item.header[2] > 0:
+								pass
+
+						# single context
+						else:	
+
+							# unused
+							if _flag_ctx_bank & item.header[2] > 0:
+								pass
+
+							else:
+								pubkeyself = item.data[:65]
+								pubkeylocation = item.data[65:130]
+								contact = self.idx_publickey_contact[pubkeyself]
+								overlay = None
+								if item.datalength > 130:
+									overlay = item.data[130:]
+								contact.set_location(pss.Location(overlay, pubkeylocation))
+								self.pss.add(contact)
+
 					# comms instruction
 					if _flag_ctx_comm & item.header[2] > 0:
 
@@ -328,7 +355,6 @@ class ApiServer(ApiCache):
 									publickey = p.get_public_key()
 									if publickey != self.contact.get_public_key():
 										try:
-											#print("todo add contact", p)
 											self.add_contact(p)
 										except KeyError as e:
 											pass
@@ -358,7 +384,6 @@ class ApiServer(ApiCache):
 								newcontact = None
 								address = b''
 								pubkey = item.data[:65]
-								#overlaylength = item.data[65]
 
 								# retrieve contact object if already exists
 								if pubkey in self.idx_publickey_contact:
@@ -366,15 +391,8 @@ class ApiServer(ApiCache):
 								else:
 									newcontact = pss.PssContact("", self.name)
 
-								# if overlay address is specified then set it
-								#if overlaylength > 0:
-								#	address += item.data[66:66+overlaylength]
-								#	newcontact.set_overlay(address)
-
-
 								# if there is data left on input that's the nick. add it
 								# delete the existing nick to contact index entry if it exists
-								#if len(item.data) > 66+overlaylength:	
 								if len(item.data) > 65:
 									if newcontact.nick in self.idx_nick_contact:
 										del self.idx_nick_contact[newcontact.nick]
@@ -455,7 +473,7 @@ class ApiServer(ApiCache):
 
 		# \todo probably we shouldn't pass on all exceptions here
 		try:
-			self.pss.add(contact)
+			#self.pss.add(contact)
 			self.add_contact_feed(contact)
 		except AttributeError as e:
 			sys.stderr.write("addcontactfeed: " + repr(e))

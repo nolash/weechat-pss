@@ -153,8 +153,9 @@ class Pss:
 			raise IOError("not connected")
 
 		# add to node and object cache
-		pubkeyhx = rpchex(contact.get_public_key())
-		overlayhx = rpchex(contact.get_overlay())
+		location = contact.get_location()
+		pubkeyhx = rpchex(location.publickey)
+		overlayhx = rpchex(location.overlay)
 		call = rpc_call(self.seq, "setPeerPublicKey", [pubkeyhx, topic, overlayhx])
 		print("ws send", call)
 		self.ws.send(call)
@@ -170,6 +171,9 @@ class Pss:
 		# \todo store outgoing messages until online on temporary network loss
 		if not self.connected:
 			raise IOError("not connected")
+
+		if contact.location == None:
+			raise ValueError("contact location not set")
 
 		# send the message
 		self.ws.send(rpc_call(self.seq, "sendAsym", [rpchex(contact.get_public_key()), topic, "0x" + msg.hex()]))

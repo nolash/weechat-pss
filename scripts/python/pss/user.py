@@ -61,6 +61,13 @@ class Account:
 
 
 
+class Location():
+	
+	def __init__(self, overlay=b'', publickey=None):
+		self.overlay = overlay
+		self.publickey = publickey	
+
+
 ## \brief pss context for Account
 #
 # \todo extend account
@@ -74,9 +81,9 @@ class PssContact(Account):
 	def __init__(self, nick, src):
 		Account.__init__(self)
 
-		self.nick = nick #clean_nick(nick)
+		self.nick = nick
 		self.src = src
-		self.overlay = b''
+		self.location = None
 
 
 	# \todo proper nested json serialize
@@ -97,18 +104,20 @@ class PssContact(Account):
 
 
 
-	def set_overlay(self, overlay):
-		self.overlay = overlay
+	def set_location(self, location):
+		if location.__class__.__name__ != "Location":
+			raise ValueError("Must be Location object")
+		self.location = location
 
 
-
+	
 	def get_src(self):
 		return self.src
 
 
 
-	def get_overlay(self):
-		return self.overlay
+	def get_location(self):
+		return self.location
 
 
 
