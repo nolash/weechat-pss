@@ -6,7 +6,11 @@ import api
 import socket
 import select
 import struct
-from pss import decodehex
+import threading
+import json
+import os
+import codecs
+from pss import decodehex, rpc_call
 
 privkey = "2ea3f401733d3ecc1e18b305245adc98f3ffc4c6e46bf42f37001fb18b5a70ac"
 pubkey = "04b72985aa2104e41c1a2d40340c2b71a8d641bb6ac0f9fd7dc2dbbd48c0eaf172baa41456d252532db97704ea4949e1f42f66fd57de00f8f1f4514a2889f42df6"
@@ -22,16 +26,50 @@ class TestServer(unittest.TestCase):
 		self.fileno = self.sock.fileno()
 		time.sleep(1.0)
 
-
 	def tearDown(self):
 		self.sock.close()
 		self.obj.stop()
 
 
+	
+	#@unittest.skip("skip test_room")
+	# \todo verify json payload correct
+	def test_pss_in(self):
+		self.obj.connect(self.sock)
+		s_in, s_out = os.pipe()
+		testmsg = {
+			"json-rpc": "2.0",
+			"id": 0,
+			"params": {
+				"result": {
+					"Asymmetric": False,
+					"Key": "0x" + to_pubkey,
+					"Msg": "abc",
+				}
+			}
+		}
+		th = threading.Thread(None, self.obj.pss_in, "test_pss_in", [s_in])
+		th.start()
+		time.sleep(0.1)
+		select.select([], [s_out], [])
+		os.write(s_out, bytes(json.dumps(testmsg), "ascii"))
+		dataexpect = b'\x20\x00\x02\x00\x00\x00\x44'
+		pubkeybytes = codecs.decode(to_pubkey, "hex")
+		dataexpect += pubkeybytes
+		dataexpect += b'abc'
+		select.select([self.fileno], [], [])
+		datarecv = self.sock.recv(1024)
+		self.obj.stop()
+		th.join()
+		os.close(s_in)
+		os.close(s_out)
+		self.assertEqual(dataexpect, datarecv)
+
+
 	@unittest.skip("skip test_room")
 	def test_room(self):
+
 		self.obj.connect(self.sock)
-		print("sending on addr:{} sock:{}\n".format(self.obj.sockaddr, self.sock))
 
 		# add private key
 		select.select([], [self.fileno], [])
@@ -64,10 +102,10 @@ class TestServer(unittest.TestCase):
 		self.assertEqual(dataexpect, datarecv)
 
 
-	#@unittest.skip("skip test_contact_single")
+	@unittest.skip("skip test_contact_single")
 	def test_contact_single(self):
+
 		self.obj.connect(self.sock)
-		print("sending on addr:{} sock:{}\n".format(self.obj.sockaddr, self.sock))
 
 		# add private key
 		select.select([], [self.fileno], [])

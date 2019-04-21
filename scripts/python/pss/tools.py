@@ -109,6 +109,7 @@ def clean_name(s):
 # will return an ascii hex string without 0x prefix
 # throws exception on failure
 # \todo add unit test
+# \todo optimize for python3
 def clean_hex(hx):
 	decodedHex = repr(hx)
 

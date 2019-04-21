@@ -42,6 +42,21 @@ class ApiItem:
 		self.src = b''
 
 
+	def put(self, data):
+		self.data += data
+		self.datalength += len(data)
+
+	
+	def finalize(self, mode):
+		self.header = bytearray(struct.pack(">H", self.id))
+		self.header[0] |= (self.err & 0xff) << 5
+		self.header.append(mode)
+		self.src += self.header
+		self.src += struct.pack(">I", len(self.data))
+		self.src += self.data
+		return self.src
+
+
 ## Assembles individual commands from the socket data stream
 class ApiParser:
 
@@ -115,6 +130,9 @@ class ApiServer(ApiCache):
 
 	def __init__(self, name, host="127.0.0.1", wsport="8546", bzzport="8500"):
 
+		# initialize the cache
+		super(ApiServer, self).__init__()
+
 		self.lock_i = threading.Lock() 
 		self.lock_o = threading.Lock()
 		self.lock_main = threading.Lock()
@@ -145,16 +163,15 @@ class ApiServer(ApiCache):
 		self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 		self.sock.bind(self.sockaddr)
 
-		# initialize the cache
-		super(ApiServer, self).__init__()
-
 		self.thread_process = threading.Thread(None, self.process, "process")
 		self.thread_process.start()
 		self.thread_in = threading.Thread(None, self.handle_in, "handle_in")
 		self.thread_in.start()
 		self.thread_feed_out = threading.Thread(None, self.feed_out, "feed_out")
 		self.thread_feed_out.start()
-		self.thread_pss = threading.Thread(None, self.pss_in, "pss_in")
+
+		os.set_blocking(self.pss.get_fd(), os.O_NONBLOCK & 0xff)
+		self.thread_pss = threading.Thread(None, self.pss_in, "pss_in", [self.pss.get_fd()])
 		self.thread_pss.start()
 	
 
@@ -174,12 +191,11 @@ class ApiServer(ApiCache):
 		self.lock_main.release()
 
 
-	def pss_in(self):
+	def pss_in(self, fd):
 		while self.running:
-			os.set_blocking(self.pss.get_fd(), os.O_NONBLOCK & 0xff)
 			msg = ""	
 			try:
-				msg = os.read(self.pss.get_fd(), 1024)
+				msg = os.read(fd, 1024)
 			except:	
 				print("pss noread", msg)
 				time.sleep(1.0)
@@ -200,7 +216,18 @@ class ApiServer(ApiCache):
 						print("ws skip invalid receive", r, o, e)
 						continue
 
-				print("msg from", r["params"]["result"]["Key"])
+				response = ApiItem(0)
+				pubkey = codecs.decode(pss.clean_hex(r["params"]["result"]["Key"]), "hex")
+				#payload = codecs.decode(pss.clean_hex(r["params"]["result"]["Msg"]), "hex")
+				payload = codecs.encode(r["params"]["result"]["Msg"], "utf-8")
+				response.put(pubkey)
+				response.put(payload)
+				print("len", response.datalength, len(payload), len(pubkey))
+				response.err = 0x01
+				response.finalize(0xff & _flag_ctx_comm)
+				self.lock_o.acquire()
+				self.queue_o.add(response)
+				self.lock_o.release()
 
 			time.sleep(1.0)
 		print("pss in exit")
@@ -240,7 +267,7 @@ class ApiServer(ApiCache):
 			self.lock_o.release()
 			if item != None:
 				select.select([], [sock.fileno()], [])
-				c = sock.send(item.data)
+				c = sock.send(item.src)
 				if c == 0:
 					print("fail send", c, item.data)
 					self.lock_o.acquire()
@@ -440,14 +467,19 @@ class ApiServer(ApiCache):
 								self.add_contact(newcontact)
 					
 					# ok status does not append data
-					outheader = to_error(error, outheader)
-					outdata = to_data(outdata)
-					outitem.data = outheader + outdata
+					#outheader = to_error(error, outheader)
+					#outdata = to_data(outdata)
+					outitem.err = error
+					outitem.put(outdata)
+					#outitem.data = outheader + outdata
+					outitem.finalize(outheader[2])
 
 				except KeyError as e:
 					print("process err ", error, str(e))
-					outheader = to_error(error, outheader)
-					outitem.data += outheader
+					#outheader = to_error(error, outheader)
+					#outitem.data += outheader
+					outitem.err = error
+					outitem.finalize()
 			
 				self.lock_o.acquire()
 				self.queue_o.add(outitem)

@@ -1,6 +1,6 @@
 from .pss import Pss
 from .user import PssContact, Account, Location, publickey_to_address
-from .content import Stream, rpc_parse
+from .content import Stream, rpc_parse, rpc_call
 from .tools import *
 from .error import *
 from .message import *
