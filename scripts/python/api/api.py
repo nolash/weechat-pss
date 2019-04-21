@@ -202,7 +202,7 @@ class ApiServer(ApiCache):
 
 				print("msg from", r["params"]["result"]["Key"])
 
-			time.sleep(3.0)
+			time.sleep(1.0)
 		print("pss in exit")
 
 	## post new head hashes of all feed chat linked lists

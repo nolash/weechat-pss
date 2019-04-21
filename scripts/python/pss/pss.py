@@ -157,7 +157,7 @@ class Pss:
 		pubkeyhx = rpchex(location.publickey)
 		overlayhx = rpchex(location.overlay)
 		call = rpc_call(self.seq, "setPeerPublicKey", [pubkeyhx, topic, overlayhx])
-		print("ws send", call)
+		print("pss ws add", call)
 		self.ws.send(call)
 		self.seq += 1
 
@@ -174,7 +174,9 @@ class Pss:
 			raise ValueError("contact location not set")
 
 		# send the message
-		self.ws.send(rpc_call(self.seq, "sendAsym", [rpchex(contact.get_public_key()), topic, "0x" + msg.hex()]))
+		call = rpc_call(self.seq, "sendAsym", [rpchex(contact.location.publickey), topic, "0x" + msg.hex()])
+		print("pss ws send", call)
+		self.ws.send(call)
 		self.seq += 1
 
 
