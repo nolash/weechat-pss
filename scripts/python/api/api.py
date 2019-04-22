@@ -27,8 +27,17 @@ _flag_error_entity = 0x04
 ## Debug logging
 class ApiLogger:
 
-	def __init__(self, filename):
-		pass	
+	def __init__(self, url):
+		fd = os.open(url, os.O_TRUNC | os.O_WRONLY | os.O_CREAT)
+		self.fd = fd
+
+	def __del__(self):
+		os.close(self.fd)
+
+	def log(self, txt):
+		os.write(self.fd, txt.encode("ascii") + b'\x0a')
+		os.fsync(self.fd)
+
 
 
 ## Represents one individual command
@@ -160,6 +169,9 @@ class ApiServer(ApiCache):
 		self.queue_o = pss.Queue((1<<13)-1)
 
 		self.sockaddr = "{}/bzzchat_{}.sock".format(path, self.name)
+
+		self.logger = ApiLogger("{}/logger.txt".format(path))
+
 		self.running = False
 
 
@@ -173,18 +185,11 @@ class ApiServer(ApiCache):
 		self.bzz = pss.Bzz(self.agent)
 
 		self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-		sys.stderr.write("trying open " + self.sockaddr)
-		try:
-			fdd = os.open(self.sockaddr, O_RDONLY)
-			sys.stderr.write("could open wtf!!\n")
-			os.close(fdd)
-		except:
-			sys.stderr.write("not openable\n")
-
 		self.sock.bind(self.sockaddr)
 		self.fd = self.sock.fileno()
 
 		self.running = True
+		self.logger.log("completed start")
 
 		self.thread_process = threading.Thread(None, self.process, "process")
 		self.thread_process.start()
@@ -302,7 +307,6 @@ class ApiServer(ApiCache):
 
 			for k, room in self.rooms.items():
 				if self.hsh_feed_rooms != room.feedcollection.senderfeed.lasthsh:
-					#room.feedcollection.senderfeed.obj.update(codecs.encode(room.feedcollection.senderfeed.lasthsh, "ascii"))
 					print("lasthsh", room.feedcollection.senderfeed.lasthsh.__class__)
 					room.feedcollection.senderfeed.obj.update(room.feedcollection.senderfeed.lasthsh)
 					self.hsh_feed_rooms[k] = room.feedcollection.senderfeed.lasthsh
@@ -370,6 +374,7 @@ class ApiServer(ApiCache):
 						self.pss.set_account_write(item.data)
 						self.contact.set_key(item.data)
 						self.add_contact_feed(self.contact)
+						self.logger.log("set privatekey!")
 
 					# tag instruction
 					if _flag_ctx_tag & item.header[2] > 0:
@@ -553,18 +558,27 @@ class ApiServer(ApiCache):
 	
 	def handle_in(self):
 		self.sock.listen(0)
+		self.logger.log("waiting for connect")
 		(c, addr) = self.sock.accept()
 		c.settimeout(0.1)
+		self.logger.log("have connect".format(c.fileno()))
 		self.thread_out = threading.Thread(None, self.handle_out, "handle_out", [c])
 		self.thread_out.start()
 		parser = ApiParser()
+#		try:
+#			select.select([], [c.fileno()], [])
+#			w = c.send(bytearray(7))
+#			self.logger.log("wrote {}".format(w))
+#		except Exception as e:
+#			self.logger.log(str(e))
 		while self.running:
 			data = ""
 			try:
 				select.select([c.fileno()], [], [], 0.1)
 				data = c.recv(1024)
-			except:
-				#print("sock timeout\n")
+				self.logger.log("got data: {}".format(data.hex()))
+			except Exception as e:
+				#self.logger.log("sock timeout {}".format(e))
 				continue
 			(complete, leftovers) = parser.put(data)
 			while leftovers != None:

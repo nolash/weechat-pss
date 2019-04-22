@@ -4,6 +4,8 @@ import time
 import sys
 import socket
 import fcntl
+import struct
+import select
 
 # consts
 PSS_VERSION = "0.5.0"
@@ -24,6 +26,12 @@ PSS_DEFAULT_NICK = "me"
 PSS_FEEDBOX_PERIOD = 1000
 PSS_FEEDQUEUE_SIZE = 10
 PSS_ROOM_PERIOD = PSS_FEEDBOX_PERIOD
+
+
+class ApiError(Exception):
+
+	def __init__(self, txt):
+		super(ApiError, self).__init__(txt)
 
 
 ## Represents one individual command
@@ -101,8 +109,29 @@ class Client:
 		self.sock = None
 
 		self.parser = ApiParser()
+		self.seq = 1
+		self.cmd = {}
 
 
+	# \todo check short send 
+	def send_raw(self, mode, data, okmsg):
+		item = ApiItem(self.seq)
+		item.data = data
+		item.finalize(mode)
+		c = self.sock.send(item.src)
+		if c != len(item.src):
+			raise IOError("short write {}".format(c))
+		self.seq += 1
+		k = str(item.src[0:2])
+		wOut(PSS_BUFPFX_DEBUG, [], "-->", "wrote: {} [{}]".format(str(item.src).encode("hex"), k.encode("hex")))
+		self.cmd[k] = (item, okmsg)
+
+	
+	def get_response(self, item):
+		if item.header[0] & 0xe0 != 0x20:
+			raise ApiError("failed")
+		return self.cmd[struct.pack(">H", item.id)][1]
+		
 
 
 # singleton store of context information to use across hook calls
@@ -171,15 +200,6 @@ class EventContext:
 
 	def set_node(self, node):
 		self.node = node
-
-
-	def set_pss(self, pss):
-		self.pss = pss
-		self.node = pss.get_name()
-
-
-	def set_bzz(self, bzz):
-		self.bzz = bzz
 
 
 	def set_buffer(self, buf, bufname):
@@ -261,21 +281,42 @@ def handle_in(nodename, _):
 
 	node = conns[nodename]
 	fd = node.sock.fileno()
+	indata = b''
 	try:
 		select.select([fd], [], [], 0.05)
-		(item, _) = node.parser.put(node.sock.recv(1024))
-		if item != None:
-			wOut(PSS_BUFPFX_DEBUG, [], ":-/", "have item: {}".item.data)
+		indata = node.sock.recv(1024)
+	except Exception as e:
+		#wOut(PSS_BUFPFX_DEBUG, [], ":-/", "nothing on socket: {}".format(e))
+		return weechat.WEECHAT_RC_OK
 
-		#while leftovers != None:	
-		#	(item, leftovers) = node.parser.put(node.sock.recv(1024))
+	(item, leftovers) = node.parser.put(bytearray(indata))
+	wOut(PSS_BUFPFX_DEBUG, [], ":-D", "have item: {}".format(item))
 
-	except:
-		wOut(PSS_BUFPFX_DEBUG, [], ":-/", "nothing on socket")
+	while leftovers != None:	
+		response = ""
+		try:
+			response = node.get_response(item)
+			wOut(
+				PSS_BUFPFX_OK,
+				[node.buf],
+				"!!!",
+				response
+			)
+		except ApiError as e:
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[node.buf],
+				"???",
+				str(e)
+			)
+
+		(item, leftovers) = node.parser.put(leftovers)
+
 
 	return weechat.WEECHAT_RC_OK
 		
-	
+
+# \todo attempt to restart it (need errcodes from server exit to see if it's worth it)
 def handle_croak(data, cmd, retval, out, err):
 	# we can proceed with connection in the pss instance
 	wOut(
@@ -289,7 +330,8 @@ def handle_croak(data, cmd, retval, out, err):
 
 ## handle node inputs	
 # 
-# /todo make both ports customizable
+# \todo make both ports customizable
+# \todo don't open buffer on fail
 def pss_handle(pssName, buf, args):
 
 	# context is only used for acvie nodes
@@ -337,8 +379,8 @@ def pss_handle(pssName, buf, args):
 
 
 		# regardless of if we have the node already, store the connection parameters for later for this node name	
-		#weechat.config_set_plugin(ctx.get_node() + "_url", host)
-		#weechat.config_set_plugin(ctx.get_node() + "_port", port)
+		weechat.config_set_plugin(ctx.get_node() + "_url", host)
+		weechat.config_set_plugin(ctx.get_node() + "_port", port)
 	
 		# if we made it here we don't have a buffer for this node already
 		# so create it and merge the node buffer with core so we can do the neat ctrl-x trick
@@ -381,16 +423,14 @@ def pss_handle(pssName, buf, args):
 #		wOut(PSS_BUFPFX_OK, [buf], "0---0", "connected to '" + ctx.get_node() + "'")
 #		wOut(PSS_BUFPFX_OK, [], "+++", "added pss " + ctx.get_node())
 
-		time.sleep(0.25)		
-
 		opentries = 10
 		sockfile = "{}/bzzchat_{}.sock".format(scriptpath, ctx.get_node())
 		sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 		fcntl.fcntl(sock, fcntl.F_SETFL, os.O_NONBLOCK)
 		while opentries > 0:
 			try:	
-				sock.connect(sockfile)
-				wOut(PSS_BUFPFX_DEBUG, [], "!!!", "sock connect ok {}".format(sock.fileno()))
+				fd = sock.connect(sockfile)
+				wOut(PSS_BUFPFX_DEBUG, [], "!!!", "sock connect ok {} {}".format(fd, sock.fileno()))
 				opentries = 0
 				newconn.sock = sock
 				newconn.loop = weechat.hook_timer(250, 0, 0, "handle_in", ctx.get_node())
@@ -401,13 +441,64 @@ def pss_handle(pssName, buf, args):
 				return weechat.WEECHAT_RC_OK
 
 			except Exception as e:
-				wOut(PSS_BUFPFX_DEBUG, [], "...", "socket fail on {} - {} tries left ({})".format(sockfile, opentries, e))
 				opentries -= 1
 				time.sleep(0.25)
 			
 		wOut(PSS_BUFPFX_ERROR, [], "???", "connection server failed")
 		return weechat.WEECHAT_RC_ERROR
 
+
+	# get the context we're getting the command in
+	# if we are not in pss context, 
+	# the we assume that the first argument is the name of the node
+	# /pss oc add someone key addr
+	# becomes
+	# /pss add someone key addr
+	# and "oc" is set to pssName
+	# \todo consider exception for connect-command
+
+	ctx.parse_buffer(buf)
+	if ctx.is_root():
+		ctx.set_node(argv[0])
+		argv = argv[1:]
+		argc -= 1
+
+	if ctx.get_node() not in conns:
+		wOut(
+			PSS_BUFPFX_ERROR,
+			[],
+			"!!!",
+			"unknown pss connection '" + ctx.get_node() + "'"
+		)
+		return weechat.WEECHAT_RC_ERROR
+
+	# set configuation values
+	if argv[0] == "set":
+		if argc < 3:
+			wOut(PSS_BUFPFX_ERROR, [], "!!!", "insufficient number of arguments <TODO help output")
+			return weechat.WEECHAT_RC_ERROR
+
+		k = argv[1]
+		v = argv[2]
+
+		# for now we handle privkeys directly
+		# we will read keystore jsons in near future instead, though
+		if k == "pk":
+			conns[ctx.get_node()].send_raw(
+				"\x00",
+				v.decode("hex"),
+				"successfully set private key"
+			)
+					
+		else:
+			wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown config key")
+			return weechat.WEECHAT_RC_ERROR
+					
+		return weechat.WEECHAT_RC_OK	
+
+	
+	wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown command: {}".format(argv))
+	weechat.WEECHAT_RC_ERROR
 
 # top level teardown of plugin and thus all connections
 def pss_stop():
