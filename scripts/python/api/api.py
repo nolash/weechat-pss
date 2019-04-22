@@ -132,11 +132,14 @@ class ApiCache:
 class ApiServer(ApiCache): 
 
 
-	def __init__(self, name, host="127.0.0.1", wsport="8546", bzzport="8500"):
+	def __init__(self, path, name, host="127.0.0.1", wsport="8546", bzzport="8500"):
 
 		# initialize the cache
 		super(ApiServer, self).__init__()
 
+		self.host = host
+		self.wsport = wsport
+		self.bzzport = bzzport
 		self.lock_i = threading.Lock() 
 		self.lock_o = threading.Lock()
 		self.lock_main = threading.Lock()
@@ -150,22 +153,38 @@ class ApiServer(ApiCache):
 		else:
 			self.name = name
 
-		self.pss = pss.Pss(name, host, wsport)
-		if not self.pss.connect():
-			raise Exception(self.pss.errstr)
-
 		# perhaps account show be supplied to pss obj and not the other way around
 		self.contact = pss.PssContact(self.name, self.name)
 
-		self.agent = pss.Agent(host, bzzport)
-		self.bzz = pss.Bzz(self.agent)
 		self.queue_i = pss.Queue((1<<13)-1)
 		self.queue_o = pss.Queue((1<<13)-1)
-		self.running = True
 
-		self.sockaddr = "tmp_{:}.sock".format(uuid.uuid4())
+		self.sockaddr = "{}/bzzchat_{}.sock".format(path, self.name)
+		self.running = False
+
+
+	## connects to node and starts processing threads	
+	def start(self):
+		self.pss = pss.Pss(self.name, self.host, self.wsport)
+		if not self.pss.connect():
+			raise IOError(self.pss.errstr)
+
+		self.agent = pss.Agent(self.host, self.bzzport)
+		self.bzz = pss.Bzz(self.agent)
+
 		self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+		sys.stderr.write("trying open " + self.sockaddr)
+		try:
+			fdd = os.open(self.sockaddr, O_RDONLY)
+			sys.stderr.write("could open wtf!!\n")
+			os.close(fdd)
+		except:
+			sys.stderr.write("not openable\n")
+
 		self.sock.bind(self.sockaddr)
+		self.fd = self.sock.fileno()
+
+		self.running = True
 
 		self.thread_process = threading.Thread(None, self.process, "process")
 		self.thread_process.start()
@@ -180,7 +199,6 @@ class ApiServer(ApiCache):
 		os.set_blocking(self.pss.get_fd(), os.O_NONBLOCK & 0xff)
 		self.thread_pss = threading.Thread(None, self.pss_in, "pss_in", [self.pss.get_fd()])
 		self.thread_pss.start()
-	
 
 
 	def __del__(self):

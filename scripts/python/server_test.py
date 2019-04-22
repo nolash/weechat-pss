@@ -24,7 +24,9 @@ class TestServer(unittest.TestCase):
 		self.obj = api.ApiServer("foo")
 		self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 		self.fileno = self.sock.fileno()
-		time.sleep(1.0)
+		self.obj.start()
+		time.sleep(0.25) # wait for sockets to be opened
+
 
 	def tearDown(self):
 		self.sock.close()
@@ -66,7 +68,7 @@ class TestServer(unittest.TestCase):
 		self.assertEqual(dataexpect, datarecv)
 
 
-	#@unittest.skip("skip test_room")
+	@unittest.skip("skip test_room")
 	def test_room(self):
 
 		self.obj.connect(self.sock)
@@ -114,7 +116,7 @@ class TestServer(unittest.TestCase):
 		time.sleep(10.0)
 
 
-	@unittest.skip("skip test_contact_single")
+	#@unittest.skip("skip test_contact_single")
 	def test_contact_single(self):
 
 		self.obj.connect(self.sock)
