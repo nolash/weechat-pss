@@ -33,7 +33,7 @@ class Agent:
 			self._sock = socket.create_connection((host,port))
 			sock = self._sock.fileno()
 		self.fileno = sock
-		self._sock.settimeout(None)
+		self._sock.settimeout(1.0)
 		self.host = host
 		self.port = str(port)
 		self.up = False
@@ -136,6 +136,7 @@ class Agent:
 		if querystring != "":
 			requestpath += "?" + querystring
 		requeststring = serialize_request(req, requestpath)	
+
 		return self._write(requeststring)
 
 

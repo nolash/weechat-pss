@@ -202,8 +202,8 @@ class ApiServer(ApiCache):
 	def feed_in(self):
 		while self.running:
 			for r in self.rooms.values():
-				#(_, fails) = r.feedcollection.gethead(self.bzz)
-				(_, fails) = r.feedcollection.gethead(self.bzz, False)
+				(_, fails) = r.feedcollection.gethead(self.bzz)
+				#(_, fails) = r.feedcollection.gethead(self.bzz, False)
 				for f in fails:
 					print("feed read fail", f)
 
@@ -228,7 +228,7 @@ class ApiServer(ApiCache):
 			try:
 				msg = os.read(fd, 1024)
 			except:	
-				print("pss noread", msg)
+				#print("pss noread", msg)
 				time.sleep(1.0)
 				continue
 
@@ -284,7 +284,9 @@ class ApiServer(ApiCache):
 
 			for k, room in self.rooms.items():
 				if self.hsh_feed_rooms != room.feedcollection.senderfeed.lasthsh:
-					room.feedcollection.senderfeed.obj.update(codecs.encode(room.feedcollection.senderfeed.lasthsh, "ascii"))
+					#room.feedcollection.senderfeed.obj.update(codecs.encode(room.feedcollection.senderfeed.lasthsh, "ascii"))
+					print("lasthsh", room.feedcollection.senderfeed.lasthsh.__class__)
+					room.feedcollection.senderfeed.obj.update(room.feedcollection.senderfeed.lasthsh)
 					self.hsh_feed_rooms[k] = room.feedcollection.senderfeed.lasthsh
 					self.feed_rooms_initial[k] = True	
 	
@@ -460,6 +462,7 @@ class ApiServer(ApiCache):
 										except KeyError as e:
 											pass
 							except Exception as e:
+								print(traceback.format_exc())
 								sys.stderr.write("can't find state for room " + roomname.decode("ascii") + ": " + repr(e) + "\n")
 								room.start(self.name)
 
@@ -543,7 +546,7 @@ class ApiServer(ApiCache):
 				select.select([c.fileno()], [], [], 0.1)
 				data = c.recv(1024)
 			except:
-				print("sock timeout\n")
+				#print("sock timeout\n")
 				continue
 			(complete, leftovers) = parser.put(data)
 			while leftovers != None:

@@ -17,9 +17,12 @@ from .message import Message
 feedRootTopic = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00psschats\x00\x00\x00\x00"
 
 # a zerohash is used as a null-pointer in linked lists of swarm content
-zerohsh = ""
-for i in range(32):
-	zerohsh += "\x00"
+zerohshbytes = bytes(32)
+#zerohsh = ""
+#for i in range(32):
+#	zerohsh += "\x00"
+zerohsh = codecs.decode(zerohshbytes, "ascii")
+zerohshhex = zerohshbytes.hex()
 
 
 ## \brief Generate Swarm Feed topic
@@ -60,6 +63,13 @@ class BzzRetrieveError(Exception):
 	pass
 
 
+## Exception to shortcut on the zero hash request
+class ZeroHashException(Exception):
+
+	def __init__(self):
+		pass
+		
+	
 ## \brief Swarm context for HTTP
 #
 # Bzz is a convenience wrapper for making swarm store and retrieve calls over http
@@ -76,7 +86,8 @@ class Bzz():
 	# \return Swarm chunk hash, binary format
 	# \todo translate hex string to bytes before return
 	def add(self, data):
-		return self.agent.send("/bzz-raw:/", data)
+		d = self.agent.send("/bzz-raw:/", data)
+		return codecs.decode(d, "hex")
 
 
 	## Retrieve raw data chunk
@@ -84,9 +95,17 @@ class Bzz():
 	# \param hsh Swarm hash to retrieve, binary format
 	# \return Raw response data
 	def get(self, hsh):
-		if len(hsh) > 64:
+		if len(hsh) != 32:
+		#if len(hsh) != 64:
 			raise ValueError("wrong hash {}".format(hsh))
-		return self.agent.get("/bzz-raw:/" + hsh + "/")
+		#elif hsh == zerohshhex:
+		elif hsh == zerohsh:
+			raise ZeroHashException()
+
+		print("getting bzz hash", hsh, zerohsh)#zerohshhex)
+		result = self.agent.get("/bzz-raw:/" + hsh.hex() + "/")
+		print("result type", hsh, hsh.__class__)
+		return result 
 
 
 	## \brief close connection
@@ -171,7 +190,7 @@ class Feed():
 		querystring = codecs.decode(urlencode(q).encode("utf-8"), "ascii")
 		sendpath = "/bzz-feed:/"
 		r = self.bzz.agent.send(sendpath, data, querystring)
-	
+
 		self.lastupdate = tim
 		self.epoch = epoch
 
@@ -191,7 +210,7 @@ class Feed():
 		querystring = codecs.decode(urlencode(q).encode("utf-8"), "ascii")
 		sendpath = "/bzz-feed:/"
 		d = self.bzz.agent.get(sendpath, querystring)
-		print("head topic", self.topic, querystring)
+		print("head topic", self.topic, querystring, d, d.__class__)
 		return d
 		
 
@@ -209,8 +228,8 @@ class Feed():
 class FeedState:
 	def __init__(self, feed):
 		self.obj = feed
-		self.headhsh = ""
-		self.lasthsh = zerohsh
+		self.headhsh = b''
+		self.lasthsh = zerohshbytes
 		self.lasttime = 0
 		self.lastseq = 0
 		self.orphans = {}
@@ -296,9 +315,12 @@ class FeedCollection:
 				
 		lasthsh = senderstate.lasthsh
 		senderstate.next()
-		writedata = lasthsh.encode("ascii") + senderstate.serial() + data
+		#writedata = lasthsh.encode("ascii") + senderstate.serial() + data
+		writedata = lasthsh + senderstate.serial() + data
 		headhsh = senderstate.obj.bzz.add(writedata)
-		senderstate.lasthsh = codecs.decode(headhsh, "hex")
+		print("coll write", headhsh)
+		#senderstate.lasthsh = codecs.decode(headhsh, "hex")
+		senderstate.lasthsh = headhsh
 	
 		return headhsh
 
@@ -364,7 +386,8 @@ class FeedCollection:
 		# \todo refactor to use keys function in sorted
 		for k in feedmsgs.keys():
 			for s, m in feedmsgs[k].items():
-				msgs[str(s) + k] = m
+				#msgs[str(s) + k] = m
+				msgs[s + k] = m
 
 		for m in sorted(msgs):
 			msgssorted.append(msgs[m])
@@ -400,9 +423,10 @@ class FeedCollection:
 			# between completed retrieves
 			# we then need to get the new head hash
 			# the feed is currently pointing to
-			if feedstate.headhsh == "":
+			if len(feedstate.headhsh) == 0:
 				try:
 					feedstate.headhsh = feedstate.obj.head()
+					print("feedstate headhsh", feedstate.headhsh.__class__)
 				except:
 					if deactivateonfail:
 						feedstate.active = False
@@ -411,7 +435,7 @@ class FeedCollection:
 
 			#sys.stderr.write("headhsh " + feedstate.headhsh.encode("hex") + "\n")
 
-			if feedstate.headhsh == "":
+			if len(feedstate.headhsh) == 0:
 				continue
 				
 			# store new messages for feed
@@ -424,7 +448,8 @@ class FeedCollection:
 
 			# set next retrieve to terminate on
 			feedstate.lasthsh = feedstate.headhsh
-			feedstate.headhsh = ""
+			feedstate.headhsh = b''
+			print("feedstate", feedstate.lasthsh.__class__, feedstate.headhsh.__class__)
 	
 		self.retrievals.append(feedmsgs)
 		return (len(self.retrievals)-1, fails)
@@ -435,13 +460,17 @@ class FeedCollection:
 	# if one lookup fails, the contents retrieved up until that point is returned
 	def _retrieve(self, bzz, feedaddress, curhsh, targethsh):
 
+		if curhsh.__class__.__name__ != "bytes" or targethsh.__class__.__name__ != "bytes":
+			errstr = "retrieve class error {} {}".format(curhsh.__class__, targethsh.__class__)
+			raise ValueError(errstr)
+
 		# hash map serial (timestamp+seq) => Message
 		msgs = {}
 
 		# we break out of loop when we reach the previous head	
 		while curhsh != targethsh and curhsh != zerohsh:
 			try:
-				r = bzz.get(curhsh.hex())
+				r = bzz.get(curhsh) #.hex())
 			except Exception as e:
 				sys.stderr.write("request fail: " + repr(e) + "\n")
 				return (msgs, curhsh)

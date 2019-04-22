@@ -106,7 +106,8 @@ class Room:
 	# \todo get output update head hash at time of load
 	# \todo evaluate whether these todos are stale :D
 	def load(self, hsh, owneraccount=None):
-		savedJson = self.bzz.get(hsh.hex()) #encode("hex"))
+		#savedJson = self.bzz.get(hsh.hex()) #encode("hex"))
+		savedJson = self.bzz.get(hsh) #encode("hex"))
 		#sys.stderr.write("savedj " + repr(savedJson) + " from hash " + hsh.encode("hex") + "\n")
 		self.hsh_room = hsh
 		r = json.loads(savedJson)
@@ -261,7 +262,8 @@ class Room:
 		payloadthreshold = 32+(participantcount*3)
 		payloadoffsetcrsr = 32+(3*matchidx)
 		payloadoffsetbytes = body[payloadoffsetcrsr:payloadoffsetcrsr+3]
-		payloadoffset = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
+		#payloadoffset = struct.unpack("<I", payloadoffsetbytes + "\x00")[0]
+		payloadoffset = struct.unpack("<I", payloadoffsetbytes + b'\x00')[0]
 		if participantcount-1 == matchidx:
 			ciphermsg = body[32+(participantcount*3)+payloadoffset:]
 		else:
@@ -314,6 +316,6 @@ class Room:
 		s = self.serialize()
 		requestbytes = bytes(s, "utf-8")
 		hashstr = self.bzz.add(requestbytes)
-		self.hsh_room = codecs.decode(hashstr, "hex")
+		self.hsh_room = hashstr
 		self.feed_room.update(self.hsh_room)
 		return self.hsh_room
