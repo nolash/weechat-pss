@@ -17,6 +17,7 @@ _flag_ctx_peer = 1 << 0
 _flag_ctx_comm = 1 << 1
 _flag_ctx_content = 1 << 2
 _flag_ctx_tag = 1 << 3
+_flag_ctx_get = 1 << 5
 _flag_ctx_bank = 1 << 6
 _flag_ctx_multi = 1 << 7
 
@@ -170,7 +171,7 @@ class ApiServer(ApiCache):
 
 		self.sockaddr = "{}/bzzchat_{}.sock".format(path, self.name)
 
-		self.logger = ApiLogger("{}/logger.txt".format(path))
+		self.logger = ApiLogger("{}/bzzchat_{}.log".format(path, self.name))
 
 		self.running = False
 
@@ -375,6 +376,19 @@ class ApiServer(ApiCache):
 						self.contact.set_key(item.data)
 						self.add_contact_feed(self.contact)
 						self.logger.log("set privatekey!")
+
+
+					# single/multi not used here	
+					if _flag_ctx_get & item.header[2] > 0:
+
+						# if set search by nick
+						if _flag_ctx_bank & item.header[2] > 0:	
+							contact = self.idx_nick_contact[item.data]
+							outitem = ApiItem(item.id)
+							outitem.put(contact.get_public_key())	
+							outitem.put(contact.get_public_key())
+							outitem.put(contact.get_overlay())
+							
 
 					# tag instruction
 					if _flag_ctx_tag & item.header[2] > 0:

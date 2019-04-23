@@ -27,7 +27,6 @@ PSS_FEEDBOX_PERIOD = 1000
 PSS_FEEDQUEUE_SIZE = 10
 PSS_ROOM_PERIOD = PSS_FEEDBOX_PERIOD
 
-
 class ApiError(Exception):
 
 	def __init__(self, txt):
@@ -104,7 +103,7 @@ class Client:
 
 	def __init__(self, name, host="127.0.0.1", wsport="8546", bzzport="8500"):
 		self.nick = name
-		self.buf = None
+		self.bufs = {}
 		self.loop = None
 		self.sock = None
 
@@ -298,14 +297,14 @@ def handle_in(nodename, _):
 			response = node.get_response(item)
 			wOut(
 				PSS_BUFPFX_OK,
-				[node.buf],
+				[node.bufs['root']],
 				"!!!",
 				response
 			)
 		except ApiError as e:
 			wOut(
 				PSS_BUFPFX_ERROR,
-				[node.buf],
+				[node.bufs['root']],
 				"???",
 				str(e)
 			)
@@ -326,6 +325,58 @@ def handle_croak(data, cmd, retval, out, err):
 		"server died!: " + err,
 	)
 	return weechat.WEECHAT_RC_OK
+
+
+
+#############################
+# WEECHAT BUFFER HANDLING
+#############################
+
+# gets the buffer matching the type and the name given
+# creates if it doesn't exists
+# \todo rename bufname to more precise term
+def buf_get(ctx, known):
+	global _tmp_room_queue_hash, _tmp_room_initial
+
+	haveBzz = False
+	# \todo integrity check of input data
+	bufname = ctx.to_buffer_name()
+	node = conns[ctx.get_node()]
+
+	wOut(
+		PSS_BUFPFX_DEBUG,
+		[],
+		"!!!",
+		"generated bufname " + bufname
+	)
+
+	buf = weechat.buffer_search("python", bufname)
+
+	if buf == "":
+
+		# for debug only
+		pss_publickey_hex = pss.rpchex(ctx.get_pss().get_public_key())
+		pss_overlay_hex = pss.rpchex(ctx.get_pss().get_overlay())
+
+		# chat is DM between two parties
+		if ctx.is_chat():
+			shortname = "pss:" + ctx.get_name()
+			# set up the buffer
+			ctx.set_buffer(weechat.buffer_new(bufname, "buf_in", ctx.get_node(), "buf_close", ctx.get_node()), bufname)
+			weechat.buffer_set(ctx.get_buffer(), "short_name", shortname)
+			weechat.buffer_set(ctx.get_buffer(), "title", ctx.get_name() + " @ PSS '" + ctx.get_node() + "' | node: " + weechat.config_get_plugin(ctx.get_pss().get_host() + "_url") + ":" + weechat.config_get_plugin(ctx.get_pss().get_port() + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(pss_overlay_hex))
+			weechat.buffer_set(ctx.get_buffer(), "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
+			weechat.buffer_set(ctx.get_buffer(), "display", "1")
+			plugin = weechat.buffer_get_pointer(ctx.get_buffer(), "plugin")
+			
+			node.bufs[bufname] = buf
+		else:
+			raise RuntimeError("invalid buffer type")
+
+	else:
+		ctx.set_buffer(buf, bufname)
+
+	return ctx.get_buffer()
 
 
 ## handle node inputs	
@@ -402,18 +453,22 @@ def pss_handle(pssName, buf, args):
 		)
 
 		newconn = Client(ctx.get_node())
+		cmdargs = {
+			"arg1": "-s",
+			"arg2": "{}/swarm_server.py".format(scriptpath),
+			"arg3": scriptpath,
+			"arg4": ctx.get_node(),
+			"arg5": host
+		}
+
 		res = weechat.hook_process_hashtable(
 			"/usr/bin/python3",
-			{
-				"arg1": "-s",
-				"arg2": "{}/swarm_server.py".format(scriptpath),
-				"arg3": scriptpath,
-				"arg4": ctx.get_node()
-			},
+			cmdargs,	
 			0,
 			"handle_croak",
 			""
 		)
+
 		sys.stderr.write("res: " + res)
 #		except 
 #			wOut(PSS_BUFPFX_ERROR, [buf], "0-x 0", "connect to '" + ctx.get_node() + "' failed: " + error)
@@ -434,7 +489,7 @@ def pss_handle(pssName, buf, args):
 				opentries = 0
 				newconn.sock = sock
 				newconn.loop = weechat.hook_timer(250, 0, 0, "handle_in", ctx.get_node())
-				newconn.buf = buf
+				newconn.bufs["root"] = buf
 
 				# store the connection in global connection dict	
 				conns[ctx.get_node()] = newconn
@@ -495,6 +550,76 @@ def pss_handle(pssName, buf, args):
 			return weechat.WEECHAT_RC_ERROR
 					
 		return weechat.WEECHAT_RC_OK	
+
+
+	# add a recipient to the address books of plugin and node
+	# \todo currently overwritten if same pubkey and different addr, should be possible to have both, maybe even one-shots special command with dark address where entry is deleted after message sent!!!
+	elif argv[0] == "add":
+
+		nick = ""
+		pubkeyhx = ""
+		overlayhx = ""
+
+		# input sanity check
+		if argc < 3:
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"not enough arguments for add <TODO: help output>"
+			)
+			return weechat.WEECHAT_RC_ERROR
+
+		# puny human varnames
+		nick = argv[1]
+		pubkeyhx = argv[2]
+		if argc == 4:
+			overlayhx = argv[3]
+		else:
+			overlayhx = ""
+
+		# backend add recipient call	
+		pubkey = clean_hex(pubkeyhx).decode("hex")
+		overlay = clean_hex(overlayhx).decode("hex")
+		nickbytes = nick.decode("ascii")
+
+		# add peer to address book 
+		peerdata = pubkey + nickbytes
+		conns[ctx.get_node()].send_raw(
+			"\x01",
+			peerdata,
+			"added peer identity '" + nick + "' as " + pubkeyhx
+		)
+
+		tagdata = pubkey + pubkey + overlay
+		conns[ctx.get_node()].send_raw(
+			"\x08",
+			peerdata,
+			"set location " + pubkeyhx + "@" + overlayhx + " for peer " + nick
+		)
+
+		buf_get(ctx, True)	
+
+#	if argv[0] == "send" or argv[0] == "msg":
+#
+#		nick = ""
+#		msg = ""
+#
+#		# verify input
+#		if argc < 2:
+#			wOut(
+#				PSS_BUFPFX_ERROR,
+#				[ctx.get_buffer()],
+#				"!!!",
+#				"not enough arguments for send"
+#			)
+#			return weechat.WEECHAT_RC_ERROR
+#
+#		nick = argv[1]
+#		if argc > 2:
+#			msg = " ".join(argv[2:])
+#
+
 
 	
 	wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown command: {}".format(argv))
@@ -615,3 +740,6 @@ def wOut(level, oBufs, prefix, content):
 		weechat.prnt(b, pfxString + "\t" + content)
 
 
+def clean_hex(self, hx):
+	if hx[0:2] == "0x":
+		return hx[2:]

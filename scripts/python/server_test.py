@@ -21,7 +21,7 @@ class TestServer(unittest.TestCase):
 
 
 	def setUp(self):
-		self.obj = api.ApiServer("foo")
+		self.obj = api.ApiServer(os.path.realpath("."), "foo")
 		self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 		self.fileno = self.sock.fileno()
 		self.obj.start()
@@ -153,6 +153,18 @@ class TestServer(unittest.TestCase):
 		datasend += decodehex(loc_pubkey)
 		datasend += b"\x01\x02\x03\x04"
 		dataexpect = b"\x20\x03\x08\x00\x00\x00\x00"
+		self.sock.send(datasend)
+		select.select([self.fileno], [], [])
+		datarecv = self.sock.recv(1024)
+		self.assertEqual(dataexpect, datarecv)
+
+		# check data
+		select.select([], [self.fileno], [])
+		datasend = b"\x00\x04\x60\x00\x00\x00\x04inky"
+		dataexpect = b"\x20\x04\x90\x00\x00\x00\x86"
+		dataexpect += decodehex(to_pubkey)
+		dataexpect += decodehex(loc_pubkey)
+		dataexpect += b'\x01\x02\x03\x04'
 		self.sock.send(datasend)
 		select.select([self.fileno], [], [])
 		datarecv = self.sock.recv(1024)
