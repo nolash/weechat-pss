@@ -282,7 +282,7 @@ def handle_in(nodename, _):
 	fd = node.sock.fileno()
 	indata = b''
 	try:
-		select.select([fd], [], [], 0.05)
+		#select.select([fd], [], [], 0.05)
 		indata = node.sock.recv(1024)
 	except Exception as e:
 		#wOut(PSS_BUFPFX_DEBUG, [], ":-/", "nothing on socket: {}".format(e))

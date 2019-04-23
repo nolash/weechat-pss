@@ -383,11 +383,13 @@ class ApiServer(ApiCache):
 
 						# if set search by nick
 						if _flag_ctx_bank & item.header[2] > 0:	
-							contact = self.idx_nick_contact[item.data]
+							nickstr = item.data.decode("ascii")
+							contact = self.idx_nick_contact[nickstr]
+							self.logger.log("item {}".format(outheader))
 							outitem = ApiItem(item.id)
 							outitem.put(contact.get_public_key())	
-							outitem.put(contact.get_public_key())
-							outitem.put(contact.get_overlay())
+							outitem.put(contact.get_location().publickey)
+							outitem.put(contact.get_location().overlay)
 							
 
 					# tag instruction
@@ -542,6 +544,7 @@ class ApiServer(ApiCache):
 										del self.idx_nick_contact[newcontact.nick]
 									#newcontact.nick = pss.clean_nick(item.data[66+overlaylength:].decode("ascii"))
 									newcontact.nick = pss.clean_nick(item.data[65:].decode("ascii"))
+									self.logger.log("setting nick " + newcontact.nick)
 									self.idx_nick_contact[newcontact.nick] = newcontact
 
 

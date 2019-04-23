@@ -161,7 +161,7 @@ class TestServer(unittest.TestCase):
 		# check data
 		select.select([], [self.fileno], [])
 		datasend = b"\x00\x04\x60\x00\x00\x00\x04inky"
-		dataexpect = b"\x20\x04\x90\x00\x00\x00\x86"
+		dataexpect = b"\x20\x04\x60\x00\x00\x00\x86"
 		dataexpect += decodehex(to_pubkey)
 		dataexpect += decodehex(loc_pubkey)
 		dataexpect += b'\x01\x02\x03\x04'
