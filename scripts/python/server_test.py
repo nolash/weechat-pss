@@ -129,7 +129,7 @@ class TestServer(unittest.TestCase):
 		time.sleep(10.0)
 
 
-	@unittest.skip("skip test_contact_single")
+	#@unittest.skip("skip test_contact_single")
 	def test_contact_single(self):
 
 		# add private key

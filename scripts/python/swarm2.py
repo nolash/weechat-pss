@@ -401,8 +401,8 @@ def buf_get(ctx, known):
 	if buf == "":
 
 		# for debug only
-		pss_publickey_hex = pss.rpchex(ctx.get_pss().get_public_key())
-		pss_overlay_hex = pss.rpchex(ctx.get_pss().get_overlay())
+		#pss_publickey_hex = pss.rpchex(ctx.get_pss().get_public_key())
+		#pss_overlay_hex = pss.rpchex(ctx.get_pss().get_overlay())
 
 		# chat is DM between two parties
 		if ctx.is_chat():
@@ -627,7 +627,13 @@ def pss_handle(pssName, buf, args):
 		# backend add recipient call	
 		pubkey = clean_hex(pubkeyhx).decode("hex")
 		overlay = clean_hex(overlayhx).decode("hex")
-		nickbytes = nick.decode("ascii")
+		nickbytes = bytes(nick)
+		wOut(
+			PSS_BUFPFX_ERROR,
+			[],
+			"<->",
+			nick
+		)
 
 		# add peer to address book 
 		peerdata = pubkey + nickbytes
@@ -830,6 +836,7 @@ def wOut(level, oBufs, prefix, content):
 		weechat.prnt(b, pfxString + "\t" + content)
 
 
-def clean_hex(self, hx):
+def clean_hex(hx):
 	if hx[0:2] == "0x":
 		return hx[2:]
+	return hx

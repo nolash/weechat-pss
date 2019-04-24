@@ -32,8 +32,10 @@ class ApiLogger:
 		fd = os.open(url, os.O_TRUNC | os.O_WRONLY | os.O_CREAT)
 		self.fd = fd
 
+
 	def __del__(self):
 		os.close(self.fd)
+
 
 	def log(self, txt):
 		os.write(self.fd, txt.encode("ascii") + b'\x0a')
