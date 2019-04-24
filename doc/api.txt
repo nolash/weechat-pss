@@ -15,9 +15,20 @@ send context bits:
 2 - content		send (0)/retrieve (1) content 
 3 - tag			add (in)/remove (out) tag on peer
 4 - (unused)
-5 - (unused)
+5 - get			get info about a peer
 6 - bank		modifies behavior of bits
 7 - mode		single = 0, multi = 1
+
+-----
+
+unsolicited response handled differently:
+
+0x02 -> (bank 0) comm without nick:
+single: public key | msg
+
+0x42 -> (bank 0) comm WITH nick
+single: 1 byte nicklength | nick | msg
+
 
 if all context bits are 0, set private key
 
@@ -40,8 +51,10 @@ multi: 1 byte room name | room name [ | public key | nick ]
 
 1 - comm
 
+(before comm must register peer with a peer call)
+
 bank 0 (send)
-single: public key | content
+single: 1 byte nick length | name | content
 multi: 1 byte room name length | room name | content
 
 bank 1 (set)
@@ -64,7 +77,9 @@ content requests need to provide:
 
 ----
 
-3 - tag
+3 - tag 
+
+TODO add nick as prefix 
 
 bank (0) add
 single/multi: public key identity | public key location | overlay

@@ -184,8 +184,12 @@ class TestServer(unittest.TestCase):
 		# send a message, expect success
 		select.select([], [self.fileno], [])
 		datasend = b"\x00\x02\x02"
-		datasend += struct.pack(">I", 65+3)
-		datasend += decodehex(to_pubkey)
+		#datasend += struct.pack(">I", 65+3)
+		datasend += struct.pack(">I", 8)
+		#datasend += decodehex(to_pubkey)
+		msg = b'inky'
+		datasend += bytes([len(msg) & 0xff])
+		datasend += msg
 		datasend += b'foo'
 		dataexpect = b"\x20\x02\x02\x00\x00\x00\x00"
 		self.sock.send(datasend)
@@ -193,7 +197,7 @@ class TestServer(unittest.TestCase):
 		datarecv = self.sock.recv(1024)
 		self.assertEqual(dataexpect, datarecv)
 
-		time.sleep(1.0)
+		time.sleep(3.0)
 
 
 if __name__ == "__main__":

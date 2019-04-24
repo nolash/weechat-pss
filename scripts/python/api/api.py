@@ -284,11 +284,22 @@ class ApiServer(ApiCache):
 				response = ApiItem(0)
 				pubkey = codecs.decode(pss.clean_hex(r["params"]["result"]["Key"]), "hex")
 				payload = codecs.encode(r["params"]["result"]["Msg"], "utf-8")
-				response.put(pubkey)
+				havenick = False
+				mode = 0xff & _flag_ctx_comm 
+				try:
+					contact = self.idx_publickey_contact[pubkey]
+					response.put([bytes(len(contact.nick) & 0xff)])
+					response.put(contact.nick)
+					mode |= 0x40
+					self.logger.log("pss in nick " + contact.nick)
+				except:
+					response.put(pubkey)
+					self.logger.log("unknown contact for pubkey " + pubkey.hex())
+
 				response.put(payload)
-				print("len", response.datalength, len(payload), len(pubkey))
+				self.logger.log("pss in len {} {} {}".format(response.datalength, len(payload), len(pubkey)))
 				response.err = 0x01
-				response.finalize(0xff & _flag_ctx_comm)
+				response.finalize(mode)
 				self.lock_o.acquire()
 				self.queue_o.add(response)
 				self.lock_o.release()
@@ -463,19 +474,25 @@ class ApiServer(ApiCache):
 
 							# send
 							else:
-								pubkey = item.data[:65]
-								payload = item.data[65:]
-								contact = self.idx_publickey_contact[pubkey]
-								self.pss.send(contact, payload)
-	
-								# update the outgoing feed
-								if self.contact.is_owner():
-									hsh = self.chats[pubkey].write(payload)
-									self.lock_feed.acquire()
-									self.hsh_feed_chats[pubkey] = hsh
-									self.hsh_dirty = True
-									self.lock_feed.release()
-	
+								nicklength = item.data[0]
+								nick = item.data[1:1+nicklength]
+								#pubkey = item.data[:65]
+								payload = item.data[1+nicklength:]
+								#contact = self.idx_publickey_contact[pubkey]
+								try:
+									contact = self.idx_nick_contact[nick]
+									self.pss.send(contact, payload)
+									# update the outgoing feed
+									if self.contact.is_owner():
+										hsh = self.chats[pubkey].write(payload)
+										self.lock_feed.acquire()
+										self.hsh_feed_chats[pubkey] = hsh
+										self.hsh_dirty = True
+										self.lock_feed.release()
+								except:
+									self.logger.log("wrong nick '" + str(nick) + "'")
+									error = _flag_error_entity
+
 					# peer instruction
 					if _flag_ctx_peer & item.header[2] > 0:
 						
@@ -561,9 +578,11 @@ class ApiServer(ApiCache):
 									if newcontact.nick in self.idx_nick_contact:
 										del self.idx_nick_contact[newcontact.nick]
 									#newcontact.nick = pss.clean_nick(item.data[66+overlaylength:].decode("ascii"))
-									newcontact.nick = pss.clean_nick(item.data[65:].decode("ascii"))
+									nickbytes = item.data[65:]
+									nick = nickbytes.decode("ascii")
+									newcontact.nick = pss.clean_nick(nick)
 									self.logger.log("setting nick " + newcontact.nick)
-									self.idx_nick_contact[newcontact.nick] = newcontact
+									self.idx_nick_contact[nickbytes] = newcontact
 
 
 								# add to cache

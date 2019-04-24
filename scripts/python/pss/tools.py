@@ -134,22 +134,6 @@ def clean_hex(hx):
 
 
 
-# hex excerpt for display
-# shows by default 4 bytes
-# \todo add unit test
-def label(hx, l=8):
-	if l == 0:
-		return ""
-	l += 2	
-
-	decodedHex = clean_hex(hx)
-
-	if len(decodedHex) < l:
-		l = len(hx)
-
-	return decodedHex[:l] 
-
-
 # \todo implement
 def now_int():
 	return int(time.time())

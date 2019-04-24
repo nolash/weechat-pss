@@ -67,7 +67,6 @@ class ApiParser:
 	def __init__(self):
 		self.item = None
 
-
 	## Process input data
 	#
 	# \param data input
@@ -99,6 +98,11 @@ class ApiParser:
 		return (None, None)
 
 
+	def reset(self):
+		self.item = None
+
+
+# \todo change response scheme to set either literal return, prefix + data return or command execute
 class Client:
 
 	def __init__(self, name, host="127.0.0.1", wsport="8546", bzzport="8500"):
@@ -109,6 +113,7 @@ class Client:
 		self.bufs = {}
 		self.loop = None
 		self.sock = None
+		self.host = host
 
 		self.parser = ApiParser()
 		self.seq = 1
@@ -130,19 +135,26 @@ class Client:
 			raise ValueError("msg should be None or string")	
 		self.cmd[k] = (item, okmsg)
 
-	
+
 	def get_response(self, item):
+
+		# check if error is set in response
 		err = item.header[0] & 0xe0
 		if err != 0x20 and err != 0x00:
 			raise ApiError("failed")
 
+		# get the requests's stored response output
 		response = ""
 		serializedid = struct.pack(">H", item.id)
 		if serializedid in self.cmd:
 			response = self.cmd[serializedid][1]
+
+			# this is the special case of get peer info
+			# then the data is appended to 
 			if item.header[2] & 0x60 > 0:
 				response += bytes(item.data[65:130]).encode("hex") + " "
 				response += bytes(item.data[130:]).encode("hex") 
+
 		return response
 		
 		
@@ -168,6 +180,7 @@ class EventContextStore:
 	
 # context is a common object for keeping track of context of an incoming event 
 class EventContext:
+
 	
 	def __init__(self):
 		self.type = 0
@@ -233,10 +246,6 @@ class EventContext:
 		return self.bzz
 
 
-	def get_pss(self):
-		return self.pss
-
-
 	def get_buffer(self):
 		return self.buf
 
@@ -274,7 +283,7 @@ class EventContext:
 
 
 	def __str__(self):
-		return str(self.type) + "|" + self.node + "|" + self.name + "|" + repr(self.pss)
+		return str(self.type) + "|" + self.node + "|" + self.name 
 
 
 # contexts across buffer calls
@@ -297,21 +306,21 @@ def handle_in(nodename, _):
 	fd = node.sock.fileno()
 	indata = b''
 	try:
-		#select.select([fd], [], [], 0.05)
 		indata = node.sock.recv(1024)
 	except Exception as e:
-		#wOut(PSS_BUFPFX_DEBUG, [], ":-/", "nothing on socket: {}".format(e))
 		return weechat.WEECHAT_RC_OK
 
 	(item, leftovers) = node.parser.put(bytearray(indata))
-	wOut(PSS_BUFPFX_DEBUG, [], ":-D", "have item: {}".format(item))
+	wOut(PSS_BUFPFX_DEBUG, [], ":-D", "have item: {} {}".format(item, bytes(item.src[0:7]).encode("hex")))
 
 	while leftovers != None:	
 		response = ""
 		
 		try:
+			# on initial connect
 			if item.header[0] == 0 and item.header[1] == 0:
 				node.publickey_location = bytes(item.data[:65])
+				node.publickey_identity = bytes(item.data[:65])
 				node.overlay = bytes(item.data[65:97])
 				wOut(
 					PSS_BUFPFX_OK,
@@ -331,15 +340,43 @@ def handle_in(nodename, _):
 					"!!!",
 					"addr: " + node.overlay.encode("hex"),
 				)
+	
+			# unsolicited input	
+			elif item.header[0] == 0x20 and item.header[1] == 0:
+				wOut(PSS_BUFPFX_DEBUG, [], ":-D", "have data: {}".format(bytes(item.src[7:]).encode("hex")))
+				ctx = EventContext()
+				ctx.set_node(nodename)
+				known = False
+				sender = ""
+				if item.header[2] & 0x40 > 0:
+					known = True
+					nicklength = item.data[0]
+					sender = bytes(item.data[:nicklength]).encode("utf-8")
+					msg = bytes(item.data[nicklength:]).encode("utf-8")
+				else:
+					sender = bytes(item.data[:4]).encode("hex")
+					msg = bytes(item.data[65:]).encode("utf-8")
+
+				ctx.reset(PSS_BUFTYPE_CHAT, nodename, sender)
+				wOut(
+					PSS_BUFPFX_IN,
+					[buf_get(ctx, known)],
+					sender,
+					msg
+				)
+
+
+			# response on request
 			else:
 				try:
 					response = node.get_response(item)
-					wOut(
-						PSS_BUFPFX_OK,
-						[node.bufs['root']],
-						"!!!",
-						response
-					)
+					if response != None:
+						wOut(
+							PSS_BUFPFX_OK,
+							[node.bufs['root']],
+							"!!!",
+							response
+						)
 				except ApiError as e:
 					wOut(
 						PSS_BUFPFX_ERROR,
@@ -357,6 +394,7 @@ def handle_in(nodename, _):
 			)
 
 		finally:
+			node.parser.reset()
 			(item, leftovers) = node.parser.put(leftovers)
 
 
@@ -401,8 +439,8 @@ def buf_get(ctx, known):
 	if buf == "":
 
 		# for debug only
-		#pss_publickey_hex = pss.rpchex(ctx.get_pss().get_public_key())
-		#pss_overlay_hex = pss.rpchex(ctx.get_pss().get_overlay())
+		pss_publickey_hex = node.publickey_identity.encode("hex") #pss.rpchex(ctx.get_pss().get_public_key())
+		pss_overlay_hex = node.overlay.encode("hex") #pss.rpchex(ctx.get_pss().get_overlay())
 
 		# chat is DM between two parties
 		if ctx.is_chat():
@@ -410,7 +448,7 @@ def buf_get(ctx, known):
 			# set up the buffer
 			ctx.set_buffer(weechat.buffer_new(bufname, "buf_in", ctx.get_node(), "buf_close", ctx.get_node()), bufname)
 			weechat.buffer_set(ctx.get_buffer(), "short_name", shortname)
-			weechat.buffer_set(ctx.get_buffer(), "title", ctx.get_name() + " @ PSS '" + ctx.get_node() + "' | node: " + weechat.config_get_plugin(ctx.get_pss().get_host() + "_url") + ":" + weechat.config_get_plugin(ctx.get_pss().get_port() + "_port") + " | key  " + pss.label(pss_publickey_hex) + " | address " + pss.label(pss_overlay_hex))
+			weechat.buffer_set(ctx.get_buffer(), "title", ctx.get_name() + " @ PSS '" + ctx.get_node() + "' | node: " + weechat.config_get_plugin(node.host + "_url") + " | key  " + label(pss_publickey_hex) + " | address " + label(pss_overlay_hex))
 			weechat.buffer_set(ctx.get_buffer(), "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 			weechat.buffer_set(ctx.get_buffer(), "display", "1")
 			plugin = weechat.buffer_get_pointer(ctx.get_buffer(), "plugin")
@@ -423,6 +461,51 @@ def buf_get(ctx, known):
 		ctx.set_buffer(buf, bufname)
 
 	return ctx.get_buffer()
+
+
+
+# handle inputs to buffer that are not slash commands
+# currently all input is handled as messages to send
+# where the string before the first whitespace is taken as the nick of the recipient
+# the recipient must have been previously added to the node
+def buf_in(nodename, buf, inputdata):
+
+	ctx = EventContext()
+	ctx.parse_buffer(buf)
+	sys.stderr.write("parsed ctx: " + str(ctx))
+	wOut(
+		PSS_BUFPFX_DEBUG,
+		[],
+		"<<<",
+		"input in " + ctx.get_name()
+	)
+
+	if ctx.is_room():
+		wOut(
+			PSS_BUFPFX_ERROR,
+			[],
+			"!!!",
+			"TODO implement room chat"
+		)
+
+	else:
+		msgbytes = bytes(inputdata)
+		nickbytes = bytes(ctx.get_name())
+		nickbyteslength = len(nickbytes) & 0xff
+		conns[ctx.get_node()].send_raw(
+			"\x02",
+			struct.pack(">B", nickbyteslength) + nickbytes + msgbytes,
+			None
+		)
+		wOut(
+			PSS_BUFPFX_OUT,
+			[ctx.get_buffer()],
+			"you",
+			inputdata
+		)
+
+	return weechat.WEECHAT_RC_OK
+
 
 
 ## handle node inputs	
@@ -650,6 +733,7 @@ def pss_handle(pssName, buf, args):
 			"set location " + pubkeyhx + "@" + overlayhx + " for peer " + nick
 		)
 
+		ctx.reset(PSS_BUFTYPE_CHAT, ctx.get_node(), nick)
 		buf_get(ctx, True)
 
 
@@ -696,30 +780,31 @@ def pss_handle(pssName, buf, args):
 
 		return weechat.WEECHAT_RC_OK
 
-#	if argv[0] == "send" or argv[0] == "msg":
-#
-#		nick = ""
-#		msg = ""
-#
-#		# verify input
-#		if argc < 2:
-#			wOut(
-#				PSS_BUFPFX_ERROR,
-#				[ctx.get_buffer()],
-#				"!!!",
-#				"not enough arguments for send"
-#			)
-#			return weechat.WEECHAT_RC_ERROR
-#
-#		nick = argv[1]
-#		if argc > 2:
-#			msg = " ".join(argv[2:])
-#
 
+	if argv[0] == "send" or argv[0] == "msg":
 
+		nick = ""
+		msg = ""
+
+		# verify input
+		if argc < 3:
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"not enough arguments for send"
+			)
+			return weechat.WEECHAT_RC_ERROR
+
+		nick = argv[1]
+		msg = " ".join(argv[2:])
+		return buf_in(ctx.get_node(), ctx.get_buffer(), msg)
+		
 	
 	wOut(PSS_BUFPFX_ERROR, [], "!!!", "unknown command: {}".format(argv))
 	weechat.WEECHAT_RC_ERROR
+
+
 
 # top level teardown of plugin and thus all connections
 def pss_stop():
@@ -728,9 +813,11 @@ def pss_stop():
 	return weechat.WEECHAT_RC_OK
 
 
+
 # when buffer is closed, node should also close down
 def buf_close(pssName, buf):
 	return weechat.WEECHAT_RC_OK
+
 
 
 ###################
@@ -840,3 +927,21 @@ def clean_hex(hx):
 	if hx[0:2] == "0x":
 		return hx[2:]
 	return hx
+
+
+# hex excerpt for display
+# shows by default 4 bytes
+# \todo add unit test
+def label(hx, l=8):
+	if l == 0:
+		return ""
+	l += 2	
+
+	decodedHex = clean_hex(hx)
+
+	if len(decodedHex) < l:
+		l = len(hx)
+
+	return decodedHex[:l] 
+
+
