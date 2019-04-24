@@ -103,6 +103,9 @@ class Client:
 
 	def __init__(self, name, host="127.0.0.1", wsport="8546", bzzport="8500"):
 		self.nick = name
+		self.publickey_identity = None
+		self.publickey_location = None
+		self.overlay = None
 		self.bufs = {}
 		self.loop = None
 		self.sock = None
@@ -123,13 +126,25 @@ class Client:
 		self.seq += 1
 		k = str(item.src[0:2])
 		wOut(PSS_BUFPFX_DEBUG, [], "-->", "wrote: {} [{}]".format(str(item.src).encode("hex"), k.encode("hex")))
+		if okmsg != None and len(okmsg) == 0:
+			raise ValueError("msg should be None or string")	
 		self.cmd[k] = (item, okmsg)
 
 	
 	def get_response(self, item):
-		if item.header[0] & 0xe0 != 0x20:
+		err = item.header[0] & 0xe0
+		if err != 0x20 and err != 0x00:
 			raise ApiError("failed")
-		return self.cmd[struct.pack(">H", item.id)][1]
+
+		response = ""
+		serializedid = struct.pack(">H", item.id)
+		if serializedid in self.cmd:
+			response = self.cmd[serializedid][1]
+			if item.header[2] & 0x60 > 0:
+				response += item.data[:65].encode(hex) + " "
+				response += item.data[65:].encode(hex) 
+		return response
+		
 		
 
 
@@ -293,23 +308,62 @@ def handle_in(nodename, _):
 
 	while leftovers != None:	
 		response = ""
+		
 		try:
-			response = node.get_response(item)
-			wOut(
-				PSS_BUFPFX_OK,
-				[node.bufs['root']],
-				"!!!",
-				response
-			)
-		except ApiError as e:
+			if item.header[0] == 0 and item.header[1] == 0:
+				node.publickey_location = item.data[:65] 
+				node.overlay = item.data[65:97]
+				wOut(
+					PSS_BUFPFX_OK,
+					[node.bufs['root']],
+					"o---o",
+					"connected to '" + nodename + "'"
+				)
+				wOut(
+					PSS_BUFPFX_INFO,
+					[node.bufs['root']],
+					"!!!",
+					"pubkey: " + bytes(node.publickey_location).encode("hex"),
+				)
+				wOut(
+					PSS_BUFPFX_INFO,
+					[node.bufs['root']],
+					"!!!",
+					"addr: " + bytes(node.overlay).encode("hex"),
+				)
+			else:
+				wOut(
+					PSS_BUFPFX_DEBUG,
+					[],
+					">><<",
+					"fuck! " + bytes(item.header).encode("hex")
+				)
+				try:
+					response = node.get_response(item)
+					wOut(
+						PSS_BUFPFX_OK,
+						[node.bufs['root']],
+						"!!!",
+						response
+					)
+				except ApiError as e:
+					wOut(
+						PSS_BUFPFX_ERROR,
+						[node.bufs['root']],
+						"???",
+						str(e)
+					)
+
+		except Exception as e:
 			wOut(
 				PSS_BUFPFX_ERROR,
-				[node.bufs['root']],
-				"???",
-				str(e)
+				[],
+				"!!!",
+				"{} ({})".format(response, str(e))
 			)
 
-		(item, leftovers) = node.parser.put(leftovers)
+		finally:
+			(item, leftovers) = node.parser.put(leftovers)
 
 
 	return weechat.WEECHAT_RC_OK
@@ -336,9 +390,7 @@ def handle_croak(data, cmd, retval, out, err):
 # creates if it doesn't exists
 # \todo rename bufname to more precise term
 def buf_get(ctx, known):
-	global _tmp_room_queue_hash, _tmp_room_initial
 
-	haveBzz = False
 	# \todo integrity check of input data
 	bufname = ctx.to_buffer_name()
 	node = conns[ctx.get_node()]
@@ -598,7 +650,47 @@ def pss_handle(pssName, buf, args):
 			"set location " + pubkeyhx + "@" + overlayhx + " for peer " + nick
 		)
 
-		buf_get(ctx, True)	
+		buf_get(ctx, True)
+
+
+	# output node key
+	elif argv[0] == "whois":
+
+		nick = ""
+
+		# input sanity check
+		if argc < 1:
+			wOut(
+				PSS_BUFPFX_ERROR,
+				[ctx.get_buffer()],
+				"!!!",
+				"not enough arguments for whois <TODO: help output>"
+			)
+			return weechat.WEECHAT_RC_ERROR
+
+		nick = argv[1]
+
+		conns[ctx.get_node()].send_raw(
+			"\x60",
+			nick.decode("ascii"),
+			"whois {}: ".format(nick),
+		)
+#		wOut(
+#			PSS_BUFPFX_INFO,
+#			[ctx.get_buffer()],
+#			ctx.get_node() + ".key",
+#			ctx.get_pss().get_public_key().encode("hex")
+#		)
+
+
+	# output node base address
+	elif argv[0] == "addr" or argv[0] == "address":
+		wOut(
+			PSS_BUFPFX_INFO,
+			[ctx.get_buffer()],
+			ctx.get_node() + ".addr",
+			ctx.get_pss().get_overlay().encode("hex")
+		)
 
 #	if argv[0] == "send" or argv[0] == "msg":
 #

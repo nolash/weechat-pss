@@ -181,7 +181,15 @@ class ApiServer(ApiCache):
 		self.pss = pss.Pss(self.name, self.host, self.wsport)
 		if not self.pss.connect():
 			raise IOError(self.pss.errstr)
+		self.contact.set_public_key(self.pss.account.get_public_key())
 
+		self.contact.set_location(
+			pss.Location(
+				self.pss.overlay,
+				self.pss.account.get_public_key()
+			)
+		)
+				
 		self.agent = pss.Agent(self.host, self.bzzport)
 		self.bzz = pss.Bzz(self.agent)
 
@@ -290,6 +298,7 @@ class ApiServer(ApiCache):
 	#
 	# \todo better sleep calculation so is run every second
 	def feed_out(self):
+
 		while True:
 			if not self.hsh_dirty and not self.running:
 				sys.stderr.write("feed_out exiting")
@@ -579,9 +588,22 @@ class ApiServer(ApiCache):
 		(c, addr) = self.sock.accept()
 		c.settimeout(0.1)
 		self.logger.log("have connect".format(c.fileno()))
+
+		item = ApiItem(0)
+		item.header = b'\x00\x00\x00\x00\x00\x00\xa2'
+		location = self.contact.get_location()
+		self.logger.log("overlay {}".format(location.overlay.hex()))
+		item.data = self.contact.get_public_key()
+		item.data += location.overlay
+		item.finalize(0)
+		n = c.send(item.src)
+		if n != len(item.src):
+			raise IOError("short write of identity")
+
 		self.thread_out = threading.Thread(None, self.handle_out, "handle_out", [c])
 		self.thread_out.start()
 		parser = ApiParser()
+
 #		try:
 #			select.select([], [c.fileno()], [])
 #			w = c.send(bytearray(7))

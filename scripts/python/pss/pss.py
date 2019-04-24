@@ -27,13 +27,13 @@ class Pss:
 		self.connected = False
 		self.inputConnected = False
 		self.account = Account()
-		self.overlay = ""
 		self.err = 0
 		self.errstr = ""
 		self.seq = 0
 		self.ws = None
 		self.run = False
 		self.sub = ""
+		self.overlay = None
 
 
 

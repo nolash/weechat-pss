@@ -26,18 +26,33 @@ class TestServer(unittest.TestCase):
 		self.fileno = self.sock.fileno()
 		self.obj.start()
 		time.sleep(0.25) # wait for sockets to be opened
-
+		self.obj.connect(self.sock)
+		self.sock.settimeout(0.25)
+		select.select([self.fileno], [], [], 0.25)
+		expectreceive = 7+65+32
+		datarecv = self.sock.recv(expectreceive)
+		if len(datarecv) != expectreceive:
+			self.tearDown()
+			raise ValueError("short read identity ({})".format(len(datarecv)))
+		data = datarecv[7:]
+		self.publickey_location = data[:65]
+		self.overlay = datarecv[65:97]
+				
 
 	def tearDown(self):
 		self.sock.close()
 		self.obj.stop()
 
 
+	#@unittest.skip("skip test_room")
+	def test_identity(self):
+		print(self.overlay)
+		self.assertEqual(pubkey, self.publickey_location.hex())
+
 	
 	@unittest.skip("skip test_room")
 	# \todo verify json payload correct
 	def test_pss_in(self):
-		self.obj.connect(self.sock)
 		s_in, s_out = os.pipe()
 		testmsg = {
 			"json-rpc": "2.0",
@@ -70,8 +85,6 @@ class TestServer(unittest.TestCase):
 
 	@unittest.skip("skip test_room")
 	def test_room(self):
-
-		self.obj.connect(self.sock)
 
 		# add private key
 		select.select([], [self.fileno], [])
@@ -116,10 +129,8 @@ class TestServer(unittest.TestCase):
 		time.sleep(10.0)
 
 
-	#@unittest.skip("skip test_contact_single")
+	@unittest.skip("skip test_contact_single")
 	def test_contact_single(self):
-
-		self.obj.connect(self.sock)
 
 		# add private key
 		select.select([], [self.fileno], [])
