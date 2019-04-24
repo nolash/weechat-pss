@@ -395,12 +395,19 @@ class ApiServer(ApiCache):
 						# if set search by nick
 						if _flag_ctx_bank & item.header[2] > 0:	
 							nickstr = item.data.decode("ascii")
-							contact = self.idx_nick_contact[nickstr]
-							self.logger.log("item {}".format(outheader))
-							outitem = ApiItem(item.id)
-							outitem.put(contact.get_public_key())	
-							outitem.put(contact.get_location().publickey)
-							outitem.put(contact.get_location().overlay)
+							contact = self.idx_nick_contact[nickstr]	
+							if contact == None:
+								error = _flag_error_entity
+							else:
+								self.logger.log("item {}".format(outheader))
+								self.logger.log("item {}".format(contact.get_location().overlay))
+								outitem = ApiItem(item.id)
+								outitem.put(contact.get_public_key())	
+								location = contact.get_location()
+								outitem.put(location.publickey)
+								if location.overlay != None:
+									outitem.put(location.overlay)
+								self.logger.log("outitem: {}".format(outitem.data.hex()))
 							
 
 					# tag instruction
@@ -421,9 +428,9 @@ class ApiServer(ApiCache):
 								pass
 
 							else:
-								pubkeyself = item.data[:65]
+								pubkeyidentity = item.data[:65]
 								pubkeylocation = item.data[65:130]
-								contact = self.idx_publickey_contact[pubkeyself]
+								contact = self.idx_publickey_contact[pubkeyidentity]
 								overlay = None
 								if item.datalength > 130:
 									overlay = item.data[130:]

@@ -44,7 +44,7 @@ class TestServer(unittest.TestCase):
 		self.obj.stop()
 
 
-	#@unittest.skip("skip test_room")
+	@unittest.skip("skip test_room")
 	def test_identity(self):
 		print(self.overlay)
 		self.assertEqual(pubkey, self.publickey_location.hex())

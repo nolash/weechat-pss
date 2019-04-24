@@ -141,8 +141,8 @@ class Client:
 		if serializedid in self.cmd:
 			response = self.cmd[serializedid][1]
 			if item.header[2] & 0x60 > 0:
-				response += item.data[:65].encode(hex) + " "
-				response += item.data[65:].encode(hex) 
+				response += bytes(item.data[65:130]).encode("hex") + " "
+				response += bytes(item.data[130:]).encode("hex") 
 		return response
 		
 		
@@ -646,7 +646,7 @@ def pss_handle(pssName, buf, args):
 		tagdata = pubkey + pubkey + overlay
 		conns[ctx.get_node()].send_raw(
 			"\x08",
-			peerdata,
+			tagdata,
 			"set location " + pubkeyhx + "@" + overlayhx + " for peer " + nick
 		)
 
@@ -672,8 +672,8 @@ def pss_handle(pssName, buf, args):
 
 		conns[ctx.get_node()].send_raw(
 			"\x60",
-			nick.decode("ascii"),
-			"whois {}: ".format(nick),
+			bytes(nick),
+			"whois '" + nick + "': "
 		)
 
 		return weechat.WEECHAT_RC_OK

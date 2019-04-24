@@ -461,7 +461,7 @@ class FeedCollection:
 	def _retrieve(self, bzz, feedaddress, curhsh, targethsh):
 
 		if curhsh.__class__.__name__ != "bytes" or targethsh.__class__.__name__ != "bytes":
-			errstr = "retrieve class error {} {}".format(curhsh.__class__, targethsh.__class__)
+			errstr = "retrieve class error " + curhsh.__class__ + " " + targethsh.__class__
 			raise ValueError(errstr)
 
 		# hash map serial (timestamp+seq) => Message
