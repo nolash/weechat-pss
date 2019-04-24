@@ -311,8 +311,8 @@ def handle_in(nodename, _):
 		
 		try:
 			if item.header[0] == 0 and item.header[1] == 0:
-				node.publickey_location = item.data[:65] 
-				node.overlay = item.data[65:97]
+				node.publickey_location = bytes(item.data[:65])
+				node.overlay = bytes(item.data[65:97])
 				wOut(
 					PSS_BUFPFX_OK,
 					[node.bufs['root']],
@@ -323,21 +323,15 @@ def handle_in(nodename, _):
 					PSS_BUFPFX_INFO,
 					[node.bufs['root']],
 					"!!!",
-					"pubkey: " + bytes(node.publickey_location).encode("hex"),
+					"pubkey: " + node.publickey_location.encode("hex"),
 				)
 				wOut(
 					PSS_BUFPFX_INFO,
 					[node.bufs['root']],
 					"!!!",
-					"addr: " + bytes(node.overlay).encode("hex"),
+					"addr: " + node.overlay.encode("hex"),
 				)
 			else:
-				wOut(
-					PSS_BUFPFX_DEBUG,
-					[],
-					">><<",
-					"fuck! " + bytes(item.header).encode("hex")
-				)
 				try:
 					response = node.get_response(item)
 					wOut(
@@ -675,22 +669,26 @@ def pss_handle(pssName, buf, args):
 			nick.decode("ascii"),
 			"whois {}: ".format(nick),
 		)
-#		wOut(
-#			PSS_BUFPFX_INFO,
-#			[ctx.get_buffer()],
-#			ctx.get_node() + ".key",
-#			ctx.get_pss().get_public_key().encode("hex")
-#		)
+
+		return weechat.WEECHAT_RC_OK
 
 
-	# output node base address
-	elif argv[0] == "addr" or argv[0] == "address":
+	# output node key
+	elif argv[0] == "server":
+		wOut(
+			PSS_BUFPFX_INFO,
+			[ctx.get_buffer()],
+			ctx.get_node() + ".key",
+			conns[ctx.get_node()].publickey_location.encode("hex")
+		)
 		wOut(
 			PSS_BUFPFX_INFO,
 			[ctx.get_buffer()],
 			ctx.get_node() + ".addr",
-			ctx.get_pss().get_overlay().encode("hex")
+			conns[ctx.get_node()].overlay.encode("hex")
 		)
+
+		return weechat.WEECHAT_RC_OK
 
 #	if argv[0] == "send" or argv[0] == "msg":
 #
