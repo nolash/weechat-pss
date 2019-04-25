@@ -300,6 +300,7 @@ weechat.register("pss", "lash", PSS_VERSION, "GPLv3", "single-node pss and swarm
 # what dir we are working in. set on load
 scriptpath = ""
 
+
 def handle_in(nodename, _):
 
 	node = conns[nodename]
@@ -346,21 +347,23 @@ def handle_in(nodename, _):
 				wOut(PSS_BUFPFX_DEBUG, [], ":-D", "have data: {}".format(bytes(item.src[7:]).encode("hex")))
 				ctx = EventContext()
 				ctx.set_node(nodename)
-				known = False
+
 				sender = ""
-				if item.header[2] & 0x40 > 0:
-					known = True
-					nicklength = item.data[0]
-					sender = bytes(item.data[:nicklength]).encode("utf-8")
-					msg = bytes(item.data[nicklength:]).encode("utf-8")
-				else:
-					sender = bytes(item.data[:4]).encode("hex")
-					msg = bytes(item.data[65:]).encode("utf-8")
+				nicklength = item.data[0]
+				sender = bytes(item.data[1:1+nicklength]).encode("utf-8")
+				msg = bytes(item.data[1+nicklength:]).encode("utf-8")
+
+				wOut(
+					PSS_BUFPFX_DEBUG,
+					[],
+					"---",
+					"sender: " + bytes(sender).encode("hex")
+				)
 
 				ctx.reset(PSS_BUFTYPE_CHAT, nodename, sender)
 				wOut(
 					PSS_BUFPFX_IN,
-					[buf_get(ctx, known)],
+					[buf_get(ctx)],
 					sender,
 					msg
 				)
@@ -421,7 +424,7 @@ def handle_croak(data, cmd, retval, out, err):
 # gets the buffer matching the type and the name given
 # creates if it doesn't exists
 # \todo rename bufname to more precise term
-def buf_get(ctx, known):
+def buf_get(ctx):
 
 	# \todo integrity check of input data
 	bufname = ctx.to_buffer_name()
@@ -734,7 +737,7 @@ def pss_handle(pssName, buf, args):
 		)
 
 		ctx.reset(PSS_BUFTYPE_CHAT, ctx.get_node(), nick)
-		buf_get(ctx, True)
+		buf_get(ctx)
 
 
 	# output node key

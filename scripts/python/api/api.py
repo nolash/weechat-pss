@@ -283,6 +283,7 @@ class ApiServer(ApiCache):
 
 				response = ApiItem(0)
 				pubkey = codecs.decode(pss.clean_hex(r["params"]["result"]["Key"]), "hex")
+				self.logger.log("pubkeyhex " + pss.clean_hex(r["params"]["result"]["Key"]))
 				payload = codecs.encode(r["params"]["result"]["Msg"], "utf-8")
 				havenick = False
 				mode = 0xff & _flag_ctx_comm 
@@ -290,11 +291,17 @@ class ApiServer(ApiCache):
 					contact = self.idx_publickey_contact[pubkey]
 					response.put([bytes(len(contact.nick) & 0xff)])
 					response.put(contact.nick)
-					mode |= 0x40
 					self.logger.log("pss in nick " + contact.nick)
 				except:
-					response.put(pubkey)
-					self.logger.log("unknown contact for pubkey " + pubkey.hex())
+					nickfrompubkey = pubkey[1:5].hex()
+					nick = nickfrompubkey.encode("utf-8")
+					self.logger.log("new contact with pubkey " + pubkey.hex() + " nick " + nickfrompubkey)
+					newcontact = pss.PssContact(nickfrompubkey, self.name)
+					newcontact.set_public_key(pubkey)
+					newcontact.set_location(pss.Location(b'', pubkey))
+					self.idx_nick_contact[nick] = newcontact
+					self.idx_publickey_contact[pubkey] = newcontact
+					response.put(b'\x08' + nick)
 
 				response.put(payload)
 				self.logger.log("pss in len {} {} {}".format(response.datalength, len(payload), len(pubkey)))
@@ -405,7 +412,7 @@ class ApiServer(ApiCache):
 
 						# if set search by nick
 						if _flag_ctx_bank & item.header[2] > 0:	
-							nickstr = item.data.decode("ascii")
+							nickstr = item.data.decode("utf-8")
 							contact = self.idx_nick_contact[nickstr]	
 							if contact == None:
 								error = _flag_error_entity
@@ -676,6 +683,7 @@ class ApiServer(ApiCache):
 		self.contacts.append(contact)
 		self.idx_publickey_contact[contact.get_public_key()] = contact
 		self.idx_nick_contact[contact.get_nick()] = contact
+		self.logger.log("added contact " + contact.get_public_key().hex() + " nick " + contact.nick)
 
 		# \todo probably we shouldn't pass on all exceptions here
 		try:
