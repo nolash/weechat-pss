@@ -155,7 +155,9 @@ class Pss:
 		# add to node and object cache
 		location = contact.get_location()
 		pubkeyhx = rpchex(location.publickey)
-		overlayhx = rpchex(location.overlay)
+		overlayhx = "0x"
+		if location.overlay != None:
+			overlayhx = rpchex(location.overlay)
 		call = rpc_call(self.seq, "setPeerPublicKey", [pubkeyhx, topic, overlayhx])
 		print("pss ws add", call)
 		self.ws.send(call)

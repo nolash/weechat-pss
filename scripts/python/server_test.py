@@ -197,6 +197,17 @@ class TestServer(unittest.TestCase):
 		datarecv = self.sock.recv(1024)
 		self.assertEqual(dataexpect, datarecv)
 
+		# tag peer location
+		select.select([], [self.fileno], [])
+		datasend = b"\x00\x04\x08\x00\x00\x00\x82"
+		datasend += decodehex(to_pubkey)
+		datasend += decodehex(loc_pubkey)
+		dataexpect = b"\x20\x04\x08\x00\x00\x00\x00"
+		self.sock.send(datasend)
+		select.select([self.fileno], [], [])
+		datarecv = self.sock.recv(1024)
+		self.assertEqual(dataexpect, datarecv)
+
 		time.sleep(3.0)
 
 

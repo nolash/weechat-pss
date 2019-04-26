@@ -455,7 +455,6 @@ def buf_get(ctx):
 			weechat.buffer_set(ctx.get_buffer(), "hotlist", weechat.WEECHAT_HOTLIST_PRIVATE)
 			weechat.buffer_set(ctx.get_buffer(), "display", "1")
 			plugin = weechat.buffer_get_pointer(ctx.get_buffer(), "plugin")
-			
 			node.bufs[bufname] = buf
 		else:
 			raise RuntimeError("invalid buffer type")

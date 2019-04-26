@@ -284,7 +284,7 @@ class ApiServer(ApiCache):
 				response = ApiItem(0)
 				pubkey = codecs.decode(pss.clean_hex(r["params"]["result"]["Key"]), "hex")
 				self.logger.log("pubkeyhex " + pss.clean_hex(r["params"]["result"]["Key"]))
-				payload = codecs.encode(r["params"]["result"]["Msg"], "utf-8")
+				payload = codecs.decode(pss.clean_hex(r["params"]["result"]["Msg"]), "hex")
 				havenick = False
 				mode = 0xff & _flag_ctx_comm 
 				try:
@@ -296,12 +296,21 @@ class ApiServer(ApiCache):
 					nickfrompubkey = pubkey[1:5].hex()
 					nick = nickfrompubkey.encode("utf-8")
 					self.logger.log("new contact with pubkey " + pubkey.hex() + " nick " + nickfrompubkey)
-					newcontact = pss.PssContact(nickfrompubkey, self.name)
-					newcontact.set_public_key(pubkey)
-					newcontact.set_location(pss.Location(b'', pubkey))
-					self.idx_nick_contact[nick] = newcontact
-					self.idx_publickey_contact[pubkey] = newcontact
+					try:
+						newcontact = pss.PssContact(nickfrompubkey, self.name)
+						newcontact.set_public_key(pubkey)
+						newcontact.set_location(pss.Location(None, pubkey))
+						self.add_contact(newcontact)
+						#self.idx_nick_contact[nick] = newcontact
+						#self.idx_publickey_contact[pubkey] = newcontact
+						self.pss.add(newcontact)
+					except Exception as e:
+						self.logger.log("noooo " + str(e))
+						continue				
+					
 					response.put(b'\x08' + nick)
+
+				# add to pss node
 
 				response.put(payload)
 				self.logger.log("pss in len {} {} {}".format(response.datalength, len(payload), len(pubkey)))
@@ -393,6 +402,7 @@ class ApiServer(ApiCache):
 				outdata = bytearray(b'')
 				error = 0x01
 
+
 				try:
 
 					# set private key
@@ -483,12 +493,19 @@ class ApiServer(ApiCache):
 							else:
 								nicklength = item.data[0]
 								nick = item.data[1:1+nicklength]
-								#pubkey = item.data[:65]
+								self.logger.log("sending to {}".format(nick))#.decode("utf-8")))
+
+								for k, v in self.idx_nick_contact.items():
+									self.logger.log("have {} {}".format(k, v))
+	
 								payload = item.data[1+nicklength:]
-								#contact = self.idx_publickey_contact[pubkey]
 								try:
 									contact = self.idx_nick_contact[nick]
+									self.logger.log("using saved nick {} {}".format(contact.nick, contact.location.overlay))
 									self.pss.send(contact, payload)
+									self.logger.log(pss.rpc_call(self.pss.seq, "sendAsym", [pss.rpchex(contact.location.publickey), "0xdeadbee2", "0x" + payload.hex()]))
+
+
 									# update the outgoing feed
 									if self.contact.is_owner():
 										hsh = self.chats[pubkey].write(payload)
@@ -496,8 +513,8 @@ class ApiServer(ApiCache):
 										self.hsh_feed_chats[pubkey] = hsh
 										self.hsh_dirty = True
 										self.lock_feed.release()
-								except:
-									self.logger.log("wrong nick '" + str(nick) + "'")
+								except Exception as e:
+									self.logger.log("wrong nick '" + str(nick) + "': " + str(e))
 									error = _flag_error_entity
 
 					# peer instruction
@@ -682,7 +699,7 @@ class ApiServer(ApiCache):
 		# take over the reference of contact, caller can drop var
 		self.contacts.append(contact)
 		self.idx_publickey_contact[contact.get_public_key()] = contact
-		self.idx_nick_contact[contact.get_nick()] = contact
+		self.idx_nick_contact[contact.get_nick().encode("utf-8")] = contact
 		self.logger.log("added contact " + contact.get_public_key().hex() + " nick " + contact.nick)
 
 		# \todo probably we shouldn't pass on all exceptions here
