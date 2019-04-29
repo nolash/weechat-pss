@@ -1,0 +1,65 @@
+---
+
+Send location to peer. 
+Location is pubkey + address pair (pss node). 
+Location may change at any time.
+
+msghashbeforechange | publickey | address (0-32)
+
+---
+
+Negotiate symkey (pluggable)
+
+For encryption scheme like double ratchet may use part of header offset in group message where recipient's message is found. 
+
+---
+
+User identity is the public/private key pair IdPK that identifies a user out-of-band. It is not negotiated through the protocol. 
+
+---
+
+Neither the root identity nor the feed keys should be used in eth node.
+
+---
+
+Discovery can be "raw" pss message sent without address, identity public key IdPubKa and session public key of UserA SesPubKa who wishes to establish contact with UserB encrypted with the IdPubKb.
+
+UserB then generates a session PK pair SesPKb, publish that public key encrypted with SesPubKa and IdPrivKb on feed with account IdAccKb using SesAccKa as topic. (this step has causal connection with discovery message only of attacker can get SesPubKa, which is only possible if IdPubKa is compromised).
+
+UserA now knows where to look the initial update from UserB and what key to attempt decryption with (using IdPubKb and SesPrivKa). Encryption guarantees should make it impossible to infer SesPKa from this symmetric key.
+
+By decrypting the initial update, UserA and UserB can now use SesPKa and SesPKb for eg. double ratchet exchange. An additional secret can be included in the initial exchange to provide metadata encryption "header encryption variant."
+
+The initial update should have a protocol identifier to mark it as a key exchange update so the correct content is easily identified by UserA upon decryption.
+
+---
+
+Update Address is the address with which a USER publishes feeds with updates, and the address mixed in to the topic of a feed with updates intended for that user.
+
+Initially this Update Address can be the SesPKx, or a separately negotiated key. In case of changing public key encryption keys (eg. double ratchet) this session key may or may not be synchronously changed. 
+
+The Update Address should be possible to change at any time by the USER. The address should contain an update by the time it is used.
+
+The feed header must allow implementation of a session key exchange mechanism, the Update Address may be encapsulated by the same mechanism, as part of the message payload.
+
+---
+
+Location Address is the address of the pss gateway of the USER. The Location should be possible to change at any time by the USER. This change should be independent of the session encryption keys and Update Address. The Location Address for receiving messages may be different from the sending address; imagine a scenario where a USER has 8 different node identities. The USER might for every update then randomly choose which pss node to communicate through
+
+We can also imagine a pay-as-you-go relay service provided by nodes, so senders may send message through fully arbitrary nodes, compensating them with ETH to do so (of course they would have to provide proof of delivery).
+
+In this POC implementation PSS messages are used for:
+
+* start of new session
+* notifications of activity with frequency based on parameters negotiated between the parties, typically "notify me explicitly if more than time T passes between messages."
+* change-of-band messages (new Update Address and/or Location Address)
+
+---
+
+Change-of-band refers to switch to a new channel. It may be a new Update Address (feed), Location Address (pss) or both. It is communicated by a pss message. If ACK is not received, then a new session should be started. A new session should always contain a reference to where the last session left off, according to the initiator.
+
+===
+
+message content is solely communicated through feeds, not the body of the pss themselves; pss messages only give explicit swarm hashes and maybe feed hint params (epoch, time)
+
+---
