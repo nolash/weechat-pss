@@ -22,7 +22,7 @@ Neither the root identity nor the feed keys should be used in eth node.
 
 ---
 
-Discovery can be "raw" pss message sent without address, identity public key IdPubKa and session public key of UserA SesPubKa who wishes to establish contact with UserB encrypted with the IdPubKb.
+Discover is a "raw" pss message sent without address, identity public key IdPubKa and session public key of UserA SesPubKa who wishes to establish contact with UserB encrypted with the IdPubKb.
 
 UserB then generates a session PK pair SesPKb, publish that public key encrypted with SesPubKa and IdPrivKb on feed with account IdAccKb using SesAccKa as topic. (this step has causal connection with discovery message only of attacker can get SesPubKa, which is only possible if IdPubKa is compromised).
 

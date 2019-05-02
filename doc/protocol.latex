@@ -1,0 +1,392 @@
+\documentclass[a4paper, 10pt]{article}
+\usepackage{glossaries}
+
+\newcommand{\bzctrl}[1]{#1}
+\newcommand{\bzkey}[2]{$P_{#1}#2$}
+\newcommand{\bzpubkey}[2]{$P_{#1}#2_{pub}$}
+\newcommand{\bzprivkey}[2]{$P_{#1}#2_{priv}$}
+\newcommand{\bzaddrkey}[2]{$P_{#1}#2_{addr}$}
+\newcommand{\bzsymkey}[1]{$S_{#1}$}
+\newcommand{\bzhash}[1]{HASH$_{#1}$}
+\newcommand{\bzroom}[1]{R$_#1$name}
+\newcommand{\bzroomserial}[3]{R$_#1$T$_#2$#3}
+\newcommand{\bzaxx}[3]{R$_#1X_#2$#3}
+\newcommand{\bzfeedtopic}[1]{T$_#1$}
+
+\newglossaryentry{swarmchat}
+{
+	name={swarmchat},
+	description={},
+	plural={swarmchats}
+}
+
+\newglossaryentry{doubleratchet}
+{
+	name={double ratchet},
+	description={}
+}
+
+\newglossaryentry{swarm}
+{
+	name={Swarm},
+	description={}
+}
+\newglossaryentry{swarmaddress}
+{
+	name={Swarm address},
+	description={Swarm overlay address}
+}
+\newglossaryentry{contenthash}
+{
+	name={Content hash},
+	description={}
+}
+\newglossaryentry{swarmfeed}
+{
+	name={Swarm feed},
+	description={},
+	plural={Swarm feeds}
+}
+\newglossaryentry{pss}
+{
+	name={PSS},
+	description={}
+}
+\newglossaryentry{contentaddressed}
+{
+	name={Content addressed},
+	description={}
+}
+\newglossaryentry{sessionkey}
+{
+	name={Session key},
+	description={},
+	plural={Session keys}
+}
+\newglossaryentry{locationkey}
+{
+	name={Location key},
+	description={},
+	plural={Location keys}
+}
+\newglossaryentry{idkey}
+{
+	name={Identity key},
+	description={},
+	plural={Identity keys}
+}
+\newglossaryentry{feedtopic}
+{
+	name={Feed topic},
+	description={}
+}
+\newglossaryentry{feedname}
+{
+	name={Feed room name},
+	description={}
+}
+\newglossaryentry{updateaddress}
+{
+	name={Update address},
+	description={}
+}
+\newglossaryentry{locationaddress}
+{
+	name={Location address},
+	description={}
+}
+\newglossaryentry{singleuserchat}
+{
+	name={Single-user chat},
+	description={}
+}
+\newglossaryentry{multiuserchat}
+{
+	name={Multi-user chat},
+	description={}
+}
+\newglossaryentry{ethpublickey}
+{
+	name={Ethereum public key},
+	description={}
+}
+\newglossaryentry{ethaddress}
+{
+	name={Ethereum address},
+	description={}
+}
+\newglossaryentry{headerkey}
+{
+	name={Header encryption key},
+	description={}
+}
+\newglossaryentry{datakey}
+{
+	name={Data encryption key},
+	description={}
+}
+\newglossaryentry{msgkey}
+{
+	name={Message encryption key},
+	description={}
+}
+\author{lash}
+\title{Subjectively rendered multiuser chat rooms}
+
+\begin{document}
+\date{\today\\ v0.5.0 alpha}
+
+\section{Abstract}
+
+\section{Overview}
+
+This is an attempt to describe a system for decentralized multiuser chat rooms with strong privacy guarantees for both the contents of messages being exchanged (data) aswell as who are communicating with whom (metadata).
+
+By saying Swarmchat is decentralized we mean two things. Firstly, it inherits the decentralized properties of the data storage layer of Swarm itself. Secondly, the individual clients send data to the chats by maintaining individual data feeds. In turn, they are themselves responsible for rendering the state of the chats by retrieving the data from all feeds that make up respective chats.
+
+The privacy properties are also twofold.
+For content protection we do not seek to favor any particular flavor of message encryption scheme. \gls{swarmchat} is however designed with ephemeral key derivation schemes like axolotl \cite{WPSIGNAL:1} in mind, or more specifically allowing sequential exchange of key material between peers. 
+To protect metadata we suggest \emph{band-change} mechanisms that makes it possible to change a client's "address" on the network at will. 
+
+Although this document builds on technology provided by the Ethereum Swarm project, we hope to outline concepts that can be implemented on any technology that provides the same main components.
+
+For simplicity we'll use the word \emph{\gls{swarmchat}} for what we're describing as we go forward. 
+
+\subsection{Conventions used in this document}
+
+\section{About Swarm}
+
+\subsection{Storage}
+
+\subsection{Messaging (PSS)}
+
+\subsection{Mutable resources (feeds)}
+
+\section{Components}
+
+In our approach, all updates changing the state of a chat are performed using a \emph{pull} model. Only peer connectivity and update notifications are sent using \emph{push} messages.
+
+\subsection{Identities}
+
+Identities in \gls{swarmchat} are defined by a combination of independently generated \glspl{ethpublickey}.
+
+When a new user wants to connect to its first peer in the \gls{swarmchat} network for the first time, a \gls{idkey} must be used. \gls{swarmchat} does \emph{not} provide mechanisms for discovery of the \glspl{idkey} themselves, nor the mapping them to other entities. The \gls{idkey} is used to ask the peer client for the \gls{sessionkey} it is currently using. It may be changed, but there is no mechanism in \gls{swarmchat} to notify peers about this change, so this must be done out-of-band. We refer to the \gls{idkey} as follows:
+
+\begin{description}
+\item [Public key] \bzpubkey{id}{user} 
+\end{description}
+
+The \gls{sessionkey} is randomly generated and used to secure and identify its \glspl{swarmfeed}. It may be changed at any time. When it is changed, all the user's peers are notified of the new key. Since it randomly changes, and only peers know the changed key, it is hard for outsiders to guess where to look for future updates. The derived \gls{ethaddress} of the \gls{sessionkey} makes up the \gls{updateaddress}. We refer to the \gls{sessionkey} as follows:
+
+\begin{description}
+\item [Key pair] \bzkey{ses_n}{user}
+\item [Private key] \bzprivkey{ses_n}{user} 
+\item [Public key] \bzpubkey{ses_n}{user} 
+\item [Ethereum address] \bzaddrkey{ses_n}{user} 
+\end{description}
+
+The \gls{locationkey} is the \gls{ethpublickey} of a \gls{pss} node where the user is currently receiving messages. The node - and thus the \gls{locationkey} - may be changed at any time. The \gls{locationkey} together with the \gls{swarmaddress} of the \gls{pss} node makes up the \gls{locationaddress}. When this is changed, all the user's peers must be notified of the new one. We refer to the \gls{locationkey} as follows:
+
+\begin{description}
+\item [Public key] \bzpubkey{loc_n}{user} 
+\end{description}
+ 
+\subsection{Shared secrets}
+
+Shared secrets in this context means keys used to encrypt \gls{swarmchat} content, aswell as data used to derive such keys.
+
+In our scope we handle three such secrets. The \gls{headerkey} is used to encrypt the part of the message containing sequential exchange of key material. The \gls{datakey} is used to encrypt \gls{swarmfeed} update contents. And the \gls{msgkey} is used to encrypt \gls{pss} message contents. We refer to the respective secrets as follows:
+
+\begin{description}
+\item [\gls{headerkey}] \bzsymkey{head}{user}
+\item [\gls{datakey}] \bzsymkey{data}{user}
+\item [\gls{msgkey}] \bzsymkey{msg}{user}
+\end{description}
+
+Specifics regarding transmission and generation of these secrets is out of scope of this document.
+
+\subsection{Connections}
+
+Connection between 
+
+A \gls{swarmchat} connection consists of two things. First an exchange of \glspl{sessionkey}. Then the creation or continuation of the respective \gls{singleuserchat} \glspl{swarmfeed}.
+
+The connection is initiated with the connecting user $A$ sending its \gls{sessionkey} to the peer $B$ in a \gls{pss} session message.
+If the \gls{locationaddress} of $B$ is unknown, the message is sent without \gls{swarmaddress}, encrypted with the \bzpubkey{id}{B}. Otherwise the corresponding \gls{swarmaddress} and \bzpubkey{ses_n}{B} may be used.
+When $B$ receives the message (and wishes to accept the connection), it will create and update its \gls{singleuserchat} using the \gls{ethpublickey} corresponding to the private key it used to decrypt the message. The update will contain the \gls{updateaddress} and \gls{locationaddress} $B$ currently uses.
+$A$ then reads the \gls{singleuserchat} \gls{swarmfeed} from $B$, and provides its \gls{updateaddress} and \gls{locationaddress} in an update.
+Lastly $B$ reads this feed and records the \gls{locationaddress} and renews the \gls{updateaddress} if applicable.
+After this connection is completed.
+
+\subsection{Updates}
+
+Chat updates (\emph{pull}) are linked lists of immutable data entities, represented by \gls{contentaddressed} identifiers. Clients maintain \glspl{swarmfeed} as pointers to the current \emph{head} \gls{contenthash} of the update chain.
+The integrity of a \glspl{swarmfeed} on the network is ensured with signatures using \glspl{sessionkey} generated by the sender. This \gls{sessionkey} together with the \gls{feedtopic} defines where the \gls{swarmfeed} predictably can be found on the network. In our context this predictable identifier \gls{updateaddress}.
+In the case of \glspl{singleuserchat} the \gls{feedtopic} is \bzfeedtopic{single} $\oplus$ \bzaddrkey{s_n}{peer}
+
+\subsection{Notifications}
+
+\subsection{Location changes}
+
+\subsection{Cryptography}
+
+\section{Protocol examples}
+
+\subsection{Sessions}
+
+\subsubsection{Unknown session key}
+
+\subsubsection{Known session key}
+
+\subsubsection{Ending sessions}
+
+\subsection{Direct messages}
+
+\subsection{Multiuser rooms}
+
+\subsubsection{Invite new peer to room}
+
+\subsubsection{Request to join room}
+
+\subsubsection{Access control}
+
+\subsection{Managing identities}
+
+\subsubsection{Query identity}
+
+\subsubsection{Update address change}
+
+\subsubsection{Location address change}
+
+\section{Attacks}
+
+\section{Further concepts}
+
+\newpage
+
+\appendix
+\section{Data formats}
+
+Data fields are listed sequentially for each structure.
+
+Update feeds are denoted as rooms, prefixed with $R$. A direct message feed is defined as $R_0$.
+
+\subsection{constants}
+
+\begin{description}
+	\item[\bzctrl{ping}] TODO
+	\item[\bzctrl{session}] TODO
+	\item[\bzctrl{notify}] TODO
+	\item[\bzctrl{band}] TODO
+	\item[\bzctrl{locationaddress}] TODO
+	\item[\bzctrl{updateaddress}] TODO
+	\item[\bzctrl{preferences}] TODO
+	\item[\bzctrl{start}] TODO
+	\item[\bzctrl{end}] TODO
+	\item[\bzctrl{identify}] TODO
+	\item[\bzctrl{relay}] TODO
+\end{description}
+
+
+\subsection{PSS messages}
+
+\subsubsection{ping}
+\begin{itemize}
+	\item \bzctrl{ping}
+	\item ping $\lor$ pong
+	\item customdata
+\end{itemize}
+
+\subsubsection{session}
+\begin{itemize}
+	\item \bzctrl{session}
+	\item "proof-of-cost"
+	\item ENC[\bzpubkey{id}{X}](\bzpubkey{s_n}{user})
+	\item ENC[\bzpubkey{id}{X}](\bzsymkey{seed})
+	\item ENC[\bzpubkey{id}{X}](\bzhash{bzz}(customdata))
+\end{itemize}
+
+\subsubsection{notify}
+\begin{itemize}
+	\item \bzctrl{notify}
+	\item ENC[\bzsymkey{msg}](\bzroom{i})
+	\item ENC[\bzsymkey{msg}](\bzpubkey{s_n}{user})
+	\item ENC[\bzsymkey{msg}](customdata)
+\end{itemize}
+
+
+\subsection{Feed entries}
+
+\subsubsection{participants}
+\begin{itemize}
+	\item \bzroom{i}
+	\item \bzaxx{i}{j}{user}
+	\item participantlist[]
+	\begin{itemize}
+		\item \bzpubkey{s_n}{peer}
+		\item \bzaxx{i}{j}{peer}
+	\end{itemize}
+\end{itemize}
+
+\subsubsection{room update}
+\begin{itemize}
+	\item \bzhash{bzz}{previousupdate}
+	\item \bzroomserial{i}{j}{user}
+	\item \bzhash{bzz}{participants}
+	\item offsets[]
+	\begin{itemize}
+		\item 3 bytes LE 
+	\end{itemize}
+	\item messages[]
+	\begin{itemize}
+		\item message
+	\end{itemize}
+\end{itemize}
+
+\subsubsection{directmessage update}
+\begin{itemize}
+	\item \bzhash{bzz}{previousupdate}
+	\item \bzroomserial{i}{j}{user}
+	\item messages[]
+	\begin{itemize}
+		\item message
+	\end{itemize}
+\end{itemize}
+
+\subsection{Messages}
+
+All messages are divided into \emph{head} and \emph{body}. \emph{head} contains necessary key material for cryptographic operations, and is encrypted with \bzsymkey{head}. \emph{body} contains the data of the update, and is encrypted with \bzsymkey{data}. 
+
+Only fields in \emph{body} are listed below.
+
+\subsubsection{content message}
+\begin{itemize}
+	\item \bzctrl{content}
+	\item data
+\end{itemize}
+
+\subsubsection{location address}
+\begin{itemize}
+	\item \bzctrl{locationaddress}
+	\item \bzpubkey{l_{n+1}}{peer}
+\end{itemize}
+
+\subsubsection{update address}
+\begin{itemize}
+	\item \bzctrl{updateaddress}
+	\item \bzpubkey{s_{n+1}}{peer}
+\end{itemize}
+
+\subsubsection{update feed control}
+\begin{itemize}
+	\item \bzctrl{start} $\lor$ \bzctrl{end}
+	\item \bzroomserial{i}{j}{peer}
+	\item $[$\bzroom{i}$]$
+\end{itemize}
+
+\newpage
+
+\bibliographystyle{plain}
+\bibliography{protocol}
+
+\end{document}
