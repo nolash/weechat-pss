@@ -1,135 +1,20 @@
 \documentclass[a4paper, 10pt]{article}
 \usepackage{glossaries}
 
-\newcommand{\bzctrl}[1]{#1}
+\newcommand{\bzctrl}[1]{$C_{#1}$}
 \newcommand{\bzkey}[2]{$P_{#1}#2$}
 \newcommand{\bzpubkey}[2]{$P_{#1}#2_{pub}$}
 \newcommand{\bzprivkey}[2]{$P_{#1}#2_{priv}$}
 \newcommand{\bzaddrkey}[2]{$P_{#1}#2_{addr}$}
-\newcommand{\bzsymkey}[1]{$S_{#1}$}
+\newcommand{\bzsymkey}[2]{$S_{#1}#2$}
 \newcommand{\bzhash}[1]{HASH$_{#1}$}
-\newcommand{\bzroom}[1]{R$_#1$name}
-\newcommand{\bzroomserial}[3]{R$_#1$T$_#2$#3}
+\newcommand{\bzroom}[1]{R$_{#1}$name}
+\newcommand{\bzroomserial}[3]{R$_{#1}$T$_{#2}$#3}
 \newcommand{\bzaxx}[3]{R$_#1X_#2$#3}
-\newcommand{\bzfeedtopic}[1]{T$_#1$}
+\newcommand{\bzfeedtopic}[1]{T$_{#1}$}
 
-\newglossaryentry{swarmchat}
-{
-	name={swarmchat},
-	description={},
-	plural={swarmchats}
-}
+\loadglsentries{protocol_glossary}
 
-\newglossaryentry{doubleratchet}
-{
-	name={double ratchet},
-	description={}
-}
-
-\newglossaryentry{swarm}
-{
-	name={Swarm},
-	description={}
-}
-\newglossaryentry{swarmaddress}
-{
-	name={Swarm address},
-	description={Swarm overlay address}
-}
-\newglossaryentry{contenthash}
-{
-	name={Content hash},
-	description={}
-}
-\newglossaryentry{swarmfeed}
-{
-	name={Swarm feed},
-	description={},
-	plural={Swarm feeds}
-}
-\newglossaryentry{pss}
-{
-	name={PSS},
-	description={}
-}
-\newglossaryentry{contentaddressed}
-{
-	name={Content addressed},
-	description={}
-}
-\newglossaryentry{sessionkey}
-{
-	name={Session key},
-	description={},
-	plural={Session keys}
-}
-\newglossaryentry{locationkey}
-{
-	name={Location key},
-	description={},
-	plural={Location keys}
-}
-\newglossaryentry{idkey}
-{
-	name={Identity key},
-	description={},
-	plural={Identity keys}
-}
-\newglossaryentry{feedtopic}
-{
-	name={Feed topic},
-	description={}
-}
-\newglossaryentry{feedname}
-{
-	name={Feed room name},
-	description={}
-}
-\newglossaryentry{updateaddress}
-{
-	name={Update address},
-	description={}
-}
-\newglossaryentry{locationaddress}
-{
-	name={Location address},
-	description={}
-}
-\newglossaryentry{singleuserchat}
-{
-	name={Single-user chat},
-	description={}
-}
-\newglossaryentry{multiuserchat}
-{
-	name={Multi-user chat},
-	description={}
-}
-\newglossaryentry{ethpublickey}
-{
-	name={Ethereum public key},
-	description={}
-}
-\newglossaryentry{ethaddress}
-{
-	name={Ethereum address},
-	description={}
-}
-\newglossaryentry{headerkey}
-{
-	name={Header encryption key},
-	description={}
-}
-\newglossaryentry{datakey}
-{
-	name={Data encryption key},
-	description={}
-}
-\newglossaryentry{msgkey}
-{
-	name={Message encryption key},
-	description={}
-}
 \author{lash}
 \title{Subjectively rendered multiuser chat rooms}
 
@@ -160,7 +45,7 @@ For simplicity we'll use the word \emph{\gls{swarmchat}} for what we're describi
 
 \subsection{Messaging (PSS)}
 
-\subsection{Mutable resources (feeds)}
+\subsection{Mutable resources (feeds)} \label{sec:bzz-feeds}
 
 \section{Components}
 
@@ -170,11 +55,19 @@ In our approach, all updates changing the state of a chat are performed using a 
 
 Identities in \gls{swarmchat} are defined by a combination of independently generated \glspl{ethpublickey}.
 
-When a new user wants to connect to its first peer in the \gls{swarmchat} network for the first time, a \gls{idkey} must be used. \gls{swarmchat} does \emph{not} provide mechanisms for discovery of the \glspl{idkey} themselves, nor the mapping them to other entities. The \gls{idkey} is used to ask the peer client for the \gls{sessionkey} it is currently using. It may be changed, but there is no mechanism in \gls{swarmchat} to notify peers about this change, so this must be done out-of-band. We refer to the \gls{idkey} as follows:
+\subsubsection{\gls{idkey}}
+
+When a new user wants to connect to its first peer in the \gls{swarmchat} network for the first time, a \gls{idkey} must be used. \gls{swarmchat} does \emph{not} provide mechanisms for discovery of the \glspl{idkey} themselves, nor the mapping them to other entities.
+
+The \gls{idkey} is used to ask the peer client for the \gls{sessionkey} (\ref{sec:sessionkey}) it is currently using. It may be changed, but there is no mechanism in \gls{swarmchat} to notify peers about this change, so this must be done out-of-band.
+
+We refer to the \gls{idkey} as follows:
 
 \begin{description}
 \item [Public key] \bzpubkey{id}{user} 
 \end{description}
+
+\subsubsection{\gls{sessionkey}} \label{sec:sessionkey}
 
 The \gls{sessionkey} is randomly generated and used to secure and identify its \glspl{swarmfeed}. It may be changed at any time. When it is changed, all the user's peers are notified of the new key. Since it randomly changes, and only peers know the changed key, it is hard for outsiders to guess where to look for future updates. The derived \gls{ethaddress} of the \gls{sessionkey} makes up the \gls{updateaddress}. We refer to the \gls{sessionkey} as follows:
 
@@ -185,6 +78,8 @@ The \gls{sessionkey} is randomly generated and used to secure and identify its \
 \item [Ethereum address] \bzaddrkey{ses_n}{user} 
 \end{description}
 
+\subsubsection{\gls{locationkey}}
+
 The \gls{locationkey} is the \gls{ethpublickey} of a \gls{pss} node where the user is currently receiving messages. The node - and thus the \gls{locationkey} - may be changed at any time. The \gls{locationkey} together with the \gls{swarmaddress} of the \gls{pss} node makes up the \gls{locationaddress}. When this is changed, all the user's peers must be notified of the new one. We refer to the \gls{locationkey} as follows:
 
 \begin{description}
@@ -193,46 +88,204 @@ The \gls{locationkey} is the \gls{ethpublickey} of a \gls{pss} node where the us
  
 \subsection{Shared secrets}
 
-Shared secrets in this context means keys used to encrypt \gls{swarmchat} content, aswell as data used to derive such keys.
-
-In our scope we handle three such secrets. The \gls{headerkey} is used to encrypt the part of the message containing sequential exchange of key material. The \gls{datakey} is used to encrypt \gls{swarmfeed} update contents. And the \gls{msgkey} is used to encrypt \gls{pss} message contents. We refer to the respective secrets as follows:
-
-\begin{description}
-\item [\gls{headerkey}] \bzsymkey{head}{user}
-\item [\gls{datakey}] \bzsymkey{data}{user}
-\item [\gls{msgkey}] \bzsymkey{msg}{user}
-\end{description}
+Shared secrets in this context means keys used to encrypt \gls{swarmchat} content, aswell as data used to derive such keys. In our scope we handle three such secrets.
 
 Specifics regarding transmission and generation of these secrets is out of scope of this document.
 
-\subsection{Connections}
+\subsubsection{\gls{headerkey}}
+Encrypts the part of the message containing sequential exchange of key material.
 
-Connection between 
+\bzsymkey{head}{user}
+
+\subsubsection{\gls{datakey}}
+
+Encrypts \gls{swarmfeed} update contents.
+
+\bzsymkey{data}{user} 
+
+\subsubsection{\gls{msgkey}}
+
+Encrypts \gls{pss} message contents. 
+
+\bzsymkey{msg}{user} 
+
+\subsection{Connections}
 
 A \gls{swarmchat} connection consists of two things. First an exchange of \glspl{sessionkey}. Then the creation or continuation of the respective \gls{singleuserchat} \glspl{swarmfeed}.
 
 The connection is initiated with the connecting user $A$ sending its \gls{sessionkey} to the peer $B$ in a \gls{pss} session message.
+
 If the \gls{locationaddress} of $B$ is unknown, the message is sent without \gls{swarmaddress}, encrypted with the \bzpubkey{id}{B}. Otherwise the corresponding \gls{swarmaddress} and \bzpubkey{ses_n}{B} may be used.
-When $B$ receives the message (and wishes to accept the connection), it will create and update its \gls{singleuserchat} using the \gls{ethpublickey} corresponding to the private key it used to decrypt the message. The update will contain the \gls{updateaddress} and \gls{locationaddress} $B$ currently uses.
-$A$ then reads the \gls{singleuserchat} \gls{swarmfeed} from $B$, and provides its \gls{updateaddress} and \gls{locationaddress} in an update.
-Lastly $B$ reads this feed and records the \gls{locationaddress} and renews the \gls{updateaddress} if applicable.
-After this connection is completed.
+
+When $B$ receives the message (and wishes to accept the connection), it will create and update its \gls{singleuserchat} using the \gls{ethpublickey} corresponding to the private key it used to decrypt the message (in out example either \bzpubkey{id}{B} or \bzpubkey{ses_n}{B}). That \gls{swarmfeed} will contain updates that provide the \gls{updateaddress} and \gls{locationaddress} $B$ currently uses.
+
+$A$ then reads the \gls{singleuserchat} \gls{swarmfeed} from $B$, and provides its \gls{locationaddress} in a subsequent update.
+
+Lastly $B$ reads this feed and records the \gls{locationaddress}, and the connection is defined as completed.
+
+\subsection{Topics}
+
+When we use the term \emph{topic} in the context \gls{swarmchat} we are referring to the 32-byte \gls{swarmfeed} topic.
+
+Every user in \gls{swarmchat} maintains a collection of \glspl{swarmfeed} that serve specific purposes in transmitting content and changing the state of chats. We use strongly defined topics to distinguish between them. These are in turn are merged with other identifiers to obtain more fine-grained definitions.
+
+The base topic for \gls{swarmchat} is referred to as \bzfeedtopic{root}.
+
+\subsubsection{\gls{singleuserchat}}
+
+If the last bit of the topic is 0 it is defined as a \gls{singleuserchat}. We refer to this topic as \bzfeedtopic{single}.
+By performing \emph{left-aligned xor} on the topic with the \gls{sessionkey} belonging to $peer$ we define the update feed for the \gls{singleuserchat} for the recipient $peer$:
+
+\bzfeedtopic{single} $\oplus$ \bzaddrkey{s_n}{peer}
+
+\subsubsection{\gls{multiuserchat}}
+
+If the last bit of the topic is 1 it is defined as a \gls{multiuserchat}. We refer to this topic as \bzfeedtopic{room}.
+
+By performing \emph{left-aligned xor} on the topic with a \gls{roomname} we define the chatroom context for that name:
+
+\bzfeedtopic{room} $\oplus$ \bzroom{n}
+
+A user always maintains two \glspl{swarmfeed} for a \gls{multiuserchat}.
+
+If the penultimate bit in \bzfeedtopic{room} is 0 it defines the \gls{updatefeed} (\ref{sec:feeds-updatefeed}):
+
+\bzfeedtopic{room} $\oplus$ \bzroom{n} $\oplus$ \bzfeedtopic{data}
+
+If it is 1 it defines the \gls{participantfeed} (\ref{sec:feeds-participantfeed}):
+
+\bzfeedtopic{room} $\oplus$ \bzroom{n} $\oplus$ \bzfeedtopic{meta}
+
+A \gls{roomname} may be a maximum of 31 bytes long.
+
+\subsection{Feeds}
+
+Chat updates (\emph{pull}) are linked lists of immutable data entities, represented by \gls{contentaddressed} identifiers. Clients maintain \glspl{swarmfeed} as pointers to the \gls{contenthash} representing the current \emph{head} of this chain of updates.
+
+The integrity of a \glspl{swarmfeed} on the network is ensured with signatures using \glspl{sessionkey} generated by the sender. This \gls{sessionkey} together with the \gls{feedtopic} defines where the \gls{swarmfeed} predictably can be found on the network. In our context this predictable identifier is called \gls{updateaddress}.
+
+\subsubsection{\gls{singleuserchat}} \label{sec:feeds-singleuserchat}
+
+Any two users that are connected in \gls{swarmchat} will maintain a \gls{singleuserchat} between them.
+
+Let's say users $A$ and $B$ are connected. In this example $i$ and $j$ are the current serial number of respective peers' \glspl{sessionkey}, and the parameters to $Feed()$ are:
+
+\begin{enumerate}
+\item sender's \gls{sessionkey}
+\item the \gls{swarmfeed} topic
+\end{enumerate}
+
+We can then describe the \glspl{swarmfeed} for these chats as follows:
+
+\begin{itemize}
+	\item A's feed
+	\begin{itemize}
+		\item Feed(\bzaddrkey{s_i}{A}, \bzfeedtopic{single} $\oplus$ \bzaddrkey{s_j}{B})
+	\end{itemize}
+	\item B's feed
+	\begin{itemize}
+		\item Feed(\bzaddrkey{s_j}{B}, \bzfeedtopic{single} $\oplus$ \bzaddrkey{s_i}{A})
+	\end{itemize}
+\end{itemize}
+
+\subsubsection{\gls{multiuserchat}} \label{sec:feeds-participantfeed} \label{sec:feeds-updatefeed}
+
+A user sending updates to a \gls{chatroom} always maintains two feeds, the \gls{participantfeed} and the \gls{updatefeed}.
+
+The \gls{participantfeed} is the user's \emph{subjective opinion} of who the participants in the \gls{multiuserchat} are, and what privileges \footnote{Keep in mind that \gls{swarmchat} aims to be fully decentralized, which means that no central authority exists that decides what the "true" participant list is. Instead, the peers have to somehow find a way to agree on it. Meanwhile, matters of access control (beyond defining the data field for it) and protocols for reaching privilege consensus is outside the scope of this document.} they have there.
+
+Following the example in \ref{sec:feeds-singleuserchat} of users $A$ and $B$ participating in the same \gls{multiuserchat} named "kazbah," the feeds they maintain are described as:
+
+\begin{itemize}
+	\item A's feeds
+	\begin{itemize}  
+		\item Feed(\bzaddrkey{s_i}{A}, \bzfeedtopic{room} $\oplus$ \bzfeedtopic{meta} $\oplus$ \bzroom{kazbah})
+		\item Feed(\bzaddrkey{s_i}{A}, \bzfeedtopic{room} $\oplus$ \bzfeedtopic{data} $\oplus$ \bzroom{kazbah})
+	\end{itemize}
+	\item B's feeds
+	\begin{itemize} 
+		\item Feed(\bzaddrkey{s_i}{B}, \bzfeedtopic{room} $\oplus$ \bzfeedtopic{meta} $\oplus$ \bzroom{kazbah})
+		\item Feed(\bzaddrkey{s_i}{B}, \bzfeedtopic{room} $\oplus$ \bzfeedtopic{data} $\oplus$ \bzroom{kazbah})
+	\end{itemize}
+\end{itemize}
 
 \subsection{Updates}
 
-Chat updates (\emph{pull}) are linked lists of immutable data entities, represented by \gls{contentaddressed} identifiers. Clients maintain \glspl{swarmfeed} as pointers to the current \emph{head} \gls{contenthash} of the update chain.
-The integrity of a \glspl{swarmfeed} on the network is ensured with signatures using \glspl{sessionkey} generated by the sender. This \gls{sessionkey} together with the \gls{feedtopic} defines where the \gls{swarmfeed} predictably can be found on the network. In our context this predictable identifier \gls{updateaddress}.
-In the case of \glspl{singleuserchat} the \gls{feedtopic} is \bzfeedtopic{single} $\oplus$ \bzaddrkey{s_n}{peer}
+By \emph{updates} we mean data that either are to be consumed for the end-user, or state changes in the \gls{chatroom} the update belongs to, along with necessary metadata. The actual data \emph{less} the metadata we refer to as \emph{\gls{updatepayload}}.
+
+We will now examine which type of updates exist for each type of \gls{swarmfeed} in \gls{swarmchat}, what they may contain, and what responses that can be expected from them, if any.
+
+\subsubsection{Data updates} \label{sec:updates-data}
+
+\gls{swarmchat} structures a chat as a linked list of updates, where a single update is content referenced by a \gls{swarmhash}. The \gls{updatefeed} must always point to the newest \gls{swarmhash} in this list.
+
+Common for both \glspl{singleuserchat} and \glspl{multiuserchat} is that each update contains the \gls{swarmhash} of the previous update. If the update is the first update for the chat, the \gls{zeroaddress} is referenced instead.
+
+Also common is an update serial number made up of a 4-byte Unix timestamp, concatenated with a 1 byte serial number only used if the previous update was made within the same second \footnote{The timestamp and serial number is defined by the sender, and there is no way for the receiver of the update to verify if it is correct or not, outside of disallowing timestamps in the future, or timestamps that precede the previous one. That being said, handling timestamp integrity is out of scope of this document}.
+
+\subsubsection{\gls{singleuserchat}}
+
+The \gls{updatepayload} follows immediately after the above. The payload must be encrypted using \bzsymkey{data_n}{peer}.
+
+\subsubsection{\gls{multiuserchat}}
+
+Some additional fields are required for the \gls{multiuserchat} to correctly represent the context of the update.
+
+Following where we left off in \ref{sec:updates-data}, the \gls{swarmhash} of the \gls{participantlist} at the time of the update must be added. 
+
+Then concatenate the length as a \emph{little-endian 4-byte unsigned int} of an encrypted \glspl{updatepayload} \footnote{We assume that the length of the ciphertext will be the same regardless of which \gls{roomparticipant} key is used}.
+
+To complete, the individually encrypted \glspl{updatepayload} for every \gls{roomparticipant} are included \emph{in the same order as the referenced \gls{participantlist}}.
+
+\subsubsection{\gls{participantlist}}
+
+Participantlists are of course only relevant in the context of \glspl{multiuserchat}, and are as previously stated \emph{subjective} (see \ref{sec:feeds-participantfeed}).
+
+Furthermore, the historical \glspl{participantlist} are only relevant in context with concrete updates, and also referenced from each individual one, they can be mere standalone updates. The \gls{participantfeed} should always point to the latest update.
+
+The first item in this data structure is the verbatim room name prefixed with a one-byte value giving the length of the room name. 
+
+Then follows the \gls{axxdef} the sender claims to have in the \gls{chatroom}.
+
+The structure is concluded with a list of pairs of \glspl{sessionkey} and \glspl{axxdef} for each \gls{roomparticipant}.
+
+\subsection{\glspl{payload}}
+
+Encapsulating the actual data to be acted upon, \glspl{payload} are common for both \glspl{singleuserchat} and \glspl{multiuserchat}. There are different types of payloads, which in turn have different data structure definitions.
+The first data field in a payload is always the \gls{payloadid}.
+We will now go through the different \gls{payload} types in sequence.
+
+\subsubsection{content}
+
+Defines content to be consumed by the end-user, and is merely comprised of the data itself. \footnote{The data may of course encapsulate a different protocol. See \ref{sec:future} for some thoughts on this subject}.
+
+We refer to the content \gls{payloadid} as \bzctrl{content}
+
+\subsubsection{flow control}
+
+We can use the \bzctrl{start} and \bzctrl{stop} identifiers to define the start or the end of an update chain.
+
+Typically, \bzctrl{start} will be used as the first update in a room, so peer requests for its \gls{swarmfeed} do not time out (see \ref{sec:bzz-feeds}).
+
+The \bzctrl{end} marker is used to terminate an update chain after a change of \gls{updateaddress}, or to explicitly \emph{disconnect} a peer.
+
+Both \gls{payload} types contain the \gls{roomserial} of the \emph{update of the peer} the change is applicable from. If the context is a room, the \gls{roomname} must also be specified.
+
+\subsubsection{updateaddress change}
+
+Contains the new \gls{sessionkey} to be used to for the peer \glspl{swarmfeed}. The old \gls{sessionkey} should be kept until a \bzctrl{stop} is found on that feed and subsequently discarded. The peer must not make new updates to the \glspl{swarmfeed} with the old \gls{sessionkey} after the \bzctrl{stop} payload is sent.
+
+\subsubsection{locationaddress change}
+
+Contains the new \gls{locationaddress} (\gls{locationkey} and \gls{swarmaddress}) to be used to send pss notifications to the peer. The old \gls{locationaddress} should be discarded immediately. The peer should listen on both \glspl{locationaddress} until a message is received on the new one.
 
 \subsection{Notifications}
 
-\subsection{Location changes}
-
 \subsection{Cryptography}
 
-\section{Protocol examples}
+\section{Protocol}
 
-\subsection{Sessions}
+\subsection{Connecting}
 
 \subsubsection{Unknown session key}
 
@@ -258,9 +311,11 @@ In the case of \glspl{singleuserchat} the \gls{feedtopic} is \bzfeedtopic{single
 
 \subsubsection{Location address change}
 
+\section{Notes on performance}
+
 \section{Attacks}
 
-\section{Further concepts}
+\section{Further concepts} \label{sec:future}
 
 \newpage
 
@@ -328,28 +383,25 @@ Update feeds are denoted as rooms, prefixed with $R$. A direct message feed is d
 	\end{itemize}
 \end{itemize}
 
-\subsubsection{room update}
+\subsubsection{\gls{multiuserchat} update}
 \begin{itemize}
 	\item \bzhash{bzz}{previousupdate}
 	\item \bzroomserial{i}{j}{user}
 	\item \bzhash{bzz}{participants}
-	\item offsets[]
+	\item length of ciphertext (4 bytes LE)
+	\item payloads[]
 	\begin{itemize}
-		\item 3 bytes LE 
-	\end{itemize}
-	\item messages[]
-	\begin{itemize}
-		\item message
+		\item payload
 	\end{itemize}
 \end{itemize}
 
-\subsubsection{directmessage update}
+\subsubsection{\gls{singleuserchat} update}
 \begin{itemize}
 	\item \bzhash{bzz}{previousupdate}
 	\item \bzroomserial{i}{j}{user}
-	\item messages[]
+	\item payloads[]
 	\begin{itemize}
-		\item message
+		\item payload
 	\end{itemize}
 \end{itemize}
 
