@@ -1,5 +1,7 @@
 \documentclass[a4paper, 10pt]{article}
 \usepackage{glossaries}
+\usepackage{colortbl}
+\usepackage{tcolorbox}
 
 \newcommand{\bzctrl}[1]{$C_{#1}$}
 \newcommand{\bzkey}[2]{$P_{#1}#2$}
@@ -21,8 +23,6 @@
 \begin{document}
 \date{\today\\ v0.5.0 alpha}
 
-\section{Abstract}
-
 \section{Overview}
 
 This is an attempt to describe a system for decentralized multiuser chat rooms with strong privacy guarantees for both the contents of messages being exchanged (data) aswell as who are communicating with whom (metadata).
@@ -36,6 +36,8 @@ To protect metadata we suggest \emph{band-change} mechanisms that makes it possi
 Although this document builds on technology provided by the Ethereum Swarm project, we hope to outline concepts that can be implemented on any technology that provides the same main components.
 
 For simplicity we'll use the word \emph{\gls{swarmchat}} for what we're describing as we go forward. 
+
+\subsection{Core concepts}
 
 \subsection{Conventions used in this document}
 
@@ -109,6 +111,7 @@ Encrypts \gls{pss} message contents.
 
 \bzsymkey{msg}{user} 
 
+
 \subsection{Connections}
 
 A \gls{swarmchat} connection consists of two things. First an exchange of \glspl{sessionkey}. Then the creation or continuation of the respective \gls{singleuserchat} \glspl{swarmfeed}.
@@ -122,6 +125,18 @@ When $B$ receives the message (and wishes to accept the connection), it will cre
 $A$ then reads the \gls{singleuserchat} \gls{swarmfeed} from $B$, and provides its \gls{locationaddress} in a subsequent update.
 
 Lastly $B$ reads this feed and records the \gls{locationaddress}, and the connection is defined as completed.
+
+See \ref{sec:apx-pss-session} for message structure.
+
+\subsection{Discovery}
+
+A user wishing to participate in a \gls{multiuserchat} cannot determine the \gls{locationaddress} of individual participants from the \gls{participantlist}. That means there is no immediate way of \emph{connecting} to the peers in the \gls{chatroom}. Therefore we must define a mechanism to query \emph{already connected peers} about the \glspl{locationaddress} of those peers.
+
+For example, \bzroom{n} has participants $A$ and $C$. $B$ wants to participate, and knows the \bzpubkey{loc_i}{A}, but does not know \bzpubkey{loc_j}{C}. However, from the \gls{participantlist} $B$ \emph{does} know \bzpubkey{ses_j}{C}. $B$ should now use \bzpubkey{ses_j}{C} to ask $A$ about the \bzpubkey{loc_j}{C}. Of course, it is the discretion if $A$ to comply. Aswell as it is in turn the discretion of $C$ to accept the subsequent connection attempt from $B$.
+
+Remember that \gls{swarmchat} does \emph{not} provide discovery of \glspl{idkey}. Identifying the initial participant peer in a \gls{multiuserchat} must be handled externally\footnote{One obvious solution here is to define an on-chain resource which can map ENS names to one or more \glspl{idkey} to room topics.}.
+
+See \ref{sec:updates-id} for further details.
 
 \subsection{Topics}
 
@@ -227,6 +242,8 @@ Also common is an update serial number made up of a 4-byte Unix timestamp, conca
 
 The \gls{updatepayload} follows immediately after the above. The payload must be encrypted using \bzsymkey{data_n}{peer}.
 
+See \ref{sec:apx-single} for update data structure.
+
 \subsubsection{\gls{multiuserchat}}
 
 Some additional fields are required for the \gls{multiuserchat} to correctly represent the context of the update.
@@ -236,6 +253,8 @@ Following where we left off in \ref{sec:updates-data}, the \gls{swarmhash} of th
 Then concatenate the length as a \emph{little-endian 4-byte unsigned int} of an encrypted \glspl{updatepayload} \footnote{We assume that the length of the ciphertext will be the same regardless of which \gls{roomparticipant} key is used}.
 
 To complete, the individually encrypted \glspl{updatepayload} for every \gls{roomparticipant} are included \emph{in the same order as the referenced \gls{participantlist}}.
+
+See \ref{sec:apx-room} for update data structure.
 
 \subsubsection{\gls{participantlist}}
 
@@ -249,10 +268,19 @@ Then follows the \gls{axxdef} the sender claims to have in the \gls{chatroom}.
 
 The structure is concluded with a list of pairs of \glspl{sessionkey} and \glspl{axxdef} for each \gls{roomparticipant}.
 
+See \ref{sec:apx-participants} for update data structure.
+
 \subsection{\glspl{payload}}
 
-Encapsulating the actual data to be acted upon, \glspl{payload} are common for both \glspl{singleuserchat} and \glspl{multiuserchat}. There are different types of payloads, which in turn have different data structure definitions.
-The first data field in a payload is always the \gls{payloadid}.
+Encapsulating the actual data content in an update, \glspl{payload} are common for both \glspl{singleuserchat} and \glspl{multiuserchat}. Several different types of payloads are defined.
+
+A payload is divided into a \emph{header} and a \emph{body}.
+
+The \emph{header} is reserved for exchange of cryptographic key material and must be encrypted using \bzsymkey{meta_n}{peer}. Any detail on key negotiations using this field is out of scope of this document.
+
+The \emph{body} must be encrypted using \bzsymkey{data_n}{peer}. 
+
+The first data field in a \gls{payload} \emph{body} is always the \gls{payloadid}.
 We will now go through the different \gls{payload} types in sequence.
 
 \subsubsection{content}
@@ -261,29 +289,95 @@ Defines content to be consumed by the end-user, and is merely comprised of the d
 
 We refer to the content \gls{payloadid} as \bzctrl{content}
 
+See \ref{sec:apx-content} for update data structure.
+
 \subsubsection{flow control}
 
-We can use the \bzctrl{start} and \bzctrl{stop} identifiers to define the start or the end of an update chain.
+We can use the \bzctrl{start} and \bzctrl{stop} identifiers to define the start or the end of an update chain. We also define the \bzctrl{mark} identifier, which is a "no-op" update used for example in a ping request notification (see \ref{sec:notify-ping})
 
 Typically, \bzctrl{start} will be used as the first update in a room, so peer requests for its \gls{swarmfeed} do not time out (see \ref{sec:bzz-feeds}).
 
 The \bzctrl{end} marker is used to terminate an update chain after a change of \gls{updateaddress}, or to explicitly \emph{disconnect} a peer.
 
-Both \gls{payload} types contain the \gls{roomserial} of the \emph{update of the peer} the change is applicable from. If the context is a room, the \gls{roomname} must also be specified.
+All \gls{payload} types contain the \gls{roomserial} of the \emph{update of the peer} the change is applicable from. If the context is a room, the \gls{roomname} must also be specified.
 
-\subsubsection{updateaddress change}
+See \ref{sec:apx-flow} for update data structure.
+
+\subsubsection{\gls{updateaddress} change}
 
 Contains the new \gls{sessionkey} to be used to for the peer \glspl{swarmfeed}. The old \gls{sessionkey} should be kept until a \bzctrl{stop} is found on that feed and subsequently discarded. The peer must not make new updates to the \glspl{swarmfeed} with the old \gls{sessionkey} after the \bzctrl{stop} payload is sent.
 
-\subsubsection{locationaddress change}
+See \ref{sec:apx-updaddr} for update data structure.
+
+\subsubsection{\gls{locationaddress} change}
 
 Contains the new \gls{locationaddress} (\gls{locationkey} and \gls{swarmaddress}) to be used to send pss notifications to the peer. The old \gls{locationaddress} should be discarded immediately. The peer should listen on both \glspl{locationaddress} until a message is received on the new one.
 
-\subsection{Notifications}
+See \ref{sec:apx-locaddr} for update data structure.
 
-\subsection{Cryptography}
+\subsubsection{Preferences} 
+
+Enables a user to request certain behavior from its peer, for example under what conditions and in which form to send notifications.
+
+It contains a \gls{swarmhash} reference to a data structure describing those preferences (see \ref{sec:updates-prefs}).
+
+\subsubsection{\gls{relay}}
+
+\gls{relay} in our model occurs when a user provides a \gls{digest} of a collection of updates in one single update. The relay type contains a \gls{swarmhash} that references the collection. A user may also reference updates from other users (see \ref{sec:updates-digest})
+
+\emph{\gls{relay} should only be valid in \gls{singleuserchat} context}
+
+\subsection{Notifications} 
+
+Since a \emph{pull} model is used for all content in \gls{swarmchat}, we require peers by default to continually poll for changes. To make it possible to spend less resources on this, we define a \emph{push} notification option that can be used to trigger polling.
+
+Notifications must be encrypted using \bzsymkey{msg_n}{peer}
+
+The user can define which conditions these notifications should occur. In turn, the peer will inform the user whether it accepts or rejects these conditions (see \ref{sec:updates-prefs}).
+
+The data of a notification message contains the topic of the \gls{swarmfeed} that should be checked for a new update\footnote{Notice how the design allows us to send a notification of an update in a \gls{singleuserchat} where this update in turn is a \gls{relay} pointing to a \gls{digest} of updates}, the \gls{roomserial} of the update, and a signature on the concatenation of the above. The \gls{sessionkey} of the sender is derived from the signature.
+
+A peer $A$ notifying peer $B$ of an update in its \gls{singleuserchat} \gls{swarmfeed}:
+
+$SIGN\{$\bzprivkey{ses_n}{A}$\}($\bzfeedtopic{single} $\|$ \bzroomserial{kazbah}{i}{B}$)$
+
+Similarly, notifying about an update its room "kazbah" thus provides this signature:
+
+$SIGN\{$\bzprivkey{ses_n}{A}$\}($\bzfeedtopic{room} $\oplus$ \bzfeedtopic{data} $\oplus$ \bzroom{kazbah} $\|$ \bzroomserial{kazbah}{i}{B}$)$
+
+Further data following this structure is allowed, which will be treated as implementation-specific custom data.
+
+See \ref{sec:apx-pss-notify} for details on message structure.
+
+\subsubsection{Ping} \label{sec:notify-ping}
+
+A user may use the notification to check if the peer is currently online. This is done by setting the topic field to \bzfeedtopic{root}. Upon receipt, the peer should in turn update the \gls{singleuserchat} appropriately.
+
+In this case, the peer should not issue a notification when making the update.
+
+\subsection{Preferences} \label{sec:updates-prefs}
+
+Although we define a preferences payload type, it is out of scope for this document to go into detail about the structure of this data or how it should be interpreted.
+
+That said, the initial motivation for enabling preferences to be set is to make it possible to specify parameters for notification behavior.
+
+\subsubsection{Digest} \label{sec:updates-digest}
+
+A digest simply encapsulates a collection of update payloads associated with the source (updateaddress) of the specificied payload. This a digest may also contain updates from other users, enabling users to serve as feed aggregators.
+
+Issues involving aggregation, including but not limited to generation, trust and data availability, is beyond the scope of this document. We will also not give a protocol example using digest below.
+
+\subsection{Identification} \label{sec:updates-id}
+
+TODO: Define structure of \gls{sessionkey} requests for third-party peers.
+
+\section{Cryptography}
+
+As mentioned earlier in this document we don't prefer any particular encryption scheme for \gls{swarmchat} content. That being said, we find it advisable to choose a scheme that enables continual regeneration of all shared secrets in a way that provides forward and backward secrecy.
 
 \section{Protocol}
+
+In the following sections we will demonstrate actual protocol exchanges, and the changes in state that these exchanges cause.
 
 \subsection{Connecting}
 
@@ -313,7 +407,13 @@ Contains the new \gls{locationaddress} (\gls{locationkey} and \gls{swarmaddress}
 
 \section{Notes on performance}
 
+\subsection{Feed creation}
+
 \section{Attacks}
+
+\subsection{Metadata from PSS topic}
+
+\subsection{Fake notifications}
 
 \section{Further concepts} \label{sec:future}
 
@@ -329,114 +429,134 @@ Update feeds are denoted as rooms, prefixed with $R$. A direct message feed is d
 \subsection{constants}
 
 \begin{description}
-	\item[\bzctrl{ping}] TODO
 	\item[\bzctrl{session}] TODO
 	\item[\bzctrl{notify}] TODO
 	\item[\bzctrl{band}] TODO
-	\item[\bzctrl{locationaddress}] TODO
-	\item[\bzctrl{updateaddress}] TODO
-	\item[\bzctrl{preferences}] TODO
+	\item[\bzctrl{locaddr}] TODO
+	\item[\bzctrl{updaddr}] TODO
+	\item[\bzctrl{prefs}] TODO
 	\item[\bzctrl{start}] TODO
 	\item[\bzctrl{end}] TODO
-	\item[\bzctrl{identify}] TODO
+	\item[\bzctrl{mark}] TODO
+	\item[\bzctrl{id}] TODO
 	\item[\bzctrl{relay}] TODO
 \end{description}
 
 
 \subsection{PSS messages}
 
-\subsubsection{ping}
-\begin{itemize}
-	\item \bzctrl{ping}
-	\item ping $\lor$ pong
-	\item customdata
-\end{itemize}
+\subsubsection{session} \label{sec:apx-pss-session}
 
-\subsubsection{session}
-\begin{itemize}
-	\item \bzctrl{session}
-	\item "proof-of-cost"
-	\item ENC[\bzpubkey{id}{X}](\bzpubkey{s_n}{user})
-	\item ENC[\bzpubkey{id}{X}](\bzsymkey{seed})
-	\item ENC[\bzpubkey{id}{X}](\bzhash{bzz}(customdata))
-\end{itemize}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
+\hline
+\gls{proofofcost} & ? & (implementation dependent) & - \\
+\gls{payloadid} & 2 & \bzctrl{session} & \bzpubkey{id}{X} \\
+\gls{sessionkey} & 32 & \bzpubkey{ses_n}{user} & \bzpubkey{id}{X} \\
+Shared seed secret & ? & \bzsymkey{seed}{peer} & \bzpubkey{id}{X} \\
+\hline
+\end{tabular}
 
-\subsubsection{notify}
-\begin{itemize}
-	\item \bzctrl{notify}
-	\item ENC[\bzsymkey{msg}](\bzroom{i})
-	\item ENC[\bzsymkey{msg}](\bzpubkey{s_n}{user})
-	\item ENC[\bzsymkey{msg}](customdata)
-\end{itemize}
+\subsubsection{notify} \label{sec:apx-pss-notify}
 
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
+\gls{payloadid} & 2 & \bzctrl{notify} & \bzsymkey{msg_n}{peer} \\
+\gls{feedtopic} & 32 & \bzfeedtopic{root} $\oplus$ \dots & \bzsymkey{msg_n}{peer} \\
+\gls{roomserial} & 5 & \bzroomserial{n}{i}{peer} & \bzsymkey{msg_n}{peer} \\
+Signature & 32 & $SIGN\{$\bzprivkey{ses_n}{user}$\}($\gls{feedtopic} $\|$ \bzroomserial{n}{i}{peer}$)$ & \bzsymkey{msg_n}{peer} \\
+custom data & var & (implementation dependent) & \bzsymkey{msg_n}{peer} \\
+\hline
+\end{tabular}
 
 \subsection{Feed entries}
 
-\subsubsection{participants}
-\begin{itemize}
-	\item \bzroom{i}
-	\item \bzaxx{i}{j}{user}
-	\item participantlist[]
-	\begin{itemize}
-		\item \bzpubkey{s_n}{peer}
-		\item \bzaxx{i}{j}{peer}
-	\end{itemize}
-\end{itemize}
+\subsubsection{participantlist} \label{sec:apx-participants}
 
-\subsubsection{\gls{multiuserchat} update}
-\begin{itemize}
-	\item \bzhash{bzz}{previousupdate}
-	\item \bzroomserial{i}{j}{user}
-	\item \bzhash{bzz}{participants}
-	\item length of ciphertext (4 bytes LE)
-	\item payloads[]
-	\begin{itemize}
-		\item payload
-	\end{itemize}
-\end{itemize}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
+\gls{roomname} & var & \bzroom{n} & - \\
+\gls{axxdef} & ? & \bzaxx{n}{i}{user} & - \\ 
+Participants & [] & \bzpubkey{s_n}{peer} & - \\
+ & & \bzaxx{n}{i}{peer} & \\
+\hline
+\end{tabular}
 
-\subsubsection{\gls{singleuserchat} update}
-\begin{itemize}
-	\item \bzhash{bzz}{previousupdate}
-	\item \bzroomserial{i}{j}{user}
-	\item payloads[]
-	\begin{itemize}
-		\item payload
-	\end{itemize}
-\end{itemize}
 
-\subsection{Messages}
+\subsubsection{\gls{singleuserchat} update} \label{sec:apx-single}
 
-All messages are divided into \emph{head} and \emph{body}. \emph{head} contains necessary key material for cryptographic operations, and is encrypted with \bzsymkey{head}. \emph{body} contains the data of the update, and is encrypted with \bzsymkey{data}. 
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
+Previous update & 32 & \bzhash{bzz}{previousupdate} & - \\
+\gls{roomserial} & 5 & \bzroomserial{n}{i}{user} & - \\
+\glspl{payload} & payload (\ref{sec:apx-payload}) & \bzsymkey{data_n}{peer} \\
+\hline
+\end{tabular}
 
-Only fields in \emph{body} are listed below.
 
-\subsubsection{content message}
-\begin{itemize}
-	\item \bzctrl{content}
-	\item data
-\end{itemize}
+\subsubsection{\gls{multiuserchat} update} \label{sec:apx-room}
 
-\subsubsection{location address}
-\begin{itemize}
-	\item \bzctrl{locationaddress}
-	\item \bzpubkey{l_{n+1}}{peer}
-\end{itemize}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
+Previous update & 32 & \bzhash{bzz}{previousupdate} & - \\
+\gls{roomserial} & 5 & \bzroomserial{n}{i}{user} & - \\
+\gls{participantlist} & 32 & \bzhash{bzz}{participantlist} & - \\
+Single ciphertext length & 4 & Little-endian unsigned & - \\
+\glspl{payload} & [] & payload (\ref{sec:apx-payload}) & \bzsymkey{data_n}{peer} \\
+\hline
+\end{tabular}
 
-\subsubsection{update address}
-\begin{itemize}
-	\item \bzctrl{updateaddress}
-	\item \bzpubkey{s_{n+1}}{peer}
-\end{itemize}
 
-\subsubsection{update feed control}
-\begin{itemize}
-	\item \bzctrl{start} $\lor$ \bzctrl{end}
-	\item \bzroomserial{i}{j}{peer}
-	\item $[$\bzroom{i}$]$
-\end{itemize}
+\subsection{Payloads} \label{sec:apx-payload}
 
-\newpage
+\subsubsection{content} \label{sec:apx-content}
+
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
+encryption header & ? & (implementation dependent) & \bzsymkey{meta_n}{peer} \\
+\gls{payloadid} & 2 & \bzctrl{content} & \bzsymkey{data_n}{peer} \\
+Data & var & \ldots & \bzsymkey{data_n}{peer} \\
+\hline
+\end{tabular}
+
+\subsubsection{location address change} \label{sec:apx-locaddr}
+
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
+encryption header & ? & (implementation dependent) & \bzsymkey{meta_n}{peer} \\
+\gls{payloadid} & 2 & \bzctrl{locaddr} & \bzsymkey{data_n}{peer} \\
+Pss node public key & 65 & \bzpubkey{loc_n}{user} & \bzsymkey{data_n}{peer} \\
+Pss node \gls{swarmaddress} & 0-32 & \ldots & \bzsymkey{data_n}{peer} \\
+\hline
+\end{tabular}
+
+\subsubsection{update address change} \label{sec:apx-updaddr}
+
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
+encryption header & ? & (implementation dependent) & \bzsymkey{meta_n}{peer} \\
+\gls{payloadid} & 2 & \bzctrl{updaddr} & \bzsymkey{data_n}{peer} \\
+\gls{updateaddress} & 65 & \bzpubkey{ses_{n+1}}{user} & \bzsymkey{data_n}{peer} \\
+\hline
+\end{tabular}
+
+\subsubsection{flow control} \label{sec:apx-flow}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
+encryption header & ? & (implementation dependent) & \bzsymkey{meta_n}{peer} \\
+\gls{payloadid} & 2 & \bzctrl{start} $\lor$ \bzctrl{end} $\lor$ \bzctrl{mark} & \bzsymkey{data_n}{peer} \\
+\gls{roomserial} & 5 & \bzroomserial{n}{i}{peer} & \bzsymkey{data_n}{peer} \\
+\hline
+\end{tabular}
 
 \bibliographystyle{plain}
 \bibliography{protocol}
