@@ -11,7 +11,7 @@
 \newcommand{\bzsymkey}[2]{$S_{#1}#2$}
 \newcommand{\bzhash}[1]{HASH$_{#1}$}
 \newcommand{\bzroom}[1]{R$_{#1}$name}
-\newcommand{\bzroomserial}[3]{R$_{#1}$T$_{#2}$#3}
+\newcommand{\bzfeedserial}[3]{R$_{#1}$T$_{#2}$#3}
 \newcommand{\bzaxx}[3]{R$_#1X_#2$#3}
 \newcommand{\bzfeedtopic}[1]{T$_{#1}$}
 
@@ -299,13 +299,13 @@ Typically, \bzctrl{start} will be used as the first update in a room, so peer re
 
 The \bzctrl{end} marker is used to terminate an update chain after a change of \gls{updateaddress}, or to explicitly \emph{disconnect} a peer.
 
-All \gls{payload} types contain the \gls{roomserial} of the \emph{update of the peer} the change is applicable from. If the context is a room, the \gls{roomname} must also be specified.
+All \gls{payload} types contain the \gls{feedserial} of the \emph{update of the peer} the change is applicable from. If the context is a room, the \gls{roomname} must also be specified.
 
 See \ref{sec:apx-flow} for update data structure.
 
 \subsubsection{\gls{updateaddress} change}
 
-Contains the new \gls{sessionkey} to be used to for the peer \glspl{swarmfeed}. The old \gls{sessionkey} should be kept until a \bzctrl{stop} is found on that feed and subsequently discarded. The peer must not make new updates to the \glspl{swarmfeed} with the old \gls{sessionkey} after the \bzctrl{stop} payload is sent.
+Contains the new \gls{sessionkey} to be used to for the peer \glspl{swarmfeed}. The old \gls{sessionkey} should be kept until a \bzctrl{stop} is found on that feed and subsequently discarded\footnote{If \bzctrl{stop} is not issued the feeds are still kept alive after an \gls{updateaddress} change. One possible use of this could be keeping several feeds and using them for obfuscation purposes in a round-robin or randomly switched fashion, without suffering the overhead of establishing new feeds for every switch}. The peer must not make new updates to the \glspl{swarmfeed} with the old \gls{sessionkey} after the \bzctrl{stop} payload is sent.
 
 See \ref{sec:apx-updaddr} for update data structure.
 
@@ -329,25 +329,27 @@ It contains a \gls{swarmhash} reference to a data structure describing those pre
 
 \subsection{Notifications} 
 
-Since a \emph{pull} model is used for all content in \gls{swarmchat}, we require peers by default to continually poll for changes. To make it possible to spend less resources on this, we define a \emph{push} notification option that can be used to trigger polling.
-
-Notifications must be encrypted using \bzsymkey{msg_n}{peer}
+Notifications enable peers to alert each other explicitly about new content or states. Notification messages must be encrypted using \bzsymkey{msg_n}{peer}.
 
 The user can define which conditions these notifications should occur. In turn, the peer will inform the user whether it accepts or rejects these conditions (see \ref{sec:updates-prefs}).
 
-The data of a notification message contains the topic of the \gls{swarmfeed} that should be checked for a new update\footnote{Notice how the design allows us to send a notification of an update in a \gls{singleuserchat} where this update in turn is a \gls{relay} pointing to a \gls{digest} of updates}, the \gls{roomserial} of the update, and a signature on the concatenation of the above. The \gls{sessionkey} of the sender is derived from the signature.
+The data of a notification message with type \bzctrl{notify} contains the topic of the \gls{swarmfeed} that should be checked for a new update\footnote{Notice how the design allows us to send a notification of an update in a \gls{singleuserchat} where this update in turn is a \gls{relay} pointing to a \gls{digest} of updates}, the \gls{feedserial} of the update, and a signature on the concatenation of the above. The \gls{sessionkey} of the sender is derived from the signature.
 
 A peer $A$ notifying peer $B$ of an update in its \gls{singleuserchat} \gls{swarmfeed}:
 
-$SIGN\{$\bzprivkey{ses_n}{A}$\}($\bzfeedtopic{single} $\|$ \bzroomserial{kazbah}{i}{B}$)$
+$SIGN\{$\bzprivkey{ses_n}{A}$\}($\bzfeedtopic{single} $\|$ \bzfeedserial{kazbah}{i}{B}$)$
 
 Similarly, notifying about an update its room "kazbah" thus provides this signature:
 
-$SIGN\{$\bzprivkey{ses_n}{A}$\}($\bzfeedtopic{room} $\oplus$ \bzfeedtopic{data} $\oplus$ \bzroom{kazbah} $\|$ \bzroomserial{kazbah}{i}{B}$)$
-
-Further data following this structure is allowed, which will be treated as implementation-specific custom data.
+$SIGN\{$\bzprivkey{ses_n}{A}$\}($\bzfeedtopic{room} $\oplus$ \bzfeedtopic{data} $\oplus$ \bzroom{kazbah} $\|$ \bzfeedserial{kazbah}{i}{B}$)$
 
 See \ref{sec:apx-pss-notify} for details on message structure.
+
+\subsubsection{Embedding data}
+
+Notifications normally reference content already in \gls{swarm}. Such a notification will be of type \bzctrl{notify}. But may also include the content itself within the notification\footnote{\gls{pss} messages should have size constraints by convention. TODO refer to pss paper where this is specified}. In this case the notification will be of type \bzctrl{notifydata}.
+
+It is possible to include custom data with a notification message of type \bzctrl{notify} in the trailing \emph{data} field. However, if the notification is of type \bzctrl{notifydata}, the data field must instead contain a copy of the updatedata being referenced by the \gls{swarmfeed} topic.
 
 \subsubsection{Ping} \label{sec:notify-ping}
 
@@ -431,6 +433,7 @@ Update feeds are denoted as rooms, prefixed with $R$. A direct message feed is d
 \begin{description}
 	\item[\bzctrl{session}] TODO
 	\item[\bzctrl{notify}] TODO
+	\item[\bzctrl{notifydata}] TODO
 	\item[\bzctrl{band}] TODO
 	\item[\bzctrl{locaddr}] TODO
 	\item[\bzctrl{updaddr}] TODO
@@ -463,11 +466,12 @@ Shared seed secret & ? & \bzsymkey{seed}{peer} & \bzpubkey{id}{X} \\
 \begin{tabular}{|l|l|l|l|}
 \hline
 \rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
-\gls{payloadid} & 2 & \bzctrl{notify} & \bzsymkey{msg_n}{peer} \\
+\gls{payloadid} & 2 & \bzctrl{notify} $\lor$ \bzctrl{notifydata} & \bzsymkey{msg_n}{peer} \\
 \gls{feedtopic} & 32 & \bzfeedtopic{root} $\oplus$ \dots & \bzsymkey{msg_n}{peer} \\
-\gls{roomserial} & 5 & \bzroomserial{n}{i}{peer} & \bzsymkey{msg_n}{peer} \\
-Signature & 32 & $SIGN\{$\bzprivkey{ses_n}{user}$\}($\gls{feedtopic} $\|$ \bzroomserial{n}{i}{peer}$)$ & \bzsymkey{msg_n}{peer} \\
-custom data & var & (implementation dependent) & \bzsymkey{msg_n}{peer} \\
+\gls{feedserial} & 5 & \bzfeedserial{n}{i}{peer} & \bzsymkey{msg_n}{peer} \\
+Signature & 32 & $SIGN\{$\bzprivkey{ses_n}{user}$\}($\gls{feedtopic} $\|$ \bzfeedserial{n}{i}{peer}$)$ & \bzsymkey{msg_n}{peer} \\
+(custom) data & var & \bzctrl{notify}: implementation dependent & \bzsymkey{msg_n}{peer} \\
+& & \bzctrl{notifydata}: copy of actual payload & \\
 \hline
 \end{tabular}
 
@@ -492,7 +496,7 @@ Participants & [] & \bzpubkey{s_n}{peer} & - \\
 \hline
 \rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
 Previous update & 32 & \bzhash{bzz}{previousupdate} & - \\
-\gls{roomserial} & 5 & \bzroomserial{n}{i}{user} & - \\
+\gls{feedserial} & 5 & \bzfeedserial{n}{i}{user} & - \\
 \glspl{payload} & payload (\ref{sec:apx-payload}) & \bzsymkey{data_n}{peer} \\
 \hline
 \end{tabular}
@@ -504,7 +508,7 @@ Previous update & 32 & \bzhash{bzz}{previousupdate} & - \\
 \hline
 \rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
 Previous update & 32 & \bzhash{bzz}{previousupdate} & - \\
-\gls{roomserial} & 5 & \bzroomserial{n}{i}{user} & - \\
+\gls{feedserial} & 5 & \bzfeedserial{n}{i}{user} & - \\
 \gls{participantlist} & 32 & \bzhash{bzz}{participantlist} & - \\
 Single ciphertext length & 4 & Little-endian unsigned & - \\
 \glspl{payload} & [] & payload (\ref{sec:apx-payload}) & \bzsymkey{data_n}{peer} \\
@@ -554,7 +558,7 @@ encryption header & ? & (implementation dependent) & \bzsymkey{meta_n}{peer} \\
 \rowcolor{lightgray} \textbf{field} & \textbf{size} & \textbf{identifier} & \textbf{encryption} \\
 encryption header & ? & (implementation dependent) & \bzsymkey{meta_n}{peer} \\
 \gls{payloadid} & 2 & \bzctrl{start} $\lor$ \bzctrl{end} $\lor$ \bzctrl{mark} & \bzsymkey{data_n}{peer} \\
-\gls{roomserial} & 5 & \bzroomserial{n}{i}{peer} & \bzsymkey{data_n}{peer} \\
+\gls{feedserial} & 5 & \bzfeedserial{n}{i}{peer} & \bzsymkey{data_n}{peer} \\
 \hline
 \end{tabular}
 
